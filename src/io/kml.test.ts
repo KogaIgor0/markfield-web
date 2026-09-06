@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import sniaKml from "./__fixtures__/Snia.kml?raw";
+import sniaLinhasKml from "./__fixtures__/Snia_linhas.kml?raw";
 import { parseKml, LIMITE_PRECISAO_CONFIAVEL_M } from "./kml";
 import { importarKml } from "./pacote";
 
@@ -58,6 +59,37 @@ describe("parseKml — export real da Sônia", () => {
     const ids = [...c.pontos, ...c.fotos].map((e) => e.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids.every((id) => id.length > 0)).toBe(true);
+  });
+});
+
+describe("parseKml — export da Sônia COM linhas (rede + cerca)", () => {
+  const c = parseKml(sniaLinhasKml);
+
+  it("mantém os mesmos 5 pontos e 19 fotos", () => {
+    expect(c.pontos).toHaveLength(5);
+    expect(c.fotos).toHaveLength(19);
+  });
+
+  it("lê o trecho de rede nova como Trecho com estilo 'rede'", () => {
+    expect(c.trechos).toHaveLength(1);
+    expect(c.trechos[0].observacao).toBe("Trecho de rede nova");
+    expect(c.trechos[0].estilo).toBe("rede");
+    expect(c.trechos[0].caminho?.length).toBe(2);
+  });
+
+  it("expande a cerca (MultiGeometry) em todos os 53 segmentos, estilo 'cerca'", () => {
+    // Sem tratar MultiGeometry, a cerca inteira seria perdida silenciosamente.
+    expect(c.linhasLivres).toHaveLength(53);
+    expect(c.linhasLivres.every((l) => l.caminho.length >= 2)).toBe(true);
+    expect(c.linhasLivres.every((l) => l.observacao === "Cerca")).toBe(true);
+    expect(c.linhasLivres.every((l) => l.estilo === "cerca")).toBe(true);
+  });
+
+  it("o trecho de rede liga as coordenadas de P1 e P4", () => {
+    const p1 = c.pontos.find((p) => p.numero === "1")!.wgs84;
+    const [a] = c.trechos[0].caminho!;
+    expect(a.lat).toBeCloseTo(p1.lat, 6);
+    expect(a.lng).toBeCloseTo(p1.lng, 6);
   });
 });
 

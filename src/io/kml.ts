@@ -2,6 +2,7 @@ import { XMLParser } from "fast-xml-parser";
 import { novoId } from "../domain/ids";
 import {
   tipoPontoDeApp,
+  type EstiloLinha,
   type Foto,
   type LinhaLivre,
   type Ponto,
@@ -37,7 +38,8 @@ export interface ConteudoKml {
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
-  isArray: (name) => name === "Folder" || name === "Placemark" || name === "Data",
+  isArray: (name) =>
+    name === "Folder" || name === "Placemark" || name === "Data" || name === "LineString",
   trimValues: true,
 });
 
@@ -103,6 +105,29 @@ function numeroDoNome(nome: string | undefined): string | undefined {
   return m ? m[1] : undefined;
 }
 
+interface LineStringXml {
+  coordinates?: unknown;
+}
+
+/** Coleta as LineStrings de um Placemark — direto e dentro de MultiGeometry. */
+function coletarLineStrings(pm: Record<string, unknown>): LineStringXml[] {
+  const out: LineStringXml[] = [];
+  const direto = pm.LineString as LineStringXml[] | undefined;
+  if (direto) out.push(...direto);
+  const multi = pm.MultiGeometry as { LineString?: LineStringXml[] } | undefined;
+  if (multi?.LineString) out.push(...multi.LineString);
+  return out;
+}
+
+/** Classifica o estilo da linha pelo styleUrl (já em minúsculas). */
+function estiloLinha(styleUrl: string): EstiloLinha {
+  if (styleUrl.includes("rede")) return "rede";
+  if (styleUrl.includes("cerca")) return "cerca";
+  if (styleUrl.includes("pontotraco")) return "pontoTraco";
+  if (styleUrl.includes("continua")) return "continua";
+  return "outro";
+}
+
 export function parseKml(xml: string): ConteudoKml {
   const avisos: string[] = [];
   const raiz = parser.parse(xml) as { kml?: { Document?: Record<string, unknown> } };
@@ -133,29 +158,41 @@ export function parseKml(xml: string): ConteudoKml {
     const styleUrl = (texto(pm.styleUrl) ?? "").toLowerCase();
     const ext = lerExtendedData(pm);
 
-    const linha = pm.LineString as { coordinates?: unknown } | undefined;
-    const ponto = pm.Point as { coordinates?: unknown } | undefined;
-
-    if (linha?.coordinates != null) {
-      const caminho = coordCaminho(String(linha.coordinates));
-      if (caminho.length < 2) {
-        avisos.push(`Linha "${nome ?? "?"}" ignorada (menos de 2 pontos).`);
-        continue;
+    // Linhas: podem vir como <LineString> direto OU dentro de <MultiGeometry>
+    // (é assim que o app guarda a cerca — um Placemark com dezenas de segmentos).
+    const lineStrings = coletarLineStrings(pm);
+    if (lineStrings.length > 0) {
+      const estilo = estiloLinha(styleUrl);
+      const ehRede = estilo === "rede";
+      let usados = 0;
+      for (const ls of lineStrings) {
+        const caminho = coordCaminho(String(ls.coordinates ?? ""));
+        if (caminho.length < 2) continue;
+        usados++;
+        if (ehRede) {
+          trechos.push({
+            id: novoId("tr"),
+            classe: "indefinida",
+            caminho,
+            estilo,
+            observacao: nome,
+            origem: "campo",
+          });
+        } else {
+          linhasLivres.push({
+            id: novoId("ll"),
+            caminho,
+            estilo,
+            observacao: nome,
+            origem: "campo",
+          });
+        }
       }
-      if (styleUrl.includes("rede")) {
-        trechos.push({
-          id: novoId("tr"),
-          classe: "indefinida",
-          caminho,
-          observacao: nome,
-          origem: "campo",
-        });
-      } else {
-        linhasLivres.push({ id: novoId("ll"), caminho, observacao: nome, origem: "campo" });
-      }
+      if (usados === 0) avisos.push(`Linha "${nome ?? "?"}" sem segmento válido.`);
       continue;
     }
 
+    const ponto = pm.Point as { coordinates?: unknown } | undefined;
     if (ponto?.coordinates == null) {
       avisos.push(`Placemark "${nome ?? "?"}" sem geometria reconhecida.`);
       continue;

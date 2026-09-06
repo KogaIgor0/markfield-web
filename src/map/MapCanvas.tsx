@@ -25,6 +25,11 @@ const ESTILO_SATELITE: maplibregl.StyleSpecification = {
         "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       ],
       tileSize: 256,
+      // A Esri não tem imagem além de ~z18 em muitas áreas rurais e devolve um
+      // tile "Map not yet available". Limitamos a fonte e deixamos o MapLibre
+      // esticar (overzoom) a última imagem boa — o zoom fechado segue usável.
+      // A fonte definitiva (com zoom mais profundo) é a D-09, ainda em aberto.
+      maxzoom: 18,
       attribution: "Tiles © Esri — World Imagery (base de desenvolvimento)",
     },
   },
@@ -110,7 +115,20 @@ function desenharProjeto(map: maplibregl.Map, projeto: Projeto, imagens?: Map<st
     type: "line",
     source: SRC.linhas,
     paint: {
-      "line-color": ["match", ["get", "kind"], "trecho", "#ff9d00", "#4caf50"],
+      // Cores espelhando os estilos de linha do app.
+      "line-color": [
+        "match",
+        ["get", "estilo"],
+        "rede",
+        "#ff9d00",
+        "cerca",
+        "#f44336",
+        "continua",
+        "#4caf50",
+        "pontoTraco",
+        "#2196f3",
+        "#4caf50",
+      ],
       "line-width": 3,
     },
   });

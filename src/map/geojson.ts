@@ -46,12 +46,22 @@ export function linhasGeoJson(projeto: Projeto): FeatureCollection<LineString> {
         type: "LineString",
         coordinates: t.caminho!.map((c) => [c.lng, c.lat]),
       },
-      properties: { id: t.id, kind: "trecho", observacao: t.observacao ?? "" },
+      properties: {
+        id: t.id,
+        kind: "trecho",
+        estilo: t.estilo ?? "rede",
+        observacao: t.observacao ?? "",
+      },
     }));
   const livres: Feature<LineString>[] = projeto.linhasLivres.map((l) => ({
     type: "Feature",
     geometry: { type: "LineString", coordinates: l.caminho.map((c) => [c.lng, c.lat]) },
-    properties: { id: l.id, kind: "livre", observacao: l.observacao ?? "" },
+    properties: {
+      id: l.id,
+      kind: "livre",
+      estilo: l.estilo ?? "continua",
+      observacao: l.observacao ?? "",
+    },
   }));
   return { type: "FeatureCollection", features: [...trechos, ...livres] };
 }

@@ -1,0 +1,493 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+<name>Sônia</name>
+<Style id="estilo_pontoGenerico">
+<IconStyle><color>ff9e9e9e</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle>
+</Style>
+<Style id="estilo_postePropostoo">
+<IconStyle><color>ff0b9ef5</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle>
+</Style>
+<Style id="estilo_transformador">
+<IconStyle><color>fff8bd38</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle>
+</Style>
+<Style id="estilo_linha_rede_nova">
+<LineStyle><color>ff009dff</color><width>3</width></LineStyle>
+</Style>
+<Style id="estilo_linha_livre_cerca">
+<LineStyle><color>fff44336</color><width>3</width></LineStyle>
+</Style>
+<Style id="estilo_linha_livre_continua">
+<LineStyle><color>ff4caf50</color><width>3</width></LineStyle>
+</Style>
+<Style id="estilo_linha_livre_pontoTraco">
+<LineStyle><color>ff2196f3</color><width>3</width></LineStyle>
+</Style>
+<Style id="estilo_foto">
+<IconStyle><color>ff4caf50</color><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/camera.png</href></Icon></IconStyle>
+</Style>
+<Folder>
+<name>Poste proposto</name>
+<Placemark>
+<name>P1 - 12600 Tomada</name>
+<description>Símbolo: Poste proposto | Observação: 12600 Tomada | Origem: GPS | Precisão GPS: 1.4 m | Criado em: 2026-08-26 09:44</description>
+<styleUrl>#estilo_postePropostoo</styleUrl>
+<ExtendedData>
+<Data name="simbolo"><value>Poste proposto</value></Data>
+<Data name="observacao"><value>12600 Tomada</value></Data>
+<Data name="origem"><value>GPS</value></Data>
+<Data name="precisao_metros"><value>1.40</value></Data>
+</ExtendedData>
+<Point>
+<coordinates>-50.0617086,-20.7142737,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>P4 - 12600 trafo</name>
+<description>Símbolo: Poste proposto | Observação: 12600 trafo | Origem: GPS | Precisão GPS: 1.4 m | Criado em: 2026-08-26 10:12</description>
+<styleUrl>#estilo_postePropostoo</styleUrl>
+<ExtendedData>
+<Data name="simbolo"><value>Poste proposto</value></Data>
+<Data name="observacao"><value>12600 trafo</value></Data>
+<Data name="origem"><value>GPS</value></Data>
+<Data name="precisao_metros"><value>1.40</value></Data>
+</ExtendedData>
+<Point>
+<coordinates>-50.0598797,-20.7104644,0</coordinates>
+</Point>
+</Placemark>
+</Folder>
+<Folder>
+<name>Genérico</name>
+<Placemark>
+<name>P2 - Cerca divisa 5FF chave de arame 5FF</name>
+<description>Símbolo: Genérico | Observação: Cerca divisa 5FF chave de arame 5FF | Origem: GPS | Precisão GPS: 1.5 m | Criado em: 2026-08-26 09:53</description>
+<styleUrl>#estilo_pontoGenerico</styleUrl>
+<ExtendedData>
+<Data name="simbolo"><value>Genérico</value></Data>
+<Data name="observacao"><value>Cerca divisa 5FF chave de arame 5FF</value></Data>
+<Data name="origem"><value>GPS</value></Data>
+<Data name="precisao_metros"><value>1.50</value></Data>
+</ExtendedData>
+<Point>
+<coordinates>-50.060589,-20.7119259,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>P3 - chave de arame 5FF</name>
+<description>Símbolo: Genérico | Observação: chave de arame 5FF | Origem: GPS | Precisão GPS: 1.4 m | Criado em: 2026-08-26 10:04</description>
+<styleUrl>#estilo_pontoGenerico</styleUrl>
+<ExtendedData>
+<Data name="simbolo"><value>Genérico</value></Data>
+<Data name="observacao"><value>chave de arame 5FF</value></Data>
+<Data name="origem"><value>GPS</value></Data>
+<Data name="precisao_metros"><value>1.35</value></Data>
+</ExtendedData>
+<Point>
+<coordinates>-50.059981,-20.7106915,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>P5 - Padrão</name>
+<description>Símbolo: Genérico | Observação: Padrão | Origem: GPS | Precisão GPS: 1.3 m | Criado em: 2026-08-26 10:14</description>
+<styleUrl>#estilo_pontoGenerico</styleUrl>
+<ExtendedData>
+<Data name="simbolo"><value>Genérico</value></Data>
+<Data name="observacao"><value>Padrão</value></Data>
+<Data name="origem"><value>GPS</value></Data>
+<Data name="precisao_metros"><value>1.30</value></Data>
+</ExtendedData>
+<Point>
+<coordinates>-50.0601467,-20.7103684,0</coordinates>
+</Point>
+</Placemark>
+</Folder>
+<Folder>
+<name>Rede nova</name>
+<Placemark>
+<name>Trecho de rede nova</name>
+<styleUrl>#estilo_linha_rede_nova</styleUrl>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.0617086,-20.7142737,0 -50.0598797,-20.7104644,0</coordinates>
+</LineString>
+</Placemark>
+</Folder>
+<Folder>
+<name>Linhas livres</name>
+<Placemark>
+<name>Cerca</name>
+<styleUrl>#estilo_linha_livre_cerca</styleUrl>
+<MultiGeometry>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.05985581591139,-20.710430716912565,0 -50.06174340690357,-20.714356108665186,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.05989994968582,-20.710483784310373,0 -50.05988291198572,-20.71052577750542,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.059868983696596,-20.710496812548786,0 -50.05991387797494,-20.710512749267007,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.059971179534585,-20.71063191230104,0 -50.05995414183448,-20.710673905496087,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.05994021354536,-20.710644940539453,0 -50.05998510782371,-20.710660877257673,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06004240938335,-20.710780040291706,0 -50.060025371683246,-20.710822033486753,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.060011443394124,-20.71079306853012,0 -50.06005633767247,-20.71080900524834,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06011363923211,-20.71092816828237,0 -50.060096601532,-20.710970161477416,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06008267324288,-20.710941196520782,0 -50.06012756752123,-20.710957133239003,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06018486908087,-20.711076296273035,0 -50.06016783138077,-20.711118289468082,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.060153903091646,-20.71108932451145,0 -50.06019879736999,-20.71110526122967,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06025609892963,-20.711224424263698,0 -50.060239061229524,-20.711266417458745,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.0602251329404,-20.71123745250211,0 -50.06027002721875,-20.71125338922033,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06032732877839,-20.711372552254364,0 -50.06031029107829,-20.71141454544941,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06029636278917,-20.711385580492777,0 -50.06034125706751,-20.711401517210998,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.060398558627156,-20.71152068024503,0 -50.06038152092705,-20.711562673440078,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06036759263793,-20.711533708483444,0 -50.06041248691628,-20.711549645201664,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06046978847591,-20.711668808235693,0 -50.06045275077581,-20.71171080143074,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06043882248669,-20.711681836474106,0 -50.060483716765035,-20.711697773192327,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06054101832468,-20.71181693622636,0 -50.06052398062457,-20.711858929421407,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06051005233545,-20.711829964464773,0 -50.0605549466138,-20.711845901182993,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.060612248173435,-20.711965064217022,0 -50.06059521047333,-20.71200705741207,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06058128218421,-20.711978092455436,0 -50.060626176462556,-20.711994029173656,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.0606834780222,-20.71211319220769,0 -50.060666440322095,-20.712155185402736,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06065251203297,-20.712126220446102,0 -50.06069740631132,-20.712142157164322,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06075470787096,-20.712261320198355,0 -50.06073767017086,-20.712303313393402,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06072374188174,-20.712274348436768,0 -50.060768636160084,-20.71229028515499,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06082593771972,-20.712409448189018,0 -50.060808900019616,-20.712451441384065,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.060794971730495,-20.71242247642743,0 -50.06083986600884,-20.71243841314565,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.060897167568484,-20.712557576179684,0 -50.06088012986838,-20.71259956937473,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06086620157926,-20.712570604418097,0 -50.060911095857605,-20.712586541136318,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06096839741724,-20.712705704170347,0 -50.06095135971714,-20.712747697365394,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.060937431428016,-20.71271873240876,0 -50.06098232570636,-20.71273466912698,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.061039627266005,-20.712853832161013,0 -50.0610225895659,-20.71289582535606,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06100866127678,-20.712866860399426,0 -50.06105355555513,-20.712882797117647,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06111085711477,-20.71300196015168,0 -50.061093819414666,-20.713043953346727,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.061079891125544,-20.713014988390093,0 -50.06112478540389,-20.713030925108313,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06118208696353,-20.713150088142342,0 -50.06116504926342,-20.71319208133739,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.0611511209743,-20.713163116380755,0 -50.06119601525265,-20.713179053098976,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06125331681229,-20.71329821613301,0 -50.06123627911219,-20.713340209328056,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.061222350823066,-20.713311244371422,0 -50.06126724510141,-20.713327181089642,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06132454666105,-20.71344634412367,0 -50.061307508960944,-20.71348833731872,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06129358067182,-20.713459372362085,0 -50.06133847495017,-20.713475309080305,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06139577650981,-20.713594472114337,0 -50.06137873880971,-20.713636465309385,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06136481052059,-20.71360750035275,0 -50.06140970479893,-20.71362343707097,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.061467006358576,-20.713742600105004,0 -50.06144996865847,-20.71378459330005,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06143604036935,-20.713755628343417,0 -50.0614809346477,-20.713771565061638,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06153823620733,-20.713890728095667,0 -50.06152119850723,-20.713932721290714,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06150727021811,-20.71390375633408,0 -50.061552164496455,-20.7139196930523,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.0616094660561,-20.714038856086333,0 -50.06159242835599,-20.71408084928138,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06157850006687,-20.714051884324746,0 -50.06162339434522,-20.714067821042967,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.061680695904855,-20.714186984076996,0 -50.06166365820475,-20.714228977272043,0</coordinates>
+</LineString>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>-50.06164972991563,-20.71420001231541,0 -50.061694624193976,-20.71421594903363,0</coordinates>
+</LineString>
+</MultiGeometry>
+</Placemark>
+</Folder>
+<Folder>
+<name>Fotos</name>
+<Placemark>
+<name>Foto1</name>
+<description>Precisão GPS: 1.4 m | Tirada em: 2026-08-26 09:45</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0617448,-20.7142018,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto2</name>
+<description>Precisão GPS: 1.5 m | Tirada em: 2026-08-26 09:46</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0616877,-20.7142671,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto3</name>
+<description>Precisão GPS: 4.3 m | Tirada em: 2026-08-26 09:46</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0616915,-20.714242,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto4</name>
+<description>Precisão GPS: 1.7 m | Tirada em: 2026-08-26 09:48</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0614946,-20.7138398,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto5</name>
+<description>Precisão GPS: 1.4 m | Tirada em: 2026-08-26 09:48</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0614095,-20.7136606,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto6</name>
+<description>Precisão GPS: 1.4 m | Tirada em: 2026-08-26 09:51</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0610382,-20.7128908,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto7</name>
+<description>Precisão GPS: 1.5 m | Tirada em: 2026-08-26 09:52</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0607675,-20.7122947,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto8</name>
+<description>Precisão GPS: 1.5 m | Tirada em: 2026-08-26 09:53</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0606496,-20.7120265,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto9</name>
+<description>Precisão GPS: 1.8 m | Tirada em: 2026-08-26 09:58</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0602424,-20.7110792,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto10</name>
+<description>Precisão GPS: 300.0 m | Tirada em: 2026-08-26 10:00</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0436344,-20.6947811,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto11</name>
+<description>Precisão GPS: 1.6 m | Tirada em: 2026-08-26 10:01</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0602063,-20.7110377,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto12</name>
+<description>Precisão GPS: 7.4 m | Tirada em: 2026-08-26 10:01</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0601772,-20.7110185,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto13</name>
+<description>Precisão GPS: 2.0 m | Tirada em: 2026-08-26 10:03</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0600732,-20.7108518,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto14</name>
+<description>Precisão GPS: 1.5 m | Tirada em: 2026-08-26 10:04</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0600258,-20.7107578,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto15</name>
+<description>Precisão GPS: 300.0 m | Tirada em: 2026-08-26 10:10</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0423506,-20.6968875,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto16</name>
+<description>Precisão GPS: 2.2 m | Tirada em: 2026-08-26 10:10</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0599909,-20.7105832,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto17</name>
+<description>Precisão GPS: 1.4 m | Tirada em: 2026-08-26 10:11</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0598816,-20.7104537,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto18</name>
+<description>Precisão GPS: 300.0 m | Tirada em: 2026-08-26 10:18</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0436344,-20.6947811,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto19</name>
+<description>Precisão GPS: 2.3 m | Tirada em: 2026-08-26 10:19</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0573276,-20.7115687,0</coordinates>
+</Point>
+</Placemark>
+</Folder>
+</Document>
+</kml>

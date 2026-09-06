@@ -109,6 +109,13 @@ export interface Ponto {
   criadoEm?: string;
 }
 
+/**
+ * Estilo de traçado da linha, espelhando o `styleUrl` do app. Define a cor/
+ * simbologia no mapa: `rede` (âmbar), `cerca` (vermelho), `continua` (verde),
+ * `pontoTraco` (azul). Preservado para o Web desenhar como o campo enxergou.
+ */
+export type EstiloLinha = "rede" | "cerca" | "continua" | "pontoTraco" | "outro";
+
 /** Um trecho de rede ligando dois pontos (ou uma polilinha de coordenadas). */
 export interface Trecho {
   id: string;
@@ -119,6 +126,7 @@ export interface Trecho {
   aPontoId?: string;
   /** Geometria explícita, quando o trecho não é apenas ponto-a-ponto. */
   caminho?: LatLng[];
+  estilo?: EstiloLinha;
   observacao?: string;
   origem: Origem;
 }
@@ -127,6 +135,7 @@ export interface Trecho {
 export interface LinhaLivre {
   id: string;
   caminho: LatLng[];
+  estilo?: EstiloLinha;
   observacao?: string;
   origem: Origem;
 }
