@@ -1,19 +1,16 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Projeto } from "../domain/model";
-import { rotuloTipo } from "../domain/model";
-import { formatarUtm, paraUtm } from "../geo/utm";
+import type { FeatureCollection, Point } from "geojson";
+import type { LatLng, Projeto, TipoPonto } from "../domain/model";
 import { fotosGeoJson, linhasGeoJson, pontosGeoJson } from "./geojson";
 
 /**
- * Mapa base + render do projeto importado (DRS RI-01, RF-07; Fase 1).
+ * Mapa base + render + EDIÇÃO do projeto (Fase 2).
  *
- * A fonte de tiles de satélite (Esri World Imagery) é só base de desenvolvimento;
- * a definitiva é a D-09, ainda em aberto. Trocar aqui não afeta o resto do app.
- *
- * Cores dos símbolos espelham o KML do app (postePropostoo laranja, transformador
- * azul, genérico cinza, foto verde) para o Web "falar a mesma língua" do campo.
+ * Interações: selecionar ponto (clique), arrastar para mover, e adicionar ponto
+ * (modo "adicionar" → clique no mapa). As mudanças sobem via callbacks; quem
+ * altera o modelo é o motor de edição no App. Aqui só desenhamos e capturamos.
  */
 
 const ESTILO_SATELITE: maplibregl.StyleSpecification = {
@@ -25,10 +22,6 @@ const ESTILO_SATELITE: maplibregl.StyleSpecification = {
         "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       ],
       tileSize: 256,
-      // A Esri não tem imagem além de ~z18 em muitas áreas rurais e devolve um
-      // tile "Map not yet available". Limitamos a fonte e deixamos o MapLibre
-      // esticar (overzoom) a última imagem boa — o zoom fechado segue usável.
-      // A fonte definitiva (com zoom mais profundo) é a D-09, ainda em aberto.
       maxzoom: 18,
       attribution: "Tiles © Esri — World Imagery (base de desenvolvimento)",
     },
@@ -40,11 +33,7 @@ const CENTRO_INICIAL: [number, number] = [-47.9, -15.8];
 const ZOOM_INICIAL = 4;
 
 const SRC = { pontos: "mkf-pontos", fotos: "mkf-fotos", linhas: "mkf-linhas" } as const;
-const LYR = {
-  linhas: "mkf-linhas",
-  fotos: "mkf-fotos",
-  pontos: "mkf-pontos",
-} as const;
+const LYR = { linhas: "mkf-linhas", sel: "mkf-sel", fotos: "mkf-fotos", pontos: "mkf-pontos" } as const;
 
 function esc(s: unknown): string {
   return String(s ?? "").replace(
@@ -53,16 +42,32 @@ function esc(s: unknown): string {
   );
 }
 
+export type Modo = "selecionar" | { adicionar: TipoPonto };
+
 interface MapCanvasProps {
   projeto?: Projeto | null;
   imagens?: Map<string, string>;
+  selecionadoId?: string | null;
+  modo?: Modo;
+  /** Muda quando um NOVO projeto é aberto — dispara o auto-enquadramento. */
+  chaveEnquadramento?: number;
+  onSelecionar?: (id: string | null) => void;
+  onMoverPonto?: (id: string, wgs84: LatLng) => void;
+  onAdicionarPonto?: (wgs84: LatLng) => void;
 }
 
-export function MapCanvas({ projeto, imagens }: MapCanvasProps) {
+export function MapCanvas(props: MapCanvasProps) {
+  const { projeto, selecionadoId, modo, chaveEnquadramento } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const fcRef = useRef<FeatureCollection<Point> | null>(null);
+  const dragRef = useRef<string | null>(null);
 
-  // Cria o mapa uma vez.
+  // Espelho sempre-atual das props para os handlers registrados uma vez só.
+  const propsRef = useRef(props);
+  propsRef.current = props;
+
+  // Cria o mapa e registra os handlers de interação uma única vez.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = new maplibregl.Map({
@@ -75,27 +80,134 @@ export function MapCanvas({ projeto, imagens }: MapCanvasProps) {
     map.addControl(new maplibregl.NavigationControl(), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
     mapRef.current = map;
+
+    const emModoAdicionar = () => typeof propsRef.current.modo === "object";
+
+    // Arraste de ponto (só no modo selecionar).
+    const onMove = (e: maplibregl.MapMouseEvent) => {
+      const id = dragRef.current;
+      const fc = fcRef.current;
+      if (!id || !fc) return;
+      const f = fc.features.find((ft) => ft.properties?.id === id);
+      if (f) {
+        f.geometry.coordinates = [e.lngLat.lng, e.lngLat.lat];
+        (map.getSource(SRC.pontos) as maplibregl.GeoJSONSource).setData(fc);
+      }
+    };
+    const onUp = (e: maplibregl.MapMouseEvent) => {
+      map.off("mousemove", onMove);
+      map.getCanvas().style.cursor = "";
+      const id = dragRef.current;
+      dragRef.current = null;
+      if (id) propsRef.current.onMoverPonto?.(id, { lat: e.lngLat.lat, lng: e.lngLat.lng });
+    };
+    map.on("mousedown", LYR.pontos, (e) => {
+      if (emModoAdicionar()) return;
+      const id = e.features?.[0]?.properties?.id as string | undefined;
+      if (!id) return;
+      e.preventDefault(); // impede o pan do mapa
+      propsRef.current.onSelecionar?.(id);
+      dragRef.current = id;
+      map.getCanvas().style.cursor = "grabbing";
+      map.on("mousemove", onMove);
+      map.once("mouseup", onUp);
+    });
+
+    // Ponteiro ao passar sobre um ponto (no modo selecionar).
+    map.on("mouseenter", LYR.pontos, () => {
+      if (!emModoAdicionar()) map.getCanvas().style.cursor = "grab";
+    });
+    map.on("mouseleave", LYR.pontos, () => {
+      if (!dragRef.current && !emModoAdicionar()) map.getCanvas().style.cursor = "";
+    });
+
+    // Foto → popup com a imagem.
+    map.on("click", LYR.fotos, (e) => {
+      const f = e.features?.[0];
+      if (!f || f.geometry.type !== "Point") return;
+      const [lng, lat] = f.geometry.coordinates as [number, number];
+      const p = f.properties ?? {};
+      const url = p.nome ? propsRef.current.imagens?.get(String(p.nome)) : undefined;
+      const prec = p.precisaoM != null && p.precisaoM !== "" ? `${p.precisaoM} m` : "—";
+      const html = `
+        <div class="pop">
+          <div class="pop-h">${esc(p.nome || "Foto")}</div>
+          ${url ? `<img class="pop-img" src="${esc(url)}" alt="${esc(p.nome)}" />` : `<div class="pop-obs">(imagem não carregada)</div>`}
+          <table class="pop-t">
+            <tr><td>Precisão</td><td>${esc(prec)}${p.baixaConfianca ? " ⚠︎ baixa" : ""}</td></tr>
+            ${p.capturadaEm ? `<tr><td>Tirada</td><td>${esc(p.capturadaEm)}</td></tr>` : ""}
+          </table>
+        </div>`;
+      new maplibregl.Popup({ maxWidth: "340px" }).setLngLat([lng, lat]).setHTML(html).addTo(map);
+    });
+
+    // Clique geral: adicionar (modo adicionar) ou desmarcar (clique no vazio).
+    map.on("click", (e) => {
+      const m = propsRef.current.modo;
+      if (typeof m === "object") {
+        propsRef.current.onAdicionarPonto?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+        return;
+      }
+      const sobre = map.queryRenderedFeatures(e.point, { layers: [LYR.pontos, LYR.fotos] });
+      if (sobre.length === 0) propsRef.current.onSelecionar?.(null);
+    });
+
     return () => {
       map.remove();
       mapRef.current = null;
     };
   }, []);
 
-  // Desenha o projeto sempre que ele muda.
+  // Desenha o projeto quando muda.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !projeto) return;
-
-    const desenhar = () => desenharProjeto(map, projeto, imagens);
+    const desenhar = () => {
+      const fc = pontosGeoJson(projeto);
+      fcRef.current = fc;
+      desenharProjeto(map, projeto, fc);
+      aplicarSelecao(map, propsRef.current.selecionadoId ?? null);
+    };
     if (map.isStyleLoaded()) desenhar();
     else map.once("load", desenhar);
-
     return () => {
       map.off("load", desenhar);
     };
-  }, [projeto, imagens]);
+  }, [projeto]);
+
+  // Auto-enquadramento apenas quando um novo projeto é aberto.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !projeto || !chaveEnquadramento) return;
+    const fit = () => enquadrar(map, projeto);
+    if (map.isStyleLoaded()) fit();
+    else map.once("load", fit);
+    return () => {
+      map.off("load", fit);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveEnquadramento]);
+
+  // Destaque do ponto selecionado.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    aplicarSelecao(map, selecionadoId ?? null);
+  }, [selecionadoId]);
+
+  // Cursor conforme o modo (adicionar = cruz).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.getCanvas().style.cursor = typeof modo === "object" ? "crosshair" : "";
+  }, [modo]);
 
   return <div ref={containerRef} className="map-canvas" />;
+}
+
+function aplicarSelecao(map: maplibregl.Map, id: string | null) {
+  if (!map.getLayer(LYR.sel)) return;
+  map.setFilter(LYR.sel, ["==", ["get", "id"], id ?? "__nenhum__"]);
 }
 
 function limpar(map: maplibregl.Map) {
@@ -103,19 +215,18 @@ function limpar(map: maplibregl.Map) {
   for (const id of Object.values(SRC)) if (map.getSource(id)) map.removeSource(id);
 }
 
-function desenharProjeto(map: maplibregl.Map, projeto: Projeto, imagens?: Map<string, string>) {
+function desenharProjeto(map: maplibregl.Map, projeto: Projeto, pontosFc: FeatureCollection<Point>) {
   limpar(map);
 
   map.addSource(SRC.linhas, { type: "geojson", data: linhasGeoJson(projeto) });
   map.addSource(SRC.fotos, { type: "geojson", data: fotosGeoJson(projeto) });
-  map.addSource(SRC.pontos, { type: "geojson", data: pontosGeoJson(projeto) });
+  map.addSource(SRC.pontos, { type: "geojson", data: pontosFc });
 
   map.addLayer({
     id: LYR.linhas,
     type: "line",
     source: SRC.linhas,
     paint: {
-      // Cores espelhando os estilos de linha do app.
       "line-color": [
         "match",
         ["get", "estilo"],
@@ -130,6 +241,20 @@ function desenharProjeto(map: maplibregl.Map, projeto: Projeto, imagens?: Map<st
         "#4caf50",
       ],
       "line-width": 3,
+    },
+  });
+
+  // Anel de seleção (abaixo dos pontos; segue o ponto no arraste, mesma fonte).
+  map.addLayer({
+    id: LYR.sel,
+    type: "circle",
+    source: SRC.pontos,
+    filter: ["==", ["get", "id"], "__nenhum__"],
+    paint: {
+      "circle-radius": 13,
+      "circle-color": "rgba(0,0,0,0)",
+      "circle-stroke-width": 3,
+      "circle-stroke-color": "#c6740e",
     },
   });
 
@@ -166,58 +291,6 @@ function desenharProjeto(map: maplibregl.Map, projeto: Projeto, imagens?: Map<st
       "circle-stroke-width": 2,
       "circle-stroke-color": "#ffffff",
     },
-  });
-
-  wirePopups(map, imagens);
-  enquadrar(map, projeto);
-}
-
-function wirePopups(map: maplibregl.Map, imagens?: Map<string, string>) {
-  const apontar = (id: string) => {
-    map.on("mouseenter", id, () => (map.getCanvas().style.cursor = "pointer"));
-    map.on("mouseleave", id, () => (map.getCanvas().style.cursor = ""));
-  };
-  apontar(LYR.pontos);
-  apontar(LYR.fotos);
-
-  map.on("click", LYR.pontos, (e) => {
-    const f = e.features?.[0];
-    if (!f || f.geometry.type !== "Point") return;
-    const [lng, lat] = f.geometry.coordinates as [number, number];
-    const p = f.properties ?? {};
-    const utm = paraUtm({ lat, lng });
-    const prec = p.precisaoM != null && p.precisaoM !== "" ? `${p.precisaoM} m` : "—";
-    const html = `
-      <div class="pop">
-        <div class="pop-h">${p.numero ? `P${esc(p.numero)}` : "Ponto"} · ${esc(rotuloTipo(p.tipo))}</div>
-        ${p.observacao ? `<div class="pop-obs">${esc(p.observacao)}</div>` : ""}
-        <table class="pop-t">
-          <tr><td>UTM</td><td>${esc(formatarUtm(utm))}</td></tr>
-          <tr><td>Lat/Lng</td><td>${lat.toFixed(6)}, ${lng.toFixed(6)}</td></tr>
-          <tr><td>Precisão</td><td>${esc(prec)}</td></tr>
-          ${p.criadoEm ? `<tr><td>Criado</td><td>${esc(p.criadoEm)}</td></tr>` : ""}
-        </table>
-      </div>`;
-    new maplibregl.Popup({ maxWidth: "320px" }).setLngLat([lng, lat]).setHTML(html).addTo(map);
-  });
-
-  map.on("click", LYR.fotos, (e) => {
-    const f = e.features?.[0];
-    if (!f || f.geometry.type !== "Point") return;
-    const [lng, lat] = f.geometry.coordinates as [number, number];
-    const p = f.properties ?? {};
-    const url = p.nome ? imagens?.get(String(p.nome)) : undefined;
-    const prec = p.precisaoM != null && p.precisaoM !== "" ? `${p.precisaoM} m` : "—";
-    const html = `
-      <div class="pop">
-        <div class="pop-h">${esc(p.nome || "Foto")}</div>
-        ${url ? `<img class="pop-img" src="${esc(url)}" alt="${esc(p.nome)}" />` : `<div class="pop-obs">(imagem não carregada)</div>`}
-        <table class="pop-t">
-          <tr><td>Precisão</td><td>${esc(prec)}${p.baixaConfianca ? " ⚠︎ baixa" : ""}</td></tr>
-          ${p.capturadaEm ? `<tr><td>Tirada</td><td>${esc(p.capturadaEm)}</td></tr>` : ""}
-        </table>
-      </div>`;
-    new maplibregl.Popup({ maxWidth: "340px" }).setLngLat([lng, lat]).setHTML(html).addTo(map);
   });
 }
 

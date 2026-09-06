@@ -278,3 +278,171 @@ body {
   border-radius: 6px;
   margin-bottom: 6px;
 }
+
+/* Botões extra (Fase 2) */
+.btn-ativo {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn-mini {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+/* Barra do modo adicionar */
+.modo-bar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+
+.modo-bar select {
+  font: inherit;
+  font-size: 13px;
+  padding: 3px 6px;
+  border: 1px solid var(--hair);
+  border-radius: 5px;
+}
+
+/* Painel do ponto selecionado */
+.painel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 7;
+  width: 288px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.2);
+}
+
+.painel-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+}
+
+.painel-x {
+  background: none;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.campo > span {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10.5px;
+}
+
+.campo input,
+.campo select,
+.campo textarea {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  width: 100%;
+  resize: vertical;
+}
+
+.campo input:focus,
+.campo select:focus,
+.campo textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  background: #fff;
+}
+
+.painel-coord {
+  border-top: 1px solid var(--hair);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.painel-sub {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.coord-linha {
+  display: flex;
+  gap: 8px;
+}
+
+.campo-mini {
+  flex: 1;
+}
+
+.campo-mini input {
+  font-variant-numeric: tabular-nums;
+}
+
+.painel-utm {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.painel-info {
+  font-size: 11.5px;
+  color: var(--muted);
+  border-top: 1px solid var(--hair);
+  padding-top: 10px;
+}
+
+.btn-excluir {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b4231a;
+  background: #fff;
+  border: 1px solid #e8c0bc;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.btn-excluir:hover {
+  background: #fbecea;
+  border-color: #d98a82;
+}

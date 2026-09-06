@@ -40,6 +40,15 @@ export function paraUtm(coord: LatLng): UtmPoint {
   };
 }
 
+/** Converte UTM SIRGAS 2000 de volta para coordenada geográfica (inverso exato). */
+export function deUtm(utm: UtmPoint): LatLng {
+  const [lng, lat] = proj4(defProj(utm.zone, utm.hemisphere === "S")).inverse([
+    utm.easting,
+    utm.northing,
+  ]) as [number, number];
+  return { lat, lng };
+}
+
 /** Formata um ponto UTM para exibição (ex.: "597703 E · 7709191 N · 22S"). */
 export function formatarUtm(utm: UtmPoint): string {
   const e = Math.round(utm.easting).toLocaleString("pt-BR");
