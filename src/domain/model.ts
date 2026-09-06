@@ -45,17 +45,44 @@ export interface UtmPoint {
 /**
  * Símbolo/tipo de um ponto. Espelha os `styleUrl` do KML do app.
  *
+ * D-03 (fechada Set/2026): hoje o app oferece exatamente três símbolos —
+ * Poste proposto, Genérico e Transformador. `outro` é a rede de segurança para
+ * símbolos novos que o app venha a exportar antes de o modelo conhecê-los.
+ *
  * ATENÇÃO ao valor `postePropostoo` — a grafia com DOIS "o" é intencional e
- * mantida por compatibilidade com o que o app já gera. Não "corrigir".
+ * mantida por compatibilidade com o `styleUrl` que o app já gera. Não "corrigir".
  */
 export type TipoPonto =
-  | "posteExistente"
-  | "postePropostoo" // sic — dois "o", compatibilidade com o app
-  | "transformador"
-  | "chave"
-  | "religador"
-  | "referencia"
+  | "postePropostoo" // sic — dois "o", compatibilidade com o app ("Poste proposto")
+  | "generico" // "Genérico"
+  | "transformador" // "Transformador"
   | "outro";
+
+/**
+ * Mapeia o símbolo como o app o exporta (rótulo em ExtendedData `simbolo`, ou
+ * o id do `styleUrl`) para o `TipoPonto` interno. Tolerante a acento/caixa.
+ */
+export function tipoPontoDeApp(valor: string | undefined | null): TipoPonto {
+  const v = (valor ?? "").trim().toLowerCase();
+  if (v.includes("propost")) return "postePropostoo"; // "Poste proposto" / "postePropostoo"
+  if (v.includes("transformador")) return "transformador";
+  if (v.includes("gen") || v.includes("generico")) return "generico"; // "Genérico"
+  return "outro";
+}
+
+/** Rótulo legível de um `TipoPonto`, para legenda e popups. */
+export function rotuloTipo(t: TipoPonto): string {
+  switch (t) {
+    case "postePropostoo":
+      return "Poste proposto";
+    case "generico":
+      return "Genérico";
+    case "transformador":
+      return "Transformador";
+    default:
+      return "Outro";
+  }
+}
 
 /** Origem de um elemento: coletado em campo, importado, ou criado no Web. */
 export type Origem = "campo" | "rede_existente" | "web";
@@ -64,15 +91,22 @@ export type Origem = "campo" | "rede_existente" | "web";
 export interface Ponto {
   id: string;
   tipo: TipoPonto;
-  /** Numeração exibida ao usuário (ex.: "001"). Pode diferir do id interno. */
+  /** Numeração exibida ao usuário (ex.: "1"). Pode diferir do id interno. */
   numero?: string;
   wgs84: LatLng;
   /** UTM derivado; opcional porque é calculável a partir do WGS84. */
   utm?: UtmPoint;
   observacao?: string;
   origem: Origem;
+  /**
+   * Como a coordenada foi obtida, conforme o app ("GPS", "Manual", "Mapa"…).
+   * Distinto de `origem` (que é a proveniência: campo/web).
+   */
+  fonteCoordenada?: string;
   /** Precisão do GPS em metros, quando veio do campo. */
   precisaoM?: number;
+  /** Data/hora de criação no app (ISO 8601 ou "YYYY-MM-DD HH:MM"), se houver. */
+  criadoEm?: string;
 }
 
 /** Um trecho de rede ligando dois pontos (ou uma polilinha de coordenadas). */
@@ -97,19 +131,33 @@ export interface LinhaLivre {
   origem: Origem;
 }
 
-/** Uma foto georreferenciada. */
+/**
+ * Uma foto georreferenciada.
+ *
+ * D-03: no app, a foto é um ponto geográfico INDEPENDENTE — tem coordenada
+ * própria e NÃO carrega vínculo a um poste. A associação foto→ponto é um
+ * recurso do Web (por proximidade ou manual), não um dado que vem do app.
+ */
 export interface Foto {
   id: string;
-  /** Nome do arquivo dentro do pacote (ex.: "foto_001.jpg"). */
+  /** Nome-base exibido no app (ex.: "Foto1"). */
+  nome?: string;
+  /** Caminho do arquivo dentro do pacote (ex.: "fotos/Foto1.jpg"). */
   arquivo: string;
   wgs84: LatLng;
+  /** Precisão do GPS em metros. */
+  precisaoM?: number;
   /** Data/hora de captura (ISO 8601), quando disponível. */
   capturadaEm?: string;
   observacao?: string;
   /**
-   * Vínculo ao ponto correspondente.
-   * Hoje o app NÃO exporta isso (pendência do contrato, DRS RD-05). O .mkf
-   * passa a carregá-lo; ao importar formatos antigos fica indefinido.
+   * GPS sem sinal confiável (ex.: precisão de 300 m): a coordenada é lixo e não
+   * deve puxar o enquadramento do mapa. Marcada na importação.
+   */
+  baixaConfianca?: boolean;
+  /**
+   * Vínculo ao ponto correspondente — recurso do Web, preenchido depois.
+   * Ao importar do app fica indefinido (a foto não traz esse vínculo).
    */
   pontoId?: string;
 }

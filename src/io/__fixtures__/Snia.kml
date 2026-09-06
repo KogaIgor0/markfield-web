@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+<name>Sônia</name>
+<Style id="estilo_pontoGenerico">
+<IconStyle><color>ff9e9e9e</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle>
+</Style>
+<Style id="estilo_postePropostoo">
+<IconStyle><color>ff0b9ef5</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle>
+</Style>
+<Style id="estilo_transformador">
+<IconStyle><color>fff8bd38</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle>
+</Style>
+<Style id="estilo_linha_rede_nova">
+<LineStyle><color>ff009dff</color><width>3</width></LineStyle>
+</Style>
+<Style id="estilo_linha_livre_cerca">
+<LineStyle><color>fff44336</color><width>3</width></LineStyle>
+</Style>
+<Style id="estilo_linha_livre_continua">
+<LineStyle><color>ff4caf50</color><width>3</width></LineStyle>
+</Style>
+<Style id="estilo_linha_livre_pontoTraco">
+<LineStyle><color>ff2196f3</color><width>3</width></LineStyle>
+</Style>
+<Style id="estilo_foto">
+<IconStyle><color>ff4caf50</color><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/camera.png</href></Icon></IconStyle>
+</Style>
+<Folder>
+<name>Poste proposto</name>
+<Placemark>
+<name>P1 - 12600 Tomada</name>
+<description>Símbolo: Poste proposto | Observação: 12600 Tomada | Origem: GPS | Precisão GPS: 1.4 m | Criado em: 2026-08-26 09:44</description>
+<styleUrl>#estilo_postePropostoo</styleUrl>
+<ExtendedData>
+<Data name="simbolo"><value>Poste proposto</value></Data>
+<Data name="observacao"><value>12600 Tomada</value></Data>
+<Data name="origem"><value>GPS</value></Data>
+<Data name="precisao_metros"><value>1.40</value></Data>
+</ExtendedData>
+<Point>
+<coordinates>-50.0617086,-20.7142737,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>P4 - 12600 trafo</name>
+<description>Símbolo: Poste proposto | Observação: 12600 trafo | Origem: GPS | Precisão GPS: 1.4 m | Criado em: 2026-08-26 10:12</description>
+<styleUrl>#estilo_postePropostoo</styleUrl>
+<ExtendedData>
+<Data name="simbolo"><value>Poste proposto</value></Data>
+<Data name="observacao"><value>12600 trafo</value></Data>
+<Data name="origem"><value>GPS</value></Data>
+<Data name="precisao_metros"><value>1.40</value></Data>
+</ExtendedData>
+<Point>
+<coordinates>-50.0598797,-20.7104644,0</coordinates>
+</Point>
+</Placemark>
+</Folder>
+<Folder>
+<name>Genérico</name>
+<Placemark>
+<name>P2 - Cerca divisa 5FF chave de arame 5FF</name>
+<description>Símbolo: Genérico | Observação: Cerca divisa 5FF chave de arame 5FF | Origem: GPS | Precisão GPS: 1.5 m | Criado em: 2026-08-26 09:53</description>
+<styleUrl>#estilo_pontoGenerico</styleUrl>
+<ExtendedData>
+<Data name="simbolo"><value>Genérico</value></Data>
+<Data name="observacao"><value>Cerca divisa 5FF chave de arame 5FF</value></Data>
+<Data name="origem"><value>GPS</value></Data>
+<Data name="precisao_metros"><value>1.50</value></Data>
+</ExtendedData>
+<Point>
+<coordinates>-50.060589,-20.7119259,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>P3 - chave de arame 5FF</name>
+<description>Símbolo: Genérico | Observação: chave de arame 5FF | Origem: GPS | Precisão GPS: 1.4 m | Criado em: 2026-08-26 10:04</description>
+<styleUrl>#estilo_pontoGenerico</styleUrl>
+<ExtendedData>
+<Data name="simbolo"><value>Genérico</value></Data>
+<Data name="observacao"><value>chave de arame 5FF</value></Data>
+<Data name="origem"><value>GPS</value></Data>
+<Data name="precisao_metros"><value>1.35</value></Data>
+</ExtendedData>
+<Point>
+<coordinates>-50.059981,-20.7106915,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>P5 - Padrão</name>
+<description>Símbolo: Genérico | Observação: Padrão | Origem: GPS | Precisão GPS: 1.3 m | Criado em: 2026-08-26 10:14</description>
+<styleUrl>#estilo_pontoGenerico</styleUrl>
+<ExtendedData>
+<Data name="simbolo"><value>Genérico</value></Data>
+<Data name="observacao"><value>Padrão</value></Data>
+<Data name="origem"><value>GPS</value></Data>
+<Data name="precisao_metros"><value>1.30</value></Data>
+</ExtendedData>
+<Point>
+<coordinates>-50.0601467,-20.7103684,0</coordinates>
+</Point>
+</Placemark>
+</Folder>
+<Folder>
+<name>Fotos</name>
+<Placemark>
+<name>Foto1</name>
+<description>Precisão GPS: 1.4 m | Tirada em: 2026-08-26 09:45</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0617448,-20.7142018,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto2</name>
+<description>Precisão GPS: 1.5 m | Tirada em: 2026-08-26 09:46</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0616877,-20.7142671,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto3</name>
+<description>Precisão GPS: 4.3 m | Tirada em: 2026-08-26 09:46</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0616915,-20.714242,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto4</name>
+<description>Precisão GPS: 1.7 m | Tirada em: 2026-08-26 09:48</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0614946,-20.7138398,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto5</name>
+<description>Precisão GPS: 1.4 m | Tirada em: 2026-08-26 09:48</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0614095,-20.7136606,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto6</name>
+<description>Precisão GPS: 1.4 m | Tirada em: 2026-08-26 09:51</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0610382,-20.7128908,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto7</name>
+<description>Precisão GPS: 1.5 m | Tirada em: 2026-08-26 09:52</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0607675,-20.7122947,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto8</name>
+<description>Precisão GPS: 1.5 m | Tirada em: 2026-08-26 09:53</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0606496,-20.7120265,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto9</name>
+<description>Precisão GPS: 1.8 m | Tirada em: 2026-08-26 09:58</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0602424,-20.7110792,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto10</name>
+<description>Precisão GPS: 300.0 m | Tirada em: 2026-08-26 10:00</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0436344,-20.6947811,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto11</name>
+<description>Precisão GPS: 1.6 m | Tirada em: 2026-08-26 10:01</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0602063,-20.7110377,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto12</name>
+<description>Precisão GPS: 7.4 m | Tirada em: 2026-08-26 10:01</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0601772,-20.7110185,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto13</name>
+<description>Precisão GPS: 2.0 m | Tirada em: 2026-08-26 10:03</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0600732,-20.7108518,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto14</name>
+<description>Precisão GPS: 1.5 m | Tirada em: 2026-08-26 10:04</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0600258,-20.7107578,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto15</name>
+<description>Precisão GPS: 300.0 m | Tirada em: 2026-08-26 10:10</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0423506,-20.6968875,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto16</name>
+<description>Precisão GPS: 2.2 m | Tirada em: 2026-08-26 10:10</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0599909,-20.7105832,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto17</name>
+<description>Precisão GPS: 1.4 m | Tirada em: 2026-08-26 10:11</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0598816,-20.7104537,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto18</name>
+<description>Precisão GPS: 300.0 m | Tirada em: 2026-08-26 10:18</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0436344,-20.6947811,0</coordinates>
+</Point>
+</Placemark>
+<Placemark>
+<name>Foto19</name>
+<description>Precisão GPS: 2.3 m | Tirada em: 2026-08-26 10:19</description>
+<styleUrl>#estilo_foto</styleUrl>
+<Point>
+<coordinates>-50.0573276,-20.7115687,0</coordinates>
+</Point>
+</Placemark>
+</Folder>
+</Document>
+</kml>

@@ -70,8 +70,8 @@ A IA decide o *conteúdo*; o código *renderiza*.
 
 ## Roadmap (fases)
 
-- **Fase 0** — fundação: repositório, modelo + `.mkf`, mapa base. ← *estado atual*
-- **Fase 1** — importar e reconstruir o projeto sobre satélite.
+- **Fase 0** — fundação: repositório, modelo + `.mkf`, mapa base. ✅
+- **Fase 1** — importar e reconstruir o projeto sobre satélite (ZIP/KML). ← *estado atual*
 - **Fase 2** — editor com mouse (arraste, snap, coordenada exata).
 - **Fase 3** — domain pack + DXF no padrão da distribuidora.
 - **Fase 4** — motor determinístico (materiais, orçamento, validador, cálculos).
