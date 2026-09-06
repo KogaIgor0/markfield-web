@@ -1,0 +1,33 @@
+{
+  "name": "markfield-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Markfield Web — ferramenta de escritório para projetos de rede de distribuição elétrica.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit",
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "maplibre-gl": "^4.7.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@eslint/js": "^9.14.0",
+    "@typescript-eslint/eslint-plugin": "^8.13.0",
+    "@typescript-eslint/parser": "^8.13.0",
+    "@vitejs/plugin-react": "^4.3.3",
+    "eslint": "^9.14.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4"
+  }
+}
