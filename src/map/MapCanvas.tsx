@@ -32,8 +32,20 @@ const ESTILO_SATELITE: maplibregl.StyleSpecification = {
 const CENTRO_INICIAL: [number, number] = [-47.9, -15.8];
 const ZOOM_INICIAL = 4;
 
-const SRC = { pontos: "mkf-pontos", fotos: "mkf-fotos", linhas: "mkf-linhas" } as const;
-const LYR = { linhas: "mkf-linhas", sel: "mkf-sel", fotos: "mkf-fotos", pontos: "mkf-pontos" } as const;
+const SRC = {
+  pontos: "mkf-pontos",
+  fotos: "mkf-fotos",
+  linhas: "mkf-linhas",
+  preview: "mkf-preview",
+} as const;
+const LYR = {
+  linhas: "mkf-linhas",
+  selLinha: "mkf-sel-linha",
+  preview: "mkf-preview",
+  sel: "mkf-sel",
+  fotos: "mkf-fotos",
+  pontos: "mkf-pontos",
+} as const;
 
 function esc(s: unknown): string {
   return String(s ?? "").replace(
@@ -42,22 +54,27 @@ function esc(s: unknown): string {
   );
 }
 
-export type Modo = "selecionar" | { adicionar: TipoPonto };
+export type Modo = "selecionar" | "ligar" | { adicionar: TipoPonto };
 
 interface MapCanvasProps {
   projeto?: Projeto | null;
   imagens?: Map<string, string>;
   selecionadoId?: string | null;
+  selecionadoTrechoId?: string | null;
   modo?: Modo;
+  /** Poste de origem já escolhido no modo "ligar" (para o preview elástico). */
+  ligarDeId?: string | null;
   /** Muda quando um NOVO projeto é aberto — dispara o auto-enquadramento. */
   chaveEnquadramento?: number;
   onSelecionar?: (id: string | null) => void;
+  onSelecionarTrecho?: (id: string | null) => void;
   onMoverPonto?: (id: string, wgs84: LatLng) => void;
   onAdicionarPonto?: (wgs84: LatLng) => void;
+  onPontoClicado?: (id: string) => void;
 }
 
 export function MapCanvas(props: MapCanvasProps) {
-  const { projeto, selecionadoId, modo, chaveEnquadramento } = props;
+  const { projeto, selecionadoId, selecionadoTrechoId, modo, chaveEnquadramento } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const fcRef = useRef<FeatureCollection<Point> | null>(null);
@@ -86,6 +103,12 @@ export function MapCanvas(props: MapCanvasProps) {
     });
 
     const emModoAdicionar = () => typeof propsRef.current.modo === "object";
+    const emModoLigar = () => propsRef.current.modo === "ligar";
+
+    const coordDoPonto = (id: string): [number, number] | null => {
+      const p = propsRef.current.projeto?.pontos.find((x) => x.id === id);
+      return p ? [p.wgs84.lng, p.wgs84.lat] : null;
+    };
 
     // Arraste de ponto (só no modo selecionar). `arrastou` só vira true se o
     // mouse REALMENTE se moveu — um clique limpo (mousedown+mouseup no mesmo
@@ -110,9 +133,14 @@ export function MapCanvas(props: MapCanvasProps) {
       if (id && arrastou) propsRef.current.onMoverPonto?.(id, { lat: e.lngLat.lat, lng: e.lngLat.lng });
     };
     map.on("mousedown", LYR.pontos, (e) => {
-      if (emModoAdicionar()) return;
       const id = e.features?.[0]?.properties?.id as string | undefined;
       if (!id) return;
+      if (emModoLigar()) {
+        e.preventDefault();
+        propsRef.current.onPontoClicado?.(id);
+        return;
+      }
+      if (emModoAdicionar()) return;
       e.preventDefault(); // impede o pan do mapa
       propsRef.current.onSelecionar?.(id);
       dragRef.current = id;
@@ -122,12 +150,39 @@ export function MapCanvas(props: MapCanvasProps) {
       map.once("mouseup", onUp);
     });
 
+    // Preview elástico no modo ligar: linha do poste de origem até o cursor.
+    map.on("mousemove", (e) => {
+      const src = map.getSource(SRC.preview) as maplibregl.GeoJSONSource | undefined;
+      if (!src) return;
+      const de = emModoLigar() && propsRef.current.ligarDeId ? coordDoPonto(propsRef.current.ligarDeId) : null;
+      if (de) {
+        src.setData({
+          type: "Feature",
+          geometry: { type: "LineString", coordinates: [de, [e.lngLat.lng, e.lngLat.lat]] },
+          properties: {},
+        });
+      } else {
+        src.setData({ type: "FeatureCollection", features: [] });
+      }
+    });
+
+    // Selecionar um trecho (só no modo selecionar).
+    map.on("click", LYR.linhas, (e) => {
+      if (emModoLigar() || emModoAdicionar()) return;
+      const id = e.features?.[0]?.properties?.id as string | undefined;
+      if (!id) return;
+      propsRef.current.onSelecionarTrecho?.(id);
+      propsRef.current.onSelecionar?.(null);
+    });
+
     // Ponteiro ao passar sobre um ponto (no modo selecionar).
     map.on("mouseenter", LYR.pontos, () => {
-      if (!emModoAdicionar()) map.getCanvas().style.cursor = "grab";
+      if (!emModoAdicionar() && !emModoLigar()) map.getCanvas().style.cursor = "grab";
     });
     map.on("mouseleave", LYR.pontos, () => {
-      if (!dragRef.current && !emModoAdicionar()) map.getCanvas().style.cursor = "";
+      if (!dragRef.current && !emModoAdicionar() && !emModoLigar()) {
+        map.getCanvas().style.cursor = "";
+      }
     });
 
     // Foto → popup com a imagem.
@@ -157,8 +212,14 @@ export function MapCanvas(props: MapCanvasProps) {
         propsRef.current.onAdicionarPonto?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });
         return;
       }
-      const sobre = map.queryRenderedFeatures(e.point, { layers: [LYR.pontos, LYR.fotos] });
-      if (sobre.length === 0) propsRef.current.onSelecionar?.(null);
+      if (m === "ligar") return; // cliques tratados pelo handler dos postes
+      const sobre = map.queryRenderedFeatures(e.point, {
+        layers: [LYR.pontos, LYR.fotos, LYR.linhas],
+      });
+      if (sobre.length === 0) {
+        propsRef.current.onSelecionar?.(null);
+        propsRef.current.onSelecionarTrecho?.(null);
+      }
     });
 
     return () => {
@@ -177,6 +238,7 @@ export function MapCanvas(props: MapCanvasProps) {
       fcRef.current = fc;
       desenharProjeto(map, projeto, fc);
       aplicarSelecao(map, propsRef.current.selecionadoId ?? null);
+      aplicarSelecaoTrecho(map, propsRef.current.selecionadoTrechoId ?? null);
     };
     if (prontoRef.current) desenhar();
     else map.once("load", desenhar);
@@ -205,11 +267,18 @@ export function MapCanvas(props: MapCanvasProps) {
     aplicarSelecao(map, selecionadoId ?? null);
   }, [selecionadoId]);
 
-  // Cursor conforme o modo (adicionar = cruz).
+  // Destaque do trecho selecionado.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.getCanvas().style.cursor = typeof modo === "object" ? "crosshair" : "";
+    aplicarSelecaoTrecho(map, selecionadoTrechoId ?? null);
+  }, [selecionadoTrechoId]);
+
+  // Cursor conforme o modo (adicionar/ligar = cruz).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.getCanvas().style.cursor = typeof modo === "object" || modo === "ligar" ? "crosshair" : "";
   }, [modo]);
 
   return <div ref={containerRef} className="map-canvas" />;
@@ -218,6 +287,11 @@ export function MapCanvas(props: MapCanvasProps) {
 function aplicarSelecao(map: maplibregl.Map, id: string | null) {
   if (!map.getLayer(LYR.sel)) return;
   map.setFilter(LYR.sel, ["==", ["get", "id"], id ?? "__nenhum__"]);
+}
+
+function aplicarSelecaoTrecho(map: maplibregl.Map, id: string | null) {
+  if (!map.getLayer(LYR.selLinha)) return;
+  map.setFilter(LYR.selLinha, ["==", ["get", "id"], id ?? "__nenhum__"]);
 }
 
 function limpar(map: maplibregl.Map) {
@@ -231,6 +305,16 @@ function desenharProjeto(map: maplibregl.Map, projeto: Projeto, pontosFc: Featur
   map.addSource(SRC.linhas, { type: "geojson", data: linhasGeoJson(projeto) });
   map.addSource(SRC.fotos, { type: "geojson", data: fotosGeoJson(projeto) });
   map.addSource(SRC.pontos, { type: "geojson", data: pontosFc });
+  map.addSource(SRC.preview, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+
+  // Destaque do trecho selecionado (linha grossa por baixo).
+  map.addLayer({
+    id: LYR.selLinha,
+    type: "line",
+    source: SRC.linhas,
+    filter: ["==", ["get", "id"], "__nenhum__"],
+    paint: { "line-color": "#c6740e", "line-width": 8, "line-opacity": 0.55 },
+  });
 
   map.addLayer({
     id: LYR.linhas,
@@ -252,6 +336,14 @@ function desenharProjeto(map: maplibregl.Map, projeto: Projeto, pontosFc: Featur
       ],
       "line-width": 3,
     },
+  });
+
+  // Preview elástico do modo ligar (tracejado).
+  map.addLayer({
+    id: LYR.preview,
+    type: "line",
+    source: SRC.preview,
+    paint: { "line-color": "#ff9d00", "line-width": 2, "line-dasharray": [2, 2] },
   });
 
   // Anel de seleção (abaixo dos pontos; segue o ponto no arraste, mesma fonte).

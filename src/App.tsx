@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapCanvas, type Modo } from "./map/MapCanvas";
 import { PainelPonto } from "./ui/PainelPonto";
+import { PainelTrecho } from "./ui/PainelTrecho";
 import { importarKml, importarMkf, importarPacote, type RelatorioImport } from "./io/pacote";
 import { baixar, exportarMkf, nomeArquivoMkf } from "./io/exportar";
 import {
   acharPonto,
+  acharTrecho,
   adicionarPonto,
+  adicionarTrecho,
   editarPonto,
+  editarTrecho,
   moverPonto,
   removerPonto,
+  removerTrecho,
   type PatchPonto,
+  type PatchTrecho,
 } from "./domain/edicao";
 import type { LatLng, Projeto, TipoPonto } from "./domain/model";
 
@@ -44,6 +50,8 @@ export function App() {
   const [erro, setErro] = useState<string | null>(null);
   const [arrastando, setArrastando] = useState(false);
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
+  const [selecionadoTrechoId, setSelecionadoTrechoId] = useState<string | null>(null);
+  const [ligarDeId, setLigarDeId] = useState<string | null>(null);
   const [modo, setModo] = useState<Modo>("selecionar");
   const [chaveEnq, setChaveEnq] = useState(0);
   const [salvo, setSalvo] = useState(true);
@@ -52,6 +60,17 @@ export function App() {
 
   const projeto = estado.projeto;
   const selecionado = projeto ? acharPonto(projeto, selecionadoId) : undefined;
+  const selecionadoTrecho = projeto ? acharTrecho(projeto, selecionadoTrechoId) : undefined;
+
+  // Seleção de ponto e de trecho são mutuamente exclusivas.
+  const selecionarPonto = useCallback((id: string | null) => {
+    setSelecionadoId(id);
+    if (id) setSelecionadoTrechoId(null);
+  }, []);
+  const selecionarTrecho = useCallback((id: string | null) => {
+    setSelecionadoTrechoId(id);
+    if (id) setSelecionadoId(null);
+  }, []);
 
   const atualizar = useCallback((novo: Projeto) => {
     setEstado((e) => ({ ...e, projeto: novo }));
@@ -87,6 +106,8 @@ export function App() {
         relatorio: resultado.relatorio,
       });
       setSelecionadoId(null);
+      setSelecionadoTrechoId(null);
+      setLigarDeId(null);
       setModo("selecionar");
       setChaveEnq((c) => c + 1);
       setSalvo(true);
@@ -131,18 +152,37 @@ export function App() {
       if (!projeto || typeof modo !== "object") return;
       const { projeto: novo, id } = adicionarPonto(projeto, modo.adicionar, wgs84);
       atualizar(novo);
-      setSelecionadoId(id);
+      selecionarPonto(id);
       setModo("selecionar"); // adiciona um; para inserir outro, clica de novo na ferramenta
     },
-    [projeto, modo, atualizar],
+    [projeto, modo, atualizar, selecionarPonto],
   );
 
-  // Esc sai do modo adicionar / desmarca.
+  // Modo ligar: 1º clique escolhe a origem, 2º cria o trecho.
+  const onPontoClicado = useCallback(
+    (id: string) => {
+      if (!projeto || modo !== "ligar") return;
+      if (!ligarDeId) {
+        setLigarDeId(id);
+        return;
+      }
+      if (id !== ligarDeId) {
+        const { projeto: novo } = adicionarTrecho(projeto, ligarDeId, id);
+        atualizar(novo);
+      }
+      setLigarDeId(null); // pronto para ligar o próximo par (continua no modo)
+    },
+    [projeto, modo, ligarDeId, atualizar],
+  );
+
+  // Esc sai do modo atual / desmarca tudo.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setModo("selecionar");
+        setLigarDeId(null);
         setSelecionadoId(null);
+        setSelecionadoTrechoId(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -151,6 +191,7 @@ export function App() {
 
   const rel = estado.relatorio;
   const emAdd = typeof modo === "object";
+  const emLigar = modo === "ligar";
 
   return (
     <div className="app">
@@ -167,9 +208,25 @@ export function App() {
           {projeto && (
             <button
               className={`btn${emAdd ? " btn-ativo" : ""}`}
-              onClick={() => setModo(emAdd ? "selecionar" : { adicionar: "postePropostoo" })}
+              onClick={() => {
+                setLigarDeId(null);
+                setModo(emAdd ? "selecionar" : { adicionar: "postePropostoo" });
+              }}
             >
               + Adicionar ponto
+            </button>
+          )}
+          {projeto && (
+            <button
+              className={`btn${emLigar ? " btn-ativo" : ""}`}
+              onClick={() => {
+                setLigarDeId(null);
+                selecionarPonto(null);
+                selecionarTrecho(null);
+                setModo(emLigar ? "selecionar" : "ligar");
+              }}
+            >
+              Ligar postes
             </button>
           )}
           {projeto && (
@@ -216,11 +273,15 @@ export function App() {
           projeto={projeto}
           imagens={estado.imagens}
           selecionadoId={selecionadoId}
+          selecionadoTrechoId={selecionadoTrechoId}
           modo={modo}
+          ligarDeId={ligarDeId}
           chaveEnquadramento={chaveEnq}
-          onSelecionar={setSelecionadoId}
+          onSelecionar={selecionarPonto}
+          onSelecionarTrecho={selecionarTrecho}
           onMoverPonto={onMoverPonto}
           onAdicionarPonto={onAdicionarPonto}
+          onPontoClicado={onPontoClicado}
         />
 
         {!projeto && !carregando && (
@@ -259,6 +320,25 @@ export function App() {
           </div>
         )}
 
+        {emLigar && (
+          <div className="modo-bar">
+            <span>
+              {ligarDeId
+                ? "Agora clique no poste de destino"
+                : "Ligar rede: clique no poste de origem"}
+            </span>
+            <button
+              className="btn btn-mini"
+              onClick={() => {
+                setLigarDeId(null);
+                setModo("selecionar");
+              }}
+            >
+              Sair (Esc)
+            </button>
+          </div>
+        )}
+
         {selecionado && projeto && (
           <PainelPonto
             key={`${selecionado.id}:${selecionado.wgs84.lat},${selecionado.wgs84.lng}`}
@@ -270,6 +350,21 @@ export function App() {
               setSelecionadoId(null);
             }}
             onFechar={() => setSelecionadoId(null)}
+          />
+        )}
+
+        {selecionadoTrecho && projeto && (
+          <PainelTrecho
+            key={selecionadoTrecho.id}
+            trecho={selecionadoTrecho}
+            onEditar={(patch: PatchTrecho) =>
+              atualizar(editarTrecho(projeto, selecionadoTrecho.id, patch))
+            }
+            onExcluir={() => {
+              atualizar(removerTrecho(projeto, selecionadoTrecho.id));
+              setSelecionadoTrechoId(null);
+            }}
+            onFechar={() => setSelecionadoTrechoId(null)}
           />
         )}
 

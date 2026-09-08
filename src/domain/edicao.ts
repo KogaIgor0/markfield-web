@@ -1,5 +1,5 @@
 import { novoId } from "./ids";
-import type { LatLng, Ponto, Projeto, TipoPonto } from "./model";
+import type { LatLng, Ponto, Projeto, TipoPonto, Trecho } from "./model";
 
 /**
  * Motor de edição — Fase 2.
@@ -14,10 +14,20 @@ function tocar(p: Projeto): Projeto {
   return { ...p, meta: { ...p.meta, atualizadoEm: new Date().toISOString() } };
 }
 
-/** Move um ponto para uma nova coordenada (arraste ou digitação exata). */
+/**
+ * Move um ponto para uma nova coordenada (arraste ou digitação exata) e leva
+ * junto as pontas dos trechos ligados a ele (a rede não "descola" do poste).
+ */
 export function moverPonto(projeto: Projeto, id: string, wgs84: LatLng): Projeto {
   const pontos = projeto.pontos.map((p) => (p.id === id ? { ...p, wgs84 } : p));
-  return tocar({ ...projeto, pontos });
+  const trechos = projeto.trechos.map((t) => {
+    if (!t.caminho || (t.dePontoId !== id && t.aPontoId !== id)) return t;
+    const caminho = [...t.caminho];
+    if (t.dePontoId === id) caminho[0] = { ...wgs84 };
+    if (t.aPontoId === id) caminho[caminho.length - 1] = { ...wgs84 };
+    return { ...t, caminho };
+  });
+  return tocar({ ...projeto, pontos, trechos });
 }
 
 /** Campos editáveis de um ponto pela UI. */
@@ -29,9 +39,13 @@ export function editarPonto(projeto: Projeto, id: string, patch: PatchPonto): Pr
   return tocar({ ...projeto, pontos });
 }
 
-/** Remove um ponto. */
+/** Remove um ponto e os trechos ligados a ele (não deixa rede órfã). */
 export function removerPonto(projeto: Projeto, id: string): Projeto {
-  return tocar({ ...projeto, pontos: projeto.pontos.filter((p) => p.id !== id) });
+  return tocar({
+    ...projeto,
+    pontos: projeto.pontos.filter((p) => p.id !== id),
+    trechos: projeto.trechos.filter((t) => t.dePontoId !== id && t.aPontoId !== id),
+  });
 }
 
 /** Próximo número sugerido (maior número existente + 1). */
@@ -61,4 +75,49 @@ export function adicionarPonto(
 export function acharPonto(projeto: Projeto, id: string | null | undefined): Ponto | undefined {
   if (!id) return undefined;
   return projeto.pontos.find((p) => p.id === id);
+}
+
+/**
+ * Liga dois postes com um trecho de rede. O caminho nasce das coordenadas
+ * exatas dos postes (snap natural) e o trecho guarda os ids das pontas, então
+ * ele acompanha os postes quando eles se movem.
+ */
+export function adicionarTrecho(
+  projeto: Projeto,
+  dePontoId: string,
+  aPontoId: string,
+): { projeto: Projeto; id: string } {
+  const de = projeto.pontos.find((p) => p.id === dePontoId);
+  const a = projeto.pontos.find((p) => p.id === aPontoId);
+  if (!de || !a || dePontoId === aPontoId) return { projeto, id: "" };
+  const id = novoId("tr");
+  const trecho: Trecho = {
+    id,
+    classe: "indefinida",
+    estilo: "rede",
+    dePontoId,
+    aPontoId,
+    caminho: [{ ...de.wgs84 }, { ...a.wgs84 }],
+    origem: "web",
+  };
+  return { projeto: tocar({ ...projeto, trechos: [...projeto.trechos, trecho] }), id };
+}
+
+/** Remove um trecho. */
+export function removerTrecho(projeto: Projeto, id: string): Projeto {
+  return tocar({ ...projeto, trechos: projeto.trechos.filter((t) => t.id !== id) });
+}
+
+export type PatchTrecho = Partial<Pick<Trecho, "classe" | "observacao">>;
+
+/** Edita atributos de um trecho (classe elétrica, observação). */
+export function editarTrecho(projeto: Projeto, id: string, patch: PatchTrecho): Projeto {
+  const trechos = projeto.trechos.map((t) => (t.id === id ? { ...t, ...patch } : t));
+  return tocar({ ...projeto, trechos });
+}
+
+/** Acha um trecho pelo id. */
+export function acharTrecho(projeto: Projeto, id: string | null | undefined): Trecho | undefined {
+  if (!id) return undefined;
+  return projeto.trechos.find((t) => t.id === id);
 }
