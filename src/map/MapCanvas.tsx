@@ -62,6 +62,7 @@ export function MapCanvas(props: MapCanvasProps) {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const fcRef = useRef<FeatureCollection<Point> | null>(null);
   const dragRef = useRef<string | null>(null);
+  const prontoRef = useRef(false); // mapa carregado (monotônico; não confiar em isStyleLoaded, que oscila)
 
   // Espelho sempre-atual das props para os handlers registrados uma vez só.
   const propsRef = useRef(props);
@@ -80,14 +81,21 @@ export function MapCanvas(props: MapCanvasProps) {
     map.addControl(new maplibregl.NavigationControl(), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
     mapRef.current = map;
+    map.on("load", () => {
+      prontoRef.current = true;
+    });
 
     const emModoAdicionar = () => typeof propsRef.current.modo === "object";
 
-    // Arraste de ponto (só no modo selecionar).
+    // Arraste de ponto (só no modo selecionar). `arrastou` só vira true se o
+    // mouse REALMENTE se moveu — um clique limpo (mousedown+mouseup no mesmo
+    // lugar) não dispara mousemove, então NÃO move o ponto (só seleciona).
+    let arrastou = false;
     const onMove = (e: maplibregl.MapMouseEvent) => {
       const id = dragRef.current;
       const fc = fcRef.current;
       if (!id || !fc) return;
+      arrastou = true;
       const f = fc.features.find((ft) => ft.properties?.id === id);
       if (f) {
         f.geometry.coordinates = [e.lngLat.lng, e.lngLat.lat];
@@ -99,7 +107,7 @@ export function MapCanvas(props: MapCanvasProps) {
       map.getCanvas().style.cursor = "";
       const id = dragRef.current;
       dragRef.current = null;
-      if (id) propsRef.current.onMoverPonto?.(id, { lat: e.lngLat.lat, lng: e.lngLat.lng });
+      if (id && arrastou) propsRef.current.onMoverPonto?.(id, { lat: e.lngLat.lat, lng: e.lngLat.lng });
     };
     map.on("mousedown", LYR.pontos, (e) => {
       if (emModoAdicionar()) return;
@@ -108,6 +116,7 @@ export function MapCanvas(props: MapCanvasProps) {
       e.preventDefault(); // impede o pan do mapa
       propsRef.current.onSelecionar?.(id);
       dragRef.current = id;
+      arrastou = false;
       map.getCanvas().style.cursor = "grabbing";
       map.on("mousemove", onMove);
       map.once("mouseup", onUp);
@@ -155,6 +164,7 @@ export function MapCanvas(props: MapCanvasProps) {
     return () => {
       map.remove();
       mapRef.current = null;
+      prontoRef.current = false;
     };
   }, []);
 
@@ -168,7 +178,7 @@ export function MapCanvas(props: MapCanvasProps) {
       desenharProjeto(map, projeto, fc);
       aplicarSelecao(map, propsRef.current.selecionadoId ?? null);
     };
-    if (map.isStyleLoaded()) desenhar();
+    if (prontoRef.current) desenhar();
     else map.once("load", desenhar);
     return () => {
       map.off("load", desenhar);
@@ -180,7 +190,7 @@ export function MapCanvas(props: MapCanvasProps) {
     const map = mapRef.current;
     if (!map || !projeto || !chaveEnquadramento) return;
     const fit = () => enquadrar(map, projeto);
-    if (map.isStyleLoaded()) fit();
+    if (prontoRef.current) fit();
     else map.once("load", fit);
     return () => {
       map.off("load", fit);

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapCanvas, type Modo } from "./map/MapCanvas";
 import { PainelPonto } from "./ui/PainelPonto";
-import { importarKml, importarPacote, type RelatorioImport } from "./io/pacote";
+import { importarKml, importarMkf, importarPacote, type RelatorioImport } from "./io/pacote";
+import { baixar, exportarMkf, nomeArquivoMkf } from "./io/exportar";
 import {
   acharPonto,
   adicionarPonto,
@@ -22,11 +23,14 @@ import type { LatLng, Projeto, TipoPonto } from "./domain/model";
 
 interface Estado {
   projeto: Projeto | null;
+  /** URLs de exibição das fotos. */
   imagens: Map<string, string>;
+  /** Bytes das fotos, para reempacotar no `.mkf` ao salvar. */
+  blobs: Map<string, Uint8Array>;
   relatorio: RelatorioImport | null;
 }
 
-const VAZIO: Estado = { projeto: null, imagens: new Map(), relatorio: null };
+const VAZIO: Estado = { projeto: null, imagens: new Map(), blobs: new Map(), relatorio: null };
 
 const TIPOS_ADD: { valor: TipoPonto; rotulo: string }[] = [
   { valor: "postePropostoo", rotulo: "Poste proposto" },
@@ -42,6 +46,7 @@ export function App() {
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [modo, setModo] = useState<Modo>("selecionar");
   const [chaveEnq, setChaveEnq] = useState(0);
+  const [salvo, setSalvo] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
 
@@ -50,32 +55,58 @@ export function App() {
 
   const atualizar = useCallback((novo: Projeto) => {
     setEstado((e) => ({ ...e, projeto: novo }));
+    setSalvo(false);
   }, []);
 
   const abrir = useCallback(async (arquivo: File) => {
     setErro(null);
     setCarregando(true);
     try {
-      const ehZip = /\.zip$/i.test(arquivo.name);
-      const resultado = ehZip
-        ? await importarPacote(await arquivo.arrayBuffer())
-        : importarKml(await arquivo.text());
+      const nome = arquivo.name.toLowerCase();
+      const resultado = nome.endsWith(".mkf")
+        ? await importarMkf(await arquivo.arrayBuffer())
+        : nome.endsWith(".zip")
+          ? await importarPacote(await arquivo.arrayBuffer())
+          : importarKml(await arquivo.text());
+
+      // Cria as URLs de exibição a partir dos bytes; revoga as anteriores.
       for (const url of imagensAntigas.current.values()) URL.revokeObjectURL(url);
-      imagensAntigas.current = resultado.imagens;
+      const urls = new Map<string, string>();
+      for (const [chave, bytes] of resultado.imagens) {
+        // cast: lib.dom recente estreita BlobPart de um jeito que rejeita
+        // Uint8Array<ArrayBufferLike>; os bytes são um ArrayBufferView válido.
+        const parte = bytes as unknown as BlobPart;
+        urls.set(chave, URL.createObjectURL(new Blob([parte], { type: "image/jpeg" })));
+      }
+      imagensAntigas.current = urls;
+
       setEstado({
         projeto: resultado.projeto,
-        imagens: resultado.imagens,
+        imagens: urls,
+        blobs: resultado.imagens,
         relatorio: resultado.relatorio,
       });
       setSelecionadoId(null);
       setModo("selecionar");
       setChaveEnq((c) => c + 1);
+      setSalvo(true);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao ler o arquivo.");
     } finally {
       setCarregando(false);
     }
   }, []);
+
+  const salvar = useCallback(async () => {
+    if (!projeto) return;
+    try {
+      const blob = await exportarMkf(projeto, estado.blobs);
+      baixar(blob, nomeArquivoMkf(projeto));
+      setSalvo(true);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao salvar o .mkf.");
+    }
+  }, [projeto, estado.blobs]);
 
   const aoSoltar = useCallback(
     (e: React.DragEvent) => {
@@ -141,10 +172,19 @@ export function App() {
               + Adicionar ponto
             </button>
           )}
+          {projeto && (
+            <button
+              className={`btn${salvo ? "" : " btn-ativo"}`}
+              onClick={() => void salvar()}
+              title="Baixa o projeto editado como .mkf (reabra depois para continuar)"
+            >
+              {salvo ? "Salvar .mkf" : "● Salvar .mkf"}
+            </button>
+          )}
           <input
             ref={inputRef}
             type="file"
-            accept=".zip,.kml"
+            accept=".zip,.kml,.mkf"
             hidden
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -158,6 +198,7 @@ export function App() {
           <span className="resumo">
             <strong>{rel.nomeProjeto}</strong> · {projeto?.pontos.length} pontos · {rel.fotos} fotos
             {rel.trechos + rel.linhasLivres > 0 && ` · ${rel.trechos + rel.linhasLivres} linhas`}
+            {!salvo && <span className="resumo-aviso"> · não salvo</span>}
           </span>
         )}
       </header>
@@ -188,9 +229,9 @@ export function App() {
               <div className="vazio-icone">◆</div>
               <h1>Abra o trabalho de campo</h1>
               <p>
-                Arraste aqui o export do app (o <strong>“exportar tudo”</strong>, um <code>.zip</code>)
-                — ou um <code>.kml</code> solto. Depois é só editar: mover, corrigir coordenada,
-                adicionar e remover pontos.
+                Arraste aqui o export do app (o <strong>“exportar tudo”</strong>, um <code>.zip</code>),
+                um <code>.kml</code> solto, ou um projeto <code>.mkf</code> que você já salvou. Depois
+                é só editar — mover, corrigir coordenada, adicionar e remover pontos — e salvar.
               </p>
               <button className="btn btn-primario" onClick={() => inputRef.current?.click()}>
                 Escolher arquivo

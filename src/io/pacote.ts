@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { LIMITE_PRECISAO_CONFIAVEL_M, parseKml, type ConteudoKml } from "./kml";
 import { novoId } from "../domain/ids";
+import { lerMkf, MKF_VERSION } from "../domain/mkf";
 import { projetoVazio, type Foto, type Projeto } from "../domain/model";
 
 /**
@@ -26,8 +27,12 @@ export interface RelatorioImport {
 
 export interface ResultadoImport {
   projeto: Projeto;
-  /** nome-base da foto ("Foto1") → object URL da imagem carregada. */
-  imagens: Map<string, string>;
+  /**
+   * nome-base da foto ("Foto1") → bytes da imagem. Guardamos os BYTES (não uma
+   * object URL) para poder reempacotar no `.mkf` na exportação. A UI cria as
+   * URLs de exibição a partir daqui.
+   */
+  imagens: Map<string, Uint8Array>;
   relatorio: RelatorioImport;
 }
 
@@ -107,7 +112,40 @@ function montarRelatorio(projeto: Projeto, avisos: string[]): RelatorioImport {
 export function importarKml(texto: string): ResultadoImport {
   const conteudo = parseKml(texto);
   const projeto = montarProjeto(conteudo, conteudo.fotos);
-  return { projeto, imagens: new Map(), relatorio: montarRelatorio(projeto, conteudo.avisos) };
+  return {
+    projeto,
+    imagens: new Map<string, Uint8Array>(),
+    relatorio: montarRelatorio(projeto, conteudo.avisos),
+  };
+}
+
+/** Lê os bytes das imagens de `fotos/*.jpg`, indexados pelo nome-base. */
+async function lerImagens(arquivos: JSZip.JSZipObject[]): Promise<Map<string, Uint8Array>> {
+  const imagens = new Map<string, Uint8Array>();
+  for (const f of arquivos) {
+    if (!/fotos\/.+\.jpe?g$/i.test(f.name)) continue;
+    const base = f.name.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
+    imagens.set(base, await f.async("uint8array"));
+  }
+  return imagens;
+}
+
+/**
+ * Reabre um `.mkf` gerado pelo próprio Web (ou pelo app). Aqui o `projeto.json`
+ * JÁ é o nosso modelo com IDs — não há KML para interpretar, só validar e ler.
+ */
+export async function importarMkf(entrada: File | ArrayBuffer | Uint8Array): Promise<ResultadoImport> {
+  const zip = await JSZip.loadAsync(entrada);
+  const arquivos = Object.values(zip.files).filter((f) => !f.dir);
+  const projetoF = arquivos.find((f) => /(^|\/)projeto\.json$/i.test(f.name));
+  if (!projetoF) throw new Error("Arquivo .mkf inválido: falta projeto.json.");
+  const manifestF = arquivos.find((f) => /(^|\/)manifest\.json$/i.test(f.name));
+  const manifestJson = manifestF
+    ? await manifestF.async("string")
+    : JSON.stringify({ mkfVersion: MKF_VERSION, geradoPor: "desconhecido", geradoEm: "" });
+  const { projeto } = lerMkf(manifestJson, await projetoF.async("string"));
+  const imagens = await lerImagens(arquivos);
+  return { projeto, imagens, relatorio: montarRelatorio(projeto, []) };
 }
 
 /** Importa o pacote completo do app (ZIP). */
@@ -121,14 +159,8 @@ export async function importarPacote(
   if (!arqKml) throw new Error("Pacote sem arquivo .kml — não é um export do Markfield?");
   const conteudo = parseKml(await arqKml.async("string"));
 
-  // Imagens → object URLs, indexadas pelo nome-base ("Foto1").
-  const imagens = new Map<string, string>();
-  for (const f of arquivos) {
-    if (!/fotos\/.+\.jpe?g$/i.test(f.name)) continue;
-    const base = f.name.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
-    const blob = await f.async("blob");
-    imagens.set(base, URL.createObjectURL(blob));
-  }
+  // Imagens → bytes, indexados pelo nome-base ("Foto1").
+  const imagens = await lerImagens(arquivos);
 
   // Fotos: prefere fotos.csv (mais rico); senão, as do KML.
   const arqFotosCsv = arquivos.find((f) => /fotos\.csv$/i.test(f.name));
