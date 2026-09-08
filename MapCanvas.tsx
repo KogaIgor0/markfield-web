@@ -4,7 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { FeatureCollection, Point } from "geojson";
 import type { LatLng, Projeto, TipoPonto } from "../domain/model";
 import { fotosGeoJson, linhasGeoJson, pontosGeoJson } from "./geojson";
-import { MAPTILER_KEY } from "../config";
+import { BASE_MAPA, MAPTILER_KEY } from "../config";
 
 /**
  * Mapa base + render + EDIÇÃO do projeto (Fase 2).
@@ -15,20 +15,35 @@ import { MAPTILER_KEY } from "../config";
  */
 
 /**
- * Base de satélite (D-09): **MapTiler satellite-v2**. Cobertura global com zoom
- * profundo e sem o placeholder "Map data not yet available" da Esri. Usamos a
- * TileJSON (`url`) para o MapLibre pegar o zoom máximo real da fonte e fazer o
- * overzoom certo além dele. Tiles de 512 px (padrão do MapTiler).
+ * Base de satélite (D-09). A fonte é escolhida em `config.ts` (BASE_MAPA).
+ *
+ * - **Esri** (padrão): imagem nítida; capamos em `maxzoom: 18` e deixamos o
+ *   MapLibre esticar além disso, para não aparecer o tile "Map data not yet
+ *   available" nos zooms sem cobertura. Se ainda aparecer no zoom máximo,
+ *   basta baixar esse número (17, 16…).
+ * - **MapTiler**: cobertura global via TileJSON, tiles de 512 px.
  */
+const FONTE_ESRI: maplibregl.RasterSourceSpecification = {
+  type: "raster",
+  tiles: [
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  ],
+  tileSize: 256,
+  maxzoom: 18,
+  attribution: "Tiles © Esri — World Imagery",
+};
+
+const FONTE_MAPTILER: maplibregl.RasterSourceSpecification = {
+  type: "raster",
+  url: `https://api.maptiler.com/tiles/satellite-v2/tiles.json?key=${MAPTILER_KEY}`,
+  tileSize: 512,
+  attribution: "© MapTiler © Esri, Maxar, Earthstar Geographics",
+};
+
 const ESTILO_SATELITE: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
-    satelite: {
-      type: "raster",
-      url: `https://api.maptiler.com/tiles/satellite-v2/tiles.json?key=${MAPTILER_KEY}`,
-      tileSize: 512,
-      attribution: "© MapTiler © Esri, Maxar, Earthstar Geographics",
-    },
+    satelite: BASE_MAPA === "maptiler" ? FONTE_MAPTILER : FONTE_ESRI,
   },
   layers: [{ id: "satelite", type: "raster", source: "satelite" }],
 };
