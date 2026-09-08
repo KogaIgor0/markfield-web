@@ -4,6 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { FeatureCollection, Point } from "geojson";
 import type { LatLng, Projeto, TipoPonto } from "../domain/model";
 import { fotosGeoJson, linhasGeoJson, pontosGeoJson } from "./geojson";
+import { MAPTILER_KEY } from "../config";
 
 /**
  * Mapa base + render + EDIÇÃO do projeto (Fase 2).
@@ -13,17 +14,20 @@ import { fotosGeoJson, linhasGeoJson, pontosGeoJson } from "./geojson";
  * altera o modelo é o motor de edição no App. Aqui só desenhamos e capturamos.
  */
 
+/**
+ * Base de satélite (D-09): **MapTiler satellite-v2**. Cobertura global com zoom
+ * profundo e sem o placeholder "Map data not yet available" da Esri. Usamos a
+ * TileJSON (`url`) para o MapLibre pegar o zoom máximo real da fonte e fazer o
+ * overzoom certo além dele. Tiles de 512 px (padrão do MapTiler).
+ */
 const ESTILO_SATELITE: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
     satelite: {
       type: "raster",
-      tiles: [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      ],
-      tileSize: 256,
-      maxzoom: 18,
-      attribution: "Tiles © Esri — World Imagery (base de desenvolvimento)",
+      url: `https://api.maptiler.com/tiles/satellite-v2/tiles.json?key=${MAPTILER_KEY}`,
+      tileSize: 512,
+      attribution: "© MapTiler © Esri, Maxar, Earthstar Geographics",
     },
   },
   layers: [{ id: "satelite", type: "raster", source: "satelite" }],
@@ -93,6 +97,7 @@ export function MapCanvas(props: MapCanvasProps) {
       style: ESTILO_SATELITE,
       center: CENTRO_INICIAL,
       zoom: ZOOM_INICIAL,
+      maxZoom: 20, // não deixa esticar a imagem além do razoável
       attributionControl: { compact: true },
     });
     map.addControl(new maplibregl.NavigationControl(), "top-right");
