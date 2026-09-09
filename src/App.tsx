@@ -4,6 +4,7 @@ import { PainelPonto } from "./ui/PainelPonto";
 import { PainelTrecho } from "./ui/PainelTrecho";
 import { importarKml, importarMkf, importarPacote, type RelatorioImport } from "./io/pacote";
 import { baixar, exportarMkf, nomeArquivoMkf } from "./io/exportar";
+import { gerarDxfCadastro } from "./io/dxf";
 import {
   acharPonto,
   acharTrecho,
@@ -129,6 +130,17 @@ export function App() {
     }
   }, [projeto, estado.blobs]);
 
+  const exportarDxf = useCallback(() => {
+    if (!projeto) return;
+    try {
+      const dxf = gerarDxfCadastro(projeto);
+      const base = (projeto.meta.nome || "projeto").replace(/[^\p{L}\p{N}_-]+/gu, "_");
+      baixar(new Blob([dxf], { type: "application/dxf" }), `${base}-cadastro.dxf`);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao exportar o DXF.");
+    }
+  }, [projeto]);
+
   const aoSoltar = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
@@ -236,6 +248,15 @@ export function App() {
               title="Baixa o projeto editado como .mkf (reabra depois para continuar)"
             >
               {salvo ? "Salvar .mkf" : "● Salvar .mkf"}
+            </button>
+          )}
+          {projeto && (
+            <button
+              className="btn"
+              onClick={exportarDxf}
+              title="Exporta o cadastro georreferenciado (UTM) em DXF, nas camadas da Elektro"
+            >
+              Exportar DXF
             </button>
           )}
           <input
