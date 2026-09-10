@@ -78,6 +78,19 @@ export function acharPonto(projeto: Projeto, id: string | null | undefined): Pon
 }
 
 /**
+ * Marca (ou desmarca) um poste como a **fonte** da rede — só um por projeto.
+ * Alternar num poste que já é fonte remove a marcação.
+ */
+export function definirFonte(projeto: Projeto, id: string): Projeto {
+  const jaEra = projeto.pontos.find((p) => p.id === id)?.ehFonte;
+  const pontos = projeto.pontos.map((p) => ({
+    ...p,
+    ehFonte: p.id === id && !jaEra ? true : undefined,
+  }));
+  return tocar({ ...projeto, pontos });
+}
+
+/**
  * Liga dois postes com um trecho de rede. O caminho nasce das coordenadas
  * exatas dos postes (snap natural) e o trecho guarda os ids das pontas, então
  * ele acompanha os postes quando eles se movem.

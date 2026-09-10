@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { LatLng, Ponto, TipoPonto } from "../domain/model";
 import type { PatchPonto } from "../domain/edicao";
+import { rotuloPapel, type Papel } from "../domain/rede";
 import { deUtm, formatarUtm, paraUtm } from "../geo/utm";
 
 /**
@@ -18,8 +19,12 @@ const TIPOS: { valor: TipoPonto; rotulo: string }[] = [
 
 interface Props {
   ponto: Ponto;
+  /** Papel na rede (B1), quando modelado. */
+  papel?: Papel;
+  deflexaoGraus?: number;
   onEditar: (patch: PatchPonto) => void;
   onMover: (wgs84: LatLng) => void;
+  onDefinirFonte: () => void;
   onExcluir: () => void;
   onFechar: () => void;
 }
@@ -29,7 +34,16 @@ function numeroValido(s: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function PainelPonto({ ponto, onEditar, onMover, onExcluir, onFechar }: Props) {
+export function PainelPonto({
+  ponto,
+  papel,
+  deflexaoGraus,
+  onEditar,
+  onMover,
+  onDefinirFonte,
+  onExcluir,
+  onFechar,
+}: Props) {
   const utm = paraUtm(ponto.wgs84);
   // Buffers locais para os campos de coordenada (comitam no blur).
   const [lat, setLat] = useState(String(ponto.wgs84.lat));
@@ -139,6 +153,26 @@ export function PainelPonto({ ponto, onEditar, onMover, onExcluir, onFechar }: P
           </label>
         </div>
         <div className="painel-utm">{formatarUtm(utm)} · SIRGAS 2000</div>
+      </div>
+
+      <div className="painel-rede">
+        <div className="painel-sub">Rede</div>
+        <div className="rede-linha">
+          <span>Papel</span>
+          <strong>{papel ? rotuloPapel(papel) : "—"}</strong>
+        </div>
+        {deflexaoGraus != null && (
+          <div className="rede-linha">
+            <span>Deflexão</span>
+            <strong>{deflexaoGraus.toFixed(1)}°</strong>
+          </div>
+        )}
+        <button
+          className={`btn-fonte${ponto.ehFonte ? " ativa" : ""}`}
+          onClick={onDefinirFonte}
+        >
+          {ponto.ehFonte ? "✓ É a fonte da rede" : "Marcar como fonte"}
+        </button>
       </div>
 
       <div className="painel-info">

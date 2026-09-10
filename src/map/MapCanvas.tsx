@@ -83,6 +83,10 @@ interface MapCanvasProps {
   modo?: Modo;
   /** Poste de origem já escolhido no modo "ligar" (para o preview elástico). */
   ligarDeId?: string | null;
+  /** id do poste → papel na rede (B1). Colore os postes quando `modoRede`. */
+  papeis?: Map<string, string>;
+  /** Colorir os postes pelo papel na rede (em vez de pelo tipo). */
+  modoRede?: boolean;
   /** Muda quando um NOVO projeto é aberto — dispara o auto-enquadramento. */
   chaveEnquadramento?: number;
   onSelecionar?: (id: string | null) => void;
@@ -92,8 +96,41 @@ interface MapCanvasProps {
   onPontoClicado?: (id: string) => void;
 }
 
+const COR_TIPO: maplibregl.ExpressionSpecification = [
+  "match",
+  ["get", "tipo"],
+  "postePropostoo",
+  "#f59e0b",
+  "transformador",
+  "#38bdf8",
+  "generico",
+  "#9e9e9e",
+  "#e5e7eb",
+];
+
+const COR_PAPEL: maplibregl.ExpressionSpecification = [
+  "match",
+  ["get", "papel"],
+  "fonte",
+  "#16a34a",
+  "trafo",
+  "#38bdf8",
+  "angulo",
+  "#d97706",
+  "derivacao",
+  "#a855f7",
+  "fim",
+  "#ef4444",
+  "tangente",
+  "#9e9e9e",
+  "isolado",
+  "#6b7280",
+  "#e5e7eb",
+];
+
 export function MapCanvas(props: MapCanvasProps) {
-  const { projeto, selecionadoId, selecionadoTrechoId, modo, chaveEnquadramento } = props;
+  const { projeto, selecionadoId, selecionadoTrechoId, modo, chaveEnquadramento, papeis, modoRede } =
+    props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const fcRef = useRef<FeatureCollection<Point> | null>(null);
@@ -254,9 +291,10 @@ export function MapCanvas(props: MapCanvasProps) {
     const map = mapRef.current;
     if (!map || !projeto) return;
     const desenhar = () => {
-      const fc = pontosGeoJson(projeto);
+      const fc = pontosGeoJson(projeto, propsRef.current.papeis);
       fcRef.current = fc;
-      desenharProjeto(map, projeto, fc);
+      const cor = propsRef.current.modoRede ? COR_PAPEL : COR_TIPO;
+      desenharProjeto(map, projeto, fc, cor);
       aplicarSelecao(map, propsRef.current.selecionadoId ?? null);
       aplicarSelecaoTrecho(map, propsRef.current.selecionadoTrechoId ?? null);
     };
@@ -294,6 +332,22 @@ export function MapCanvas(props: MapCanvasProps) {
     aplicarSelecaoTrecho(map, selecionadoTrechoId ?? null);
   }, [selecionadoTrechoId]);
 
+  // Papéis mudaram (B1) → atualiza os dados dos postes.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !projeto || !map.getSource(SRC.pontos)) return;
+    const fc = pontosGeoJson(projeto, papeis);
+    fcRef.current = fc;
+    (map.getSource(SRC.pontos) as maplibregl.GeoJSONSource).setData(fc);
+  }, [papeis, projeto]);
+
+  // Alterna a cor dos postes: por papel (rede) x por tipo.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.getLayer(LYR.pontos)) return;
+    map.setPaintProperty(LYR.pontos, "circle-color", modoRede ? COR_PAPEL : COR_TIPO);
+  }, [modoRede]);
+
   // Cursor conforme o modo (adicionar/ligar = cruz).
   useEffect(() => {
     const map = mapRef.current;
@@ -319,7 +373,12 @@ function limpar(map: maplibregl.Map) {
   for (const id of Object.values(SRC)) if (map.getSource(id)) map.removeSource(id);
 }
 
-function desenharProjeto(map: maplibregl.Map, projeto: Projeto, pontosFc: FeatureCollection<Point>) {
+function desenharProjeto(
+  map: maplibregl.Map,
+  projeto: Projeto,
+  pontosFc: FeatureCollection<Point>,
+  corPonto: maplibregl.ExpressionSpecification,
+) {
   limpar(map);
 
   map.addSource(SRC.linhas, { type: "geojson", data: linhasGeoJson(projeto) });
@@ -399,17 +458,7 @@ function desenharProjeto(map: maplibregl.Map, projeto: Projeto, pontosFc: Featur
     source: SRC.pontos,
     paint: {
       "circle-radius": ["match", ["get", "tipo"], "transformador", 8, 7],
-      "circle-color": [
-        "match",
-        ["get", "tipo"],
-        "postePropostoo",
-        "#f59e0b",
-        "transformador",
-        "#38bdf8",
-        "generico",
-        "#9e9e9e",
-        "#e5e7eb",
-      ],
+      "circle-color": corPonto,
       "circle-stroke-width": 2,
       "circle-stroke-color": "#ffffff",
     },

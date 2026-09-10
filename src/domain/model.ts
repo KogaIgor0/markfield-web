@@ -107,6 +107,11 @@ export interface Ponto {
   precisaoM?: number;
   /** Data/hora de criação no app (ISO 8601 ou "YYYY-MM-DD HH:MM"), se houver. */
   criadoEm?: string;
+  /**
+   * Marca este poste como a **fonte** da rede (saída da rede existente). É o
+   * ponto de partida da modelagem (B1) — a rota é traçada a partir dele.
+   */
+  ehFonte?: boolean;
 }
 
 /**

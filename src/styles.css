@@ -446,3 +446,94 @@ body {
   background: #fbecea;
   border-color: #d98a82;
 }
+
+/* Seção "Rede" no painel do ponto (B1) */
+.painel-rede {
+  border-top: 1px solid var(--hair);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rede-linha {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12.5px;
+}
+
+.rede-linha span {
+  color: var(--muted);
+}
+
+.rede-linha strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-fonte {
+  margin-top: 4px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.btn-fonte:hover {
+  border-color: var(--accent);
+}
+
+.btn-fonte.ativa {
+  color: #0f7a37;
+  background: #eafaef;
+  border-color: #7fce9c;
+}
+
+/* Legenda dos papéis + HUD do modelo de rede (B1) */
+.legenda-rede {
+  max-width: 190px;
+}
+
+.rede-hud {
+  position: absolute;
+  left: 12px;
+  bottom: 52px;
+  z-index: 3;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.rede-hud-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.rede-hud-topo span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rede-hud-aviso {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #8a5a00;
+  background: #fdf3e2;
+  border: 1px solid #f0d9ad;
+  border-radius: 6px;
+  padding: 6px 8px;
+}

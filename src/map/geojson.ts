@@ -6,7 +6,10 @@ import type { Projeto } from "../domain/model";
  * As `properties` carregam só primitivos (o que o popup e o estilo precisam).
  */
 
-export function pontosGeoJson(projeto: Projeto): FeatureCollection<Point> {
+export function pontosGeoJson(
+  projeto: Projeto,
+  papeis?: Map<string, string>,
+): FeatureCollection<Point> {
   const features: Feature<Point>[] = projeto.pontos.map((p) => ({
     type: "Feature",
     geometry: { type: "Point", coordinates: [p.wgs84.lng, p.wgs84.lat] },
@@ -14,6 +17,7 @@ export function pontosGeoJson(projeto: Projeto): FeatureCollection<Point> {
       id: p.id,
       numero: p.numero ?? "",
       tipo: p.tipo,
+      papel: papeis?.get(p.id) ?? "",
       observacao: p.observacao ?? "",
       precisaoM: p.precisaoM ?? null,
       criadoEm: p.criadoEm ?? "",

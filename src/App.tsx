@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapCanvas, type Modo } from "./map/MapCanvas";
 import { PainelPonto } from "./ui/PainelPonto";
 import { PainelTrecho } from "./ui/PainelTrecho";
@@ -10,6 +10,7 @@ import {
   acharTrecho,
   adicionarPonto,
   adicionarTrecho,
+  definirFonte,
   editarPonto,
   editarTrecho,
   moverPonto,
@@ -18,6 +19,7 @@ import {
   type PatchPonto,
   type PatchTrecho,
 } from "./domain/edicao";
+import { modelarRede } from "./domain/rede";
 import type { LatLng, Projeto, TipoPonto } from "./domain/model";
 
 /**
@@ -56,12 +58,22 @@ export function App() {
   const [modo, setModo] = useState<Modo>("selecionar");
   const [chaveEnq, setChaveEnq] = useState(0);
   const [salvo, setSalvo] = useState(true);
+  const [modoRede, setModoRede] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
 
   const projeto = estado.projeto;
   const selecionado = projeto ? acharPonto(projeto, selecionadoId) : undefined;
   const selecionadoTrecho = projeto ? acharTrecho(projeto, selecionadoTrechoId) : undefined;
+
+  // Modelo de rede (B1): papéis, ângulos, rota — recomputado quando o projeto muda.
+  const rede = useMemo(() => (projeto ? modelarRede(projeto) : null), [projeto]);
+  const papeis = useMemo(() => {
+    const m = new Map<string, string>();
+    if (rede) for (const [id, pm] of rede.postes) m.set(id, pm.papel);
+    return m;
+  }, [rede]);
+  const posteModelado = rede && selecionado ? rede.postes.get(selecionado.id) : undefined;
 
   // Seleção de ponto e de trecho são mutuamente exclusivas.
   const selecionarPonto = useCallback((id: string | null) => {
@@ -243,6 +255,15 @@ export function App() {
           )}
           {projeto && (
             <button
+              className={`btn${modoRede ? " btn-ativo" : ""}`}
+              onClick={() => setModoRede((v) => !v)}
+              title="Classifica os postes (fonte, ângulo, derivação, fim) e traça a rota a partir da fonte"
+            >
+              Rede
+            </button>
+          )}
+          {projeto && (
+            <button
               className={`btn${salvo ? "" : " btn-ativo"}`}
               onClick={() => void salvar()}
               title="Baixa o projeto editado como .mkf (reabra depois para continuar)"
@@ -303,6 +324,8 @@ export function App() {
           onMoverPonto={onMoverPonto}
           onAdicionarPonto={onAdicionarPonto}
           onPontoClicado={onPontoClicado}
+          papeis={papeis}
+          modoRede={modoRede}
         />
 
         {!projeto && !carregando && (
@@ -364,8 +387,11 @@ export function App() {
           <PainelPonto
             key={`${selecionado.id}:${selecionado.wgs84.lat},${selecionado.wgs84.lng}`}
             ponto={selecionado}
+            papel={posteModelado?.papel}
+            deflexaoGraus={posteModelado?.deflexaoGraus}
             onEditar={(patch: PatchPonto) => atualizar(editarPonto(projeto, selecionado.id, patch))}
             onMover={(wgs84) => atualizar(moverPonto(projeto, selecionado.id, wgs84))}
+            onDefinirFonte={() => atualizar(definirFonte(projeto, selecionado.id))}
             onExcluir={() => {
               atualizar(removerPonto(projeto, selecionado.id));
               setSelecionadoId(null);
@@ -389,12 +415,44 @@ export function App() {
           />
         )}
 
-        {projeto && (
+        {projeto && !modoRede && (
           <div className="legenda">
             <span><i className="pin" style={{ background: "#f59e0b" }} /> Poste proposto</span>
             <span><i className="pin" style={{ background: "#9e9e9e" }} /> Genérico</span>
             <span><i className="pin" style={{ background: "#38bdf8" }} /> Transformador</span>
             <span><i className="pin" style={{ background: "#4caf50" }} /> Foto</span>
+          </div>
+        )}
+
+        {projeto && modoRede && rede && (
+          <div className="legenda legenda-rede">
+            <span><i className="pin" style={{ background: "#16a34a" }} /> Fonte {rede.resumo.fonte}</span>
+            <span><i className="pin" style={{ background: "#9e9e9e" }} /> Tangente {rede.resumo.tangente}</span>
+            <span><i className="pin" style={{ background: "#d97706" }} /> Ângulo {rede.resumo.angulo}</span>
+            <span><i className="pin" style={{ background: "#a855f7" }} /> Derivação {rede.resumo.derivacao}</span>
+            <span><i className="pin" style={{ background: "#38bdf8" }} /> Transformador {rede.resumo.trafo}</span>
+            <span><i className="pin" style={{ background: "#ef4444" }} /> Fim {rede.resumo.fim}</span>
+            {rede.resumo.isolado > 0 && (
+              <span><i className="pin" style={{ background: "#6b7280" }} /> Solto {rede.resumo.isolado}</span>
+            )}
+          </div>
+        )}
+
+        {projeto && modoRede && rede && (
+          <div className="rede-hud">
+            <div className="rede-hud-topo">
+              <strong>Modelo de rede</strong>
+              <span>{rede.resumo.total} postes</span>
+            </div>
+            {!rede.temFonte && (
+              <div className="rede-hud-aviso">
+                Nenhuma fonte marcada. Selecione o poste de saída da rede e clique “Marcar como fonte”
+                para traçar a rota.
+              </div>
+            )}
+            {rede.avisos.map((a, i) => (
+              <div key={i} className="rede-hud-aviso">{a}</div>
+            ))}
           </div>
         )}
 
