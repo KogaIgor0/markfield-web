@@ -95,6 +95,8 @@ interface MapCanvasProps {
    * uma ação deliberada, ligada pelo painel).
    */
   movendoId?: string | null;
+  /** id do poste → rótulo de estrutura (B3). Aparece sobre o poste no modo Rede. */
+  rotulosEstrutura?: Map<string, string>;
   /** Muda quando um NOVO projeto é aberto — dispara o auto-enquadramento. */
   chaveEnquadramento?: number;
   onSelecionar?: (id: string | null) => void;
@@ -137,12 +139,21 @@ const COR_PAPEL: maplibregl.ExpressionSpecification = [
 ];
 
 export function MapCanvas(props: MapCanvasProps) {
-  const { projeto, selecionadoId, selecionadoTrechoId, modo, chaveEnquadramento, papeis, modoRede } =
-    props;
+  const {
+    projeto,
+    selecionadoId,
+    selecionadoTrechoId,
+    modo,
+    chaveEnquadramento,
+    papeis,
+    modoRede,
+    rotulosEstrutura,
+  } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const fcRef = useRef<FeatureCollection<Point> | null>(null);
   const dragRef = useRef<string | null>(null);
+  const marcadoresRef = useRef<maplibregl.Marker[]>([]);
   const prontoRef = useRef(false); // mapa carregado (monotônico; não confiar em isStyleLoaded, que oscila)
 
   // Espelho sempre-atual das props para os handlers registrados uma vez só.
@@ -363,6 +374,31 @@ export function MapCanvas(props: MapCanvasProps) {
     if (!map || !map.getLayer(LYR.pontos)) return;
     map.setPaintProperty(LYR.pontos, "circle-color", modoRede ? COR_PAPEL : COR_TIPO);
   }, [modoRede]);
+
+  // Rótulos de estrutura (B3) como marcadores HTML sobre os postes — só no modo
+  // Rede. HTML (não símbolo do MapLibre) evita depender de glyphs/fontes externas.
+  useEffect(() => {
+    const map = mapRef.current;
+    for (const m of marcadoresRef.current) m.remove();
+    marcadoresRef.current = [];
+    if (!map || !modoRede || !projeto || !rotulosEstrutura) return;
+    for (const p of projeto.pontos) {
+      const rotulo = rotulosEstrutura.get(p.id);
+      if (!rotulo) continue;
+      const el = document.createElement("div");
+      el.className = `rotulo-estrutura${rotulo.endsWith("?") ? " revisar" : ""}`;
+      el.textContent = rotulo;
+      el.style.pointerEvents = "none"; // não rouba o clique do poste
+      const mk = new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -12] })
+        .setLngLat([p.wgs84.lng, p.wgs84.lat])
+        .addTo(map);
+      marcadoresRef.current.push(mk);
+    }
+    return () => {
+      for (const m of marcadoresRef.current) m.remove();
+      marcadoresRef.current = [];
+    };
+  }, [projeto, rotulosEstrutura, modoRede]);
 
   // Cursor conforme o modo (adicionar/ligar = cruz).
   useEffect(() => {

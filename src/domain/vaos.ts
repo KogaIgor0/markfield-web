@@ -222,7 +222,7 @@ export function colapsarVaos(projeto: Projeto): Projeto {
 }
 
 // --------------------------------------------------------------------------
-// Global: dividir/redividir toda a rede num alvo
+// Global: primeira divisão econômica (só os vãos AINDA não divididos)
 // --------------------------------------------------------------------------
 
 export interface ResultadoDivisao {
@@ -232,40 +232,45 @@ export interface ResultadoDivisao {
 }
 
 /**
- * Reparte a rede para nenhum vão passar de `alvoM`. Primeiro **colapsa** a
- * divisão anterior (permite redividir com outro alvo), depois divide cada vão
- * (entre postes reais) em ⌈L/alvo⌉ partes iguais.
+ * Primeira divisão econômica: reparte em vãos ≤ `alvoM` **apenas os vãos que
+ * ainda são um trecho único** (nenhum poste automático nas pontas). NÃO mexe em
+ * vãos que o usuário já dividiu/ajustou — o refino de cada vão é feito por
+ * trecho (`redividirVao`/`ajustarVao`), porque o terreno muda de trecho pra
+ * trecho. Idempotente: rodar de novo não re-divide o que já está postado.
  */
 export function dividirVaos(projeto: Projeto, alvoM = VAO_MAXIMO_M): ResultadoDivisao {
-  const base = colapsarVaos(projeto);
-  const pontos = [...base.pontos];
+  const autoSet = new Set(projeto.pontos.filter((p) => p.auto).map((p) => p.id));
+  const pontos = [...projeto.pontos];
   const trechos: Trecho[] = [];
   let postesAdicionados = 0;
   let trechosDivididos = 0;
-  let numero = maiorNumero(base);
+  let numero = maiorNumero(projeto);
 
-  for (const t of base.trechos) {
+  for (const t of projeto.trechos) {
     const de = t.dePontoId ? pontos.find((p) => p.id === t.dePontoId) : undefined;
     const a = t.aPontoId ? pontos.find((p) => p.id === t.aPontoId) : undefined;
-    if (!de || !a) {
+    // Só divide vão "cru": liga dois postes reais (nenhuma ponta automática).
+    const cru =
+      de && a && !autoSet.has(t.dePontoId as string) && !autoSet.has(t.aPontoId as string);
+    if (!cru) {
       trechos.push(t);
       continue;
     }
-    const L = distanciaM(de.wgs84, a.wgs84);
+    const L = distanciaM(de!.wgs84, a!.wgs84);
     if (L <= alvoM + 1e-6) {
       trechos.push(t);
       continue;
     }
     trechosDivididos++;
     const n = Math.ceil(L / alvoM);
-    const sub = subdividir(de, a, n, t, numero);
+    const sub = subdividir(de!, a!, n, t, numero);
     numero = sub.ultimoNumero;
     postesAdicionados += sub.pontos.length;
     pontos.push(...sub.pontos);
     trechos.push(...sub.trechos);
   }
 
-  return { projeto: tocar({ ...base, pontos, trechos }), postesAdicionados, trechosDivididos };
+  return { projeto: tocar({ ...projeto, pontos, trechos }), postesAdicionados, trechosDivididos };
 }
 
 // --------------------------------------------------------------------------
@@ -315,12 +320,12 @@ export interface ResultadoAjuste {
   subVaoM: number;
 }
 
-/**
- * Ajusta a divisão de UM vão: `delta = +1` adiciona um poste (mais sub-vãos,
- * mais curtos), `delta = -1` remove um (menos sub-vãos). O vão é identificado
- * pelo trecho selecionado; as pontas reais ficam fixas. Mínimo 1 sub-vão.
- */
-export function ajustarVao(projeto: Projeto, trechoId: string, delta: number): ResultadoAjuste | null {
+/** Refaz UM vão (entre as pontas reais A e B) em `novoN` sub-vãos iguais. */
+function refazerVao(
+  projeto: Projeto,
+  trechoId: string,
+  calcularN: (cadeiaN: number, L: number) => number,
+): ResultadoAjuste | null {
   const cadeia = cadeiaDoTrecho(projeto, trechoId);
   if (!cadeia) return null;
   const porId = new Map(projeto.pontos.map((p) => [p.id, p]));
@@ -328,28 +333,44 @@ export function ajustarVao(projeto: Projeto, trechoId: string, delta: number): R
   const B = porId.get(cadeia.B);
   if (!A || !B) return null;
 
-  const novoN = Math.max(1, cadeia.n + delta);
+  const L = distanciaM(A.wgs84, B.wgs84);
+  const novoN = Math.max(1, Math.round(calcularN(cadeia.n, L)));
   if (novoN === cadeia.n) {
-    const L = distanciaM(A.wgs84, B.wgs84);
     return { projeto, vaos: cadeia.n, trechoSelId: trechoId, subVaoM: L / cadeia.n };
   }
 
-  // remove os postes auto e os sub-trechos deste vão
+  // remove os postes auto e os sub-trechos SÓ deste vão
   const pontos = projeto.pontos.filter((p) => !cadeia.autoPoles.has(p.id));
   const trechos = projeto.trechos.filter((t) => !cadeia.trechoIds.has(t.id));
-
-  const modelo = cadeia.trechos[0];
-  const sub = subdividir(A, B, novoN, modelo, maiorNumero(projeto));
+  const sub = subdividir(A, B, novoN, cadeia.trechos[0], maiorNumero(projeto));
   pontos.push(...sub.pontos);
   trechos.push(...sub.trechos);
 
-  const L = distanciaM(A.wgs84, B.wgs84);
   return {
     projeto: tocar({ ...projeto, pontos, trechos }),
     vaos: novoN,
     trechoSelId: sub.primeiroTrechoId,
     subVaoM: L / novoN,
   };
+}
+
+/**
+ * Ajusta UM vão: `delta = +1` adiciona um poste (sub-vãos mais curtos),
+ * `delta = -1` remove um. Mínimo 1 sub-vão. Só esse vão é afetado.
+ */
+export function ajustarVao(projeto: Projeto, trechoId: string, delta: number): ResultadoAjuste | null {
+  return refazerVao(projeto, trechoId, (n) => n + delta);
+}
+
+/**
+ * Redivide SÓ o vão escolhido para que cada sub-vão fique ≤ `alvoM`
+ * (⌈L/alvo⌉ partes iguais). É a redivisão "por trecho": cada estirão tem seu
+ * terreno, então o alvo é aplicado no vão que o usuário selecionou, não na rede
+ * inteira. Os demais vãos ficam intactos.
+ */
+export function redividirVao(projeto: Projeto, trechoId: string, alvoM: number): ResultadoAjuste | null {
+  const alvo = Math.max(1, alvoM);
+  return refazerVao(projeto, trechoId, (_n, L) => Math.ceil(L / alvo));
 }
 
 /** Info do vão (para o painel do trecho): pontas, nº de sub-vãos e comprimento total. */

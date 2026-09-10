@@ -309,6 +309,22 @@ body {
   padding-top: 8px;
 }
 
+.vao-alvo-linha {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.vao-alvo-linha .vao-input {
+  width: 56px;
+}
+
+.vao-alvo-linha .btn-mini-sec {
+  margin-left: auto;
+}
+
 .vao-ajuste-btns {
   display: flex;
   gap: 6px;
@@ -616,6 +632,57 @@ body {
   border: 1px solid #f0d9ad;
   border-radius: 6px;
   padding: 6px 8px;
+}
+
+/* Resumo por código de estrutura (B3) no HUD */
+.rede-hud-estruturas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.estr-chip {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: #eef2f7;
+  border: 1px solid #d8e0ea;
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+/* Estrutura no painel do ponto */
+.estr-ok {
+  color: #0f7a37;
+}
+
+.estr-revisar {
+  color: #8a5a00;
+}
+
+.estr-desc {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* Rótulo de estrutura sobre o poste (marcador HTML) */
+.rotulo-estrutura {
+  font: 600 11px system-ui, sans-serif;
+  color: #0d2440;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #b8c2cf;
+  border-radius: 5px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  transform: translateY(-2px);
+}
+
+.rotulo-estrutura.revisar {
+  color: #8a5a00;
+  background: #fdf3e2;
+  border-color: #f0d9ad;
 }
 
 /* Mover ponto (deliberado) e travar/destravar coordenada de campo */

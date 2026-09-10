@@ -20,15 +20,15 @@ import {
   type PatchTrecho,
 } from "./domain/edicao";
 import { modelarRede } from "./domain/rede";
+import { classificarEstrutura, rotuloEstrutura, type EstruturaAtribuida } from "./domain/estrutura";
 import {
   ajustarVao,
   comprimentoTrechoM,
   dividirVaos,
   infoVao,
-  temPostesAuto,
+  redividirVao,
   vaosLongos,
   VAO_MAXIMO_M,
-  VAO_MINIMO_M,
 } from "./domain/vaos";
 import type { LatLng, Projeto, TipoPonto } from "./domain/model";
 
@@ -75,8 +75,6 @@ export function App() {
   const [destravadoId, setDestravadoId] = useState<string | null>(null);
   // Aviso neutro e passageiro (ex.: resultado da divisão de vãos).
   const [mensagem, setMensagem] = useState<string | null>(null);
-  // Vão alvo global (m): começa no máximo da norma; o usuário pode reduzir.
-  const [vaoAlvo, setVaoAlvo] = useState(VAO_MAXIMO_M);
   const inputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
 
@@ -93,9 +91,37 @@ export function App() {
   }, [rede]);
   const posteModelado = rede && selecionado ? rede.postes.get(selecionado.id) : undefined;
 
-  // Vãos acima do alvo (B2): quantos, se há postes automáticos, e info do vão.
-  const longos = useMemo(() => (projeto ? vaosLongos(projeto, vaoAlvo) : []), [projeto, vaoAlvo]);
-  const temAuto = useMemo(() => (projeto ? temPostesAuto(projeto) : false), [projeto]);
+  // Estruturas (B3): código CE por poste, a partir do modelo de rede.
+  const estruturas = useMemo(() => {
+    const m = new Map<string, EstruturaAtribuida>();
+    if (rede && projeto) {
+      for (const p of projeto.pontos) {
+        const pmod = rede.postes.get(p.id);
+        if (pmod) m.set(p.id, classificarEstrutura(pmod, p));
+      }
+    }
+    return m;
+  }, [rede, projeto]);
+  const rotulosEstrutura = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [id, e] of estruturas) {
+      const r = rotuloEstrutura(e);
+      if (r) m.set(id, r);
+    }
+    return m;
+  }, [estruturas]);
+  const resumoEstrutura = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of estruturas.values()) {
+      if (!e.codigo) continue;
+      m.set(e.codigo, (m.get(e.codigo) ?? 0) + 1);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [estruturas]);
+  const estruturaSel = selecionado ? estruturas.get(selecionado.id) : undefined;
+
+  // Vãos crus acima do máximo (B2): a primeira divisão econômica (100 m).
+  const longos = useMemo(() => (projeto ? vaosLongos(projeto) : []), [projeto]);
   const compTrecho =
     projeto && selecionadoTrecho ? comprimentoTrechoM(projeto, selecionadoTrecho) : null;
   const vaoInfo =
@@ -185,15 +211,19 @@ export function App() {
     }
   }, [projeto]);
 
+  // Primeira divisão econômica: posta os vãos crus acima de 100 m. Não mexe nos
+  // vãos já divididos/ajustados — o refino é por trecho (abaixo).
   const dividir = useCallback(() => {
     if (!projeto) return;
-    const { projeto: novo, postesAdicionados } = dividirVaos(projeto, vaoAlvo);
+    const { projeto: novo, postesAdicionados } = dividirVaos(projeto);
     atualizar(novo);
     setSelecionadoTrechoId(null);
-    setMensagem(`Rede repartida em vãos de até ${vaoAlvo} m (${postesAdicionados} poste(s) intermediário(s)).`);
-  }, [projeto, vaoAlvo, atualizar]);
+    setMensagem(
+      `Vãos longos postados em ≤ ${VAO_MAXIMO_M} m (${postesAdicionados} poste(s)). Para ajustar um trecho, selecione-o no mapa.`,
+    );
+  }, [projeto, atualizar]);
 
-  // Ajuste fino de UM vão (poste a mais/menos onde houve interferência em campo).
+  // Ajuste fino de UM vão (poste a mais/menos onde houve interferência).
   const ajustarVaoSel = useCallback(
     (delta: number) => {
       if (!projeto || !selecionadoTrechoId) return;
@@ -202,6 +232,19 @@ export function App() {
       atualizar(r.projeto);
       setSelecionadoTrechoId(r.trechoSelId); // mantém o vão selecionado
       setMensagem(`Vão agora com ${r.vaos} trecho(s) de ~${r.subVaoM.toFixed(0)} m.`);
+    },
+    [projeto, selecionadoTrechoId, atualizar],
+  );
+
+  // Redivide SÓ o vão selecionado num alvo (m) — cada trecho tem seu terreno.
+  const redividirVaoSel = useCallback(
+    (alvoM: number) => {
+      if (!projeto || !selecionadoTrechoId) return;
+      const r = redividirVao(projeto, selecionadoTrechoId, alvoM);
+      if (!r) return;
+      atualizar(r.projeto);
+      setSelecionadoTrechoId(r.trechoSelId);
+      setMensagem(`Este vão: ${r.vaos} trecho(s) de ~${r.subVaoM.toFixed(0)} m (alvo ${alvoM} m).`);
     },
     [projeto, selecionadoTrechoId, atualizar],
   );
@@ -310,39 +353,18 @@ export function App() {
             </button>
           )}
           {projeto && (
-            <span className="vao-ctrl" title={`Vão alvo (${VAO_MINIMO_M}–${VAO_MAXIMO_M} m). Reduza para incluir mais postes.`}>
-              <span className="vao-ctrl-lbl">Vão alvo</span>
-              <input
-                type="number"
-                className="vao-input"
-                min={VAO_MINIMO_M}
-                max={VAO_MAXIMO_M}
-                step={5}
-                value={vaoAlvo}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (Number.isFinite(n)) {
-                    setVaoAlvo(Math.min(VAO_MAXIMO_M, Math.max(VAO_MINIMO_M, Math.round(n))));
-                  }
-                }}
-              />
-              <span className="vao-ctrl-lbl">m</span>
-              <button
-                className="btn btn-mini"
-                onClick={dividir}
-                disabled={longos.length === 0 && !temAuto}
-                title={
-                  longos.length
-                    ? `${longos.length} vão(s) acima de ${vaoAlvo} m — repartir em vãos ≤ ${vaoAlvo} m`
-                    : temAuto
-                      ? `Refazer a divisão com o alvo de ${vaoAlvo} m`
-                      : `Todos os vãos já estão dentro de ${vaoAlvo} m`
-                }
-              >
-                {temAuto ? "Redividir" : "Dividir vãos"}
-                {longos.length ? ` (${longos.length})` : ""}
-              </button>
-            </span>
+            <button
+              className="btn"
+              onClick={dividir}
+              disabled={longos.length === 0}
+              title={
+                longos.length
+                  ? `Posta os vãos acima de ${VAO_MAXIMO_M} m (${longos.length}) em vãos ≤ ${VAO_MAXIMO_M} m. Depois, refine cada vão pelo painel do trecho.`
+                  : `Todos os vãos já estão dentro de ${VAO_MAXIMO_M} m`
+              }
+            >
+              Dividir vãos{longos.length ? ` (${longos.length})` : ""}
+            </button>
           )}
           {projeto && (
             <button
@@ -418,6 +440,7 @@ export function App() {
           papeis={papeis}
           modoRede={modoRede}
           movendoId={movendoId}
+          rotulosEstrutura={rotulosEstrutura}
         />
 
         {!projeto && !carregando && (
@@ -490,6 +513,7 @@ export function App() {
             ponto={selecionado}
             papel={posteModelado?.papel}
             deflexaoGraus={posteModelado?.deflexaoGraus}
+            estrutura={estruturaSel}
             travado={selecionado.origem !== "web"}
             destravado={destravadoId === selecionado.id}
             movendo={movendoId === selecionado.id}
@@ -515,6 +539,7 @@ export function App() {
             comprimentoM={compTrecho}
             vaoInfo={vaoInfo}
             onAjustarVao={ajustarVaoSel}
+            onRedividirVao={redividirVaoSel}
             onEditar={(patch: PatchTrecho) =>
               atualizar(editarTrecho(projeto, selecionadoTrecho.id, patch))
             }
@@ -563,7 +588,16 @@ export function App() {
             )}
             {longos.length > 0 && (
               <div className="rede-hud-aviso">
-                {longos.length} vão(s) acima de {vaoAlvo} m — use “{temAuto ? "Redividir" : "Dividir vãos"}”.
+                {longos.length} vão(s) acima de {VAO_MAXIMO_M} m — use “Dividir vãos”.
+              </div>
+            )}
+            {resumoEstrutura.length > 0 && (
+              <div className="rede-hud-estruturas">
+                {resumoEstrutura.map(([cod, n]) => (
+                  <span key={cod} className="estr-chip">
+                    {cod} <strong>{n}</strong>
+                  </span>
+                ))}
               </div>
             )}
             {rede.avisos.map((a, i) => (

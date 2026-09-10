@@ -7,6 +7,7 @@ import {
   distanciaM,
   dividirVaos,
   infoVao,
+  redividirVao,
   vaosLongos,
   VAO_MAXIMO_M,
 } from "./vaos";
@@ -104,13 +105,13 @@ describe("dividirVaos", () => {
     expect(r1.projeto.pontos).toHaveLength(2);
   });
 
-  it("redividir dá o MESMO resultado (colapsa antes): 4 postes, não 6", () => {
+  it("é idempotente: rodar de novo não re-divide o que já foi postado", () => {
     const proj = projeto([P1, P2], [trecho("t1", "p1", "p2", { p1: P1, p2: P2 })]);
     const um = dividirVaos(proj).projeto;
     expect(um.pontos).toHaveLength(4); // 2 reais + 2 auto
-    const dois = dividirVaos(um).projeto;
-    expect(dois.pontos).toHaveLength(4); // não acumula
-    expect(dois.pontos.filter((p) => p.auto)).toHaveLength(2);
+    const dois = dividirVaos(um);
+    expect(dois.postesAdicionados).toBe(0); // não mexe em vão já dividido
+    expect(dois.projeto.pontos).toHaveLength(4);
   });
 
   it("marca os postes inseridos como auto (postes reais ficam intactos)", () => {
@@ -120,18 +121,45 @@ describe("dividirVaos", () => {
     expect(novo.pontos.find((p) => p.id === "p2")!.auto).toBeUndefined();
     expect(novo.pontos.filter((p) => p.auto)).toHaveLength(2);
   });
+
+  it("NÃO redivide a rede inteira: só divide vão cru (undivided)", () => {
+    // Dois vãos crus: p1-p2 (~250 m) e p2-p3 (~55 m). Dividir posta o longo.
+    const P3 = ponto("p3", P2.wgs84.lat + 0.0005, -50.0);
+    const proj = projeto(
+      [P1, P2, P3],
+      [trecho("t1", "p1", "p2", { p1: P1, p2: P2 }), trecho("t2", "p2", "p3", { p2: P2, p3: P3 })],
+    );
+    const div = dividirVaos(proj).projeto;
+    const autos = div.pontos.filter((p) => p.auto).length;
+    expect(autos).toBe(2); // só o vão longo virou 3; o curto ficou 1
+  });
 });
 
-describe("redividir com outro alvo", () => {
-  it("alvo menor → mais postes; voltar a 100 → menos postes", () => {
+describe("redividirVao (por trecho escolhido)", () => {
+  it("aplica o alvo SÓ no vão selecionado; outro vão fica intacto", () => {
+    const P3 = ponto("p3", P2.wgs84.lat + 0.0005, -50.0); // p2-p3 ~55 m, fica 1
+    const proj = projeto(
+      [P1, P2, P3],
+      [trecho("t1", "p1", "p2", { p1: P1, p2: P2 }), trecho("t2", "p2", "p3", { p2: P2, p3: P3 })],
+    );
+    const div = dividirVaos(proj).projeto; // p1-p2 → 3 vãos (2 auto); p2-p3 → 1
+    const subTrecho = div.trechos.find((t) => t.dePontoId === "p1")!; // primeiro sub-vão do estirão p1..p2
+    const r = redividirVao(div, subTrecho.id, 50)!; // ~250/50 = 5 vãos → 4 auto NESSE estirão
+    expect(r.vaos).toBe(5);
+    // total de autos = 4 (só o estirão p1..p2 mudou; p2-p3 continua sem auto)
+    expect(r.projeto.pontos.filter((p) => p.auto)).toHaveLength(4);
+    // cada sub-vão do estirão ≤ 50 m
+    const info = infoVao(r.projeto, r.trechoSelId)!;
+    expect(info.subVaoM).toBeLessThanOrEqual(50 + 1e-3);
+  });
+
+  it("alvo maior reduz o nº de postes do vão", () => {
     const proj = projeto([P1, P2], [trecho("t1", "p1", "p2", { p1: P1, p2: P2 })]);
-    const em100 = dividirVaos(proj, 100).projeto; // ~250 m → 3 vãos, 2 auto
-    expect(em100.pontos.filter((p) => p.auto)).toHaveLength(2);
-    const em50 = dividirVaos(em100, 50).projeto; // ~250 m → 5 vãos, 4 auto
-    expect(em50.pontos.filter((p) => p.auto)).toHaveLength(4);
-    for (const t of em50.trechos) expect(comprimentoTrechoM(em50, t)!).toBeLessThanOrEqual(50 + 1e-3);
-    const volta = dividirVaos(em50, 100).projeto; // volta a 2 auto
-    expect(volta.pontos.filter((p) => p.auto)).toHaveLength(2);
+    const em50 = redividirVao(proj, "t1", 50)!; // ~250/50 = 5
+    expect(em50.vaos).toBe(5);
+    const trecho50 = em50.projeto.trechos.find((t) => t.dePontoId === "p1")!;
+    const em100 = redividirVao(em50.projeto, trecho50.id, 100)!; // ~250/100 = 3
+    expect(em100.vaos).toBe(3);
   });
 });
 

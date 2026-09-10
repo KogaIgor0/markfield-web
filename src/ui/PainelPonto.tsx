@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { LatLng, Ponto, TipoPonto } from "../domain/model";
 import type { PatchPonto } from "../domain/edicao";
 import { rotuloPapel, type Papel } from "../domain/rede";
+import type { EstruturaAtribuida } from "../domain/estrutura";
 import { deUtm, formatarUtm, paraUtm } from "../geo/utm";
 
 /**
@@ -22,6 +23,8 @@ interface Props {
   /** Papel na rede (B1), quando modelado. */
   papel?: Papel;
   deflexaoGraus?: number;
+  /** Estrutura da norma (B3), quando modelada. */
+  estrutura?: EstruturaAtribuida;
   /** Ponto de campo (GPS): coordenada protegida contra alteração acidental. */
   travado?: boolean;
   /** Ponto de campo com a coordenada temporariamente liberada (após confirmar). */
@@ -48,6 +51,7 @@ export function PainelPonto({
   ponto,
   papel,
   deflexaoGraus,
+  estrutura,
   travado,
   destravado,
   movendo,
@@ -231,6 +235,21 @@ export function PainelPonto({
           <div className="rede-linha">
             <span>Deflexão</span>
             <strong>{deflexaoGraus.toFixed(1)}°</strong>
+          </div>
+        )}
+        {estrutura && (
+          <div className="rede-linha">
+            <span>Estrutura</span>
+            <strong className={estrutura.confianca === "revisar" ? "estr-revisar" : "estr-ok"}>
+              {estrutura.codigo || "—"}
+              {estrutura.confianca === "revisar" && estrutura.codigo ? " ⚠︎" : ""}
+            </strong>
+          </div>
+        )}
+        {estrutura && (
+          <div className="estr-desc">
+            {estrutura.descricao}
+            {estrutura.confianca === "revisar" && estrutura.motivo ? ` — ${estrutura.motivo}` : ""}
           </div>
         )}
         <button

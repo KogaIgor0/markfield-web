@@ -1,6 +1,7 @@
+import { useState } from "react";
 import type { Trecho } from "../domain/model";
 import type { PatchTrecho } from "../domain/edicao";
-import { VAO_MAXIMO_M } from "../domain/vaos";
+import { VAO_MAXIMO_M, VAO_MINIMO_M } from "../domain/vaos";
 
 /** Painel do trecho selecionado: classe elétrica, comprimento do vão, observação. */
 
@@ -28,6 +29,8 @@ interface Props {
   vaoInfo?: VaoInfo | null;
   /** +1 adiciona um poste ao vão; -1 remove. */
   onAjustarVao?: (delta: number) => void;
+  /** Redivide SÓ este vão para sub-vãos ≤ alvo (m). */
+  onRedividirVao?: (alvoM: number) => void;
   onEditar: (patch: PatchTrecho) => void;
   onExcluir: () => void;
   onFechar: () => void;
@@ -38,11 +41,13 @@ export function PainelTrecho({
   comprimentoM,
   vaoInfo,
   onAjustarVao,
+  onRedividirVao,
   onEditar,
   onExcluir,
   onFechar,
 }: Props) {
   const longo = comprimentoM != null && comprimentoM > VAO_MAXIMO_M;
+  const [alvo, setAlvo] = useState<number>(vaoInfo ? Math.round(vaoInfo.subVaoM) : VAO_MAXIMO_M);
   return (
     <aside className="painel">
       <div className="painel-topo">
@@ -94,6 +99,30 @@ export function PainelTrecho({
                   {vaoInfo.vaos}× ~{vaoInfo.subVaoM.toFixed(0)} m
                 </strong>
               </div>
+              <div className="painel-sub">Redividir só este trecho</div>
+              {onRedividirVao && (
+                <div className="vao-alvo-linha">
+                  <span>Vão alvo</span>
+                  <input
+                    type="number"
+                    className="vao-input"
+                    min={VAO_MINIMO_M}
+                    max={VAO_MAXIMO_M}
+                    step={5}
+                    value={alvo}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (Number.isFinite(n)) {
+                        setAlvo(Math.min(VAO_MAXIMO_M, Math.max(VAO_MINIMO_M, Math.round(n))));
+                      }
+                    }}
+                  />
+                  <span>m</span>
+                  <button className="btn-mini-sec" onClick={() => onRedividirVao(alvo)}>
+                    Aplicar
+                  </button>
+                </div>
+              )}
               <div className="vao-ajuste-btns">
                 <button
                   className="btn-mini-sec"
