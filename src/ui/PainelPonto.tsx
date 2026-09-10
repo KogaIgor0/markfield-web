@@ -22,8 +22,18 @@ interface Props {
   /** Papel na rede (B1), quando modelado. */
   papel?: Papel;
   deflexaoGraus?: number;
+  /** Ponto de campo (GPS): coordenada protegida contra alteração acidental. */
+  travado?: boolean;
+  /** Ponto de campo com a coordenada temporariamente liberada (após confirmar). */
+  destravado?: boolean;
+  /** Este ponto está no modo "mover" (arraste habilitado no mapa). */
+  movendo?: boolean;
   onEditar: (patch: PatchPonto) => void;
   onMover: (wgs84: LatLng) => void;
+  /** Liga/desliga o modo mover deste ponto (arraste deliberado no mapa). */
+  onMoverNoMapa: () => void;
+  /** Libera a coordenada de um ponto de campo (já confirmado pelo usuário). */
+  onDestravar: () => void;
   onDefinirFonte: () => void;
   onExcluir: () => void;
   onFechar: () => void;
@@ -38,13 +48,22 @@ export function PainelPonto({
   ponto,
   papel,
   deflexaoGraus,
+  travado,
+  destravado,
+  movendo,
   onEditar,
   onMover,
+  onMoverNoMapa,
+  onDestravar,
   onDefinirFonte,
   onExcluir,
   onFechar,
 }: Props) {
   const utm = paraUtm(ponto.wgs84);
+  // Coordenada bloqueada = ponto de campo ainda travado. Enquanto bloqueada,
+  // não dá pra digitar coordenada nem entrar no modo mover.
+  const bloqueado = Boolean(travado && !destravado);
+  const [confirmando, setConfirmando] = useState(false);
   // Buffers locais para os campos de coordenada (comitam no blur).
   const [lat, setLat] = useState(String(ponto.wgs84.lat));
   const [lng, setLng] = useState(String(ponto.wgs84.lng));
@@ -117,6 +136,7 @@ export function PainelPonto({
             <span>Latitude</span>
             <input
               value={lat}
+              disabled={bloqueado}
               onChange={(e) => setLat(e.target.value)}
               onBlur={comitarLatLng}
               onKeyDown={enterBlur}
@@ -126,6 +146,7 @@ export function PainelPonto({
             <span>Longitude</span>
             <input
               value={lng}
+              disabled={bloqueado}
               onChange={(e) => setLng(e.target.value)}
               onBlur={comitarLatLng}
               onKeyDown={enterBlur}
@@ -137,6 +158,7 @@ export function PainelPonto({
             <span>UTM E</span>
             <input
               value={easting}
+              disabled={bloqueado}
               onChange={(e) => setEasting(e.target.value)}
               onBlur={comitarUtm}
               onKeyDown={enterBlur}
@@ -146,6 +168,7 @@ export function PainelPonto({
             <span>UTM N</span>
             <input
               value={northing}
+              disabled={bloqueado}
               onChange={(e) => setNorthing(e.target.value)}
               onBlur={comitarUtm}
               onKeyDown={enterBlur}
@@ -153,6 +176,49 @@ export function PainelPonto({
           </label>
         </div>
         <div className="painel-utm">{formatarUtm(utm)} · SIRGAS 2000</div>
+
+        <div className="painel-mover">
+          {bloqueado ? (
+            confirmando ? (
+              <div className="trava-confirm">
+                <span>Alterar um ponto medido em campo (GPS)?</span>
+                <div className="trava-acoes">
+                  <button
+                    className="btn-destravar"
+                    onClick={() => {
+                      setConfirmando(false);
+                      onDestravar();
+                    }}
+                  >
+                    Sim, destravar
+                  </button>
+                  <button className="btn-mini-sec" onClick={() => setConfirmando(false)}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="trava-nota">🔒 Ponto de campo — coordenada protegida.</div>
+                <button className="btn-destravar" onClick={() => setConfirmando(true)}>
+                  Destravar coordenada
+                </button>
+              </>
+            )
+          ) : (
+            <>
+              {travado && destravado && (
+                <div className="trava-nota destravado">🔓 Destravado — corrija com cuidado.</div>
+              )}
+              <button
+                className={`btn-mover${movendo ? " ativo" : ""}`}
+                onClick={onMoverNoMapa}
+              >
+                {movendo ? "✓ Movendo — arraste no mapa (Esc)" : "Mover no mapa"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="painel-rede">

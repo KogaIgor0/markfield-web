@@ -59,6 +59,10 @@ export function App() {
   const [chaveEnq, setChaveEnq] = useState(0);
   const [salvo, setSalvo] = useState(true);
   const [modoRede, setModoRede] = useState(false);
+  // Ponto habilitado para arraste no mapa (modo "mover", deliberado).
+  const [movendoId, setMovendoId] = useState<string | null>(null);
+  // Ponto de campo com a coordenada temporariamente destravada (após confirmar).
+  const [destravadoId, setDestravadoId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
 
@@ -75,10 +79,13 @@ export function App() {
   }, [rede]);
   const posteModelado = rede && selecionado ? rede.postes.get(selecionado.id) : undefined;
 
-  // Seleção de ponto e de trecho são mutuamente exclusivas.
+  // Seleção de ponto e de trecho são mutuamente exclusivas. Trocar de seleção
+  // sempre RETRAVA: sai do modo mover e re-tranca coordenada de campo.
   const selecionarPonto = useCallback((id: string | null) => {
     setSelecionadoId(id);
     if (id) setSelecionadoTrechoId(null);
+    setMovendoId(null);
+    setDestravadoId(null);
   }, []);
   const selecionarTrecho = useCallback((id: string | null) => {
     setSelecionadoTrechoId(id);
@@ -121,6 +128,8 @@ export function App() {
       setSelecionadoId(null);
       setSelecionadoTrechoId(null);
       setLigarDeId(null);
+      setMovendoId(null);
+      setDestravadoId(null);
       setModo("selecionar");
       setChaveEnq((c) => c + 1);
       setSalvo(true);
@@ -205,6 +214,8 @@ export function App() {
       if (e.key === "Escape") {
         setModo("selecionar");
         setLigarDeId(null);
+        setMovendoId(null);
+        setDestravadoId(null);
         setSelecionadoId(null);
         setSelecionadoTrechoId(null);
       }
@@ -234,6 +245,7 @@ export function App() {
               className={`btn${emAdd ? " btn-ativo" : ""}`}
               onClick={() => {
                 setLigarDeId(null);
+                setMovendoId(null);
                 setModo(emAdd ? "selecionar" : { adicionar: "postePropostoo" });
               }}
             >
@@ -326,6 +338,7 @@ export function App() {
           onPontoClicado={onPontoClicado}
           papeis={papeis}
           modoRede={modoRede}
+          movendoId={movendoId}
         />
 
         {!projeto && !carregando && (
@@ -383,20 +396,36 @@ export function App() {
           </div>
         )}
 
+        {movendoId && !emAdd && !emLigar && (
+          <div className="modo-bar modo-bar-mover">
+            <span>Arraste o ponto no mapa para o novo lugar</span>
+            <button className="btn btn-mini" onClick={() => setMovendoId(null)}>
+              Concluir (Esc)
+            </button>
+          </div>
+        )}
+
         {selecionado && projeto && (
           <PainelPonto
             key={`${selecionado.id}:${selecionado.wgs84.lat},${selecionado.wgs84.lng}`}
             ponto={selecionado}
             papel={posteModelado?.papel}
             deflexaoGraus={posteModelado?.deflexaoGraus}
+            travado={selecionado.origem !== "web"}
+            destravado={destravadoId === selecionado.id}
+            movendo={movendoId === selecionado.id}
             onEditar={(patch: PatchPonto) => atualizar(editarPonto(projeto, selecionado.id, patch))}
             onMover={(wgs84) => atualizar(moverPonto(projeto, selecionado.id, wgs84))}
+            onMoverNoMapa={() =>
+              setMovendoId((cur) => (cur === selecionado.id ? null : selecionado.id))
+            }
+            onDestravar={() => setDestravadoId(selecionado.id)}
             onDefinirFonte={() => atualizar(definirFonte(projeto, selecionado.id))}
             onExcluir={() => {
               atualizar(removerPonto(projeto, selecionado.id));
-              setSelecionadoId(null);
+              selecionarPonto(null);
             }}
-            onFechar={() => setSelecionadoId(null)}
+            onFechar={() => selecionarPonto(null)}
           />
         )}
 

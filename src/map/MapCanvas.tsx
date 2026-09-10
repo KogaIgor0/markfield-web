@@ -87,6 +87,12 @@ interface MapCanvasProps {
   papeis?: Map<string, string>;
   /** Colorir os postes pelo papel na rede (em vez de pelo tipo). */
   modoRede?: boolean;
+  /**
+   * Ponto habilitado para arraste. Só ESTE ponto se move no mapa — os demais
+   * apenas selecionam ao toque. Evita mover um ponto "sem querer" (o arraste é
+   * uma ação deliberada, ligada pelo painel).
+   */
+  movendoId?: string | null;
   /** Muda quando um NOVO projeto é aberto — dispara o auto-enquadramento. */
   chaveEnquadramento?: number;
   onSelecionar?: (id: string | null) => void;
@@ -199,12 +205,17 @@ export function MapCanvas(props: MapCanvasProps) {
       }
       if (emModoAdicionar()) return;
       e.preventDefault(); // impede o pan do mapa
+      // Já em modo mover DESTE ponto: inicia o arraste (sem reselecionar, o que
+      // apagaria o modo mover). Qualquer outro ponto: só seleciona.
+      if (propsRef.current.movendoId === id) {
+        dragRef.current = id;
+        arrastou = false;
+        map.getCanvas().style.cursor = "grabbing";
+        map.on("mousemove", onMove);
+        map.once("mouseup", onUp);
+        return;
+      }
       propsRef.current.onSelecionar?.(id);
-      dragRef.current = id;
-      arrastou = false;
-      map.getCanvas().style.cursor = "grabbing";
-      map.on("mousemove", onMove);
-      map.once("mouseup", onUp);
     });
 
     // Preview elástico no modo ligar: linha do poste de origem até o cursor.
@@ -232,9 +243,12 @@ export function MapCanvas(props: MapCanvasProps) {
       propsRef.current.onSelecionar?.(null);
     });
 
-    // Ponteiro ao passar sobre um ponto (no modo selecionar).
-    map.on("mouseenter", LYR.pontos, () => {
-      if (!emModoAdicionar() && !emModoLigar()) map.getCanvas().style.cursor = "grab";
+    // Ponteiro ao passar sobre um ponto (no modo selecionar): "grab" só no ponto
+    // habilitado para mover; nos demais, "pointer" (seleciona, não arrasta).
+    map.on("mouseenter", LYR.pontos, (e) => {
+      if (emModoAdicionar() || emModoLigar()) return;
+      const id = e.features?.[0]?.properties?.id as string | undefined;
+      map.getCanvas().style.cursor = propsRef.current.movendoId === id ? "grab" : "pointer";
     });
     map.on("mouseleave", LYR.pontos, () => {
       if (!dragRef.current && !emModoAdicionar() && !emModoLigar()) {
