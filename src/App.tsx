@@ -20,7 +20,16 @@ import {
   type PatchTrecho,
 } from "./domain/edicao";
 import { modelarRede } from "./domain/rede";
-import { comprimentoTrechoM, dividirVaos, vaosLongos, VAO_MAXIMO_M } from "./domain/vaos";
+import {
+  ajustarVao,
+  comprimentoTrechoM,
+  dividirVaos,
+  infoVao,
+  temPostesAuto,
+  vaosLongos,
+  VAO_MAXIMO_M,
+  VAO_MINIMO_M,
+} from "./domain/vaos";
 import type { LatLng, Projeto, TipoPonto } from "./domain/model";
 
 /**
@@ -66,6 +75,8 @@ export function App() {
   const [destravadoId, setDestravadoId] = useState<string | null>(null);
   // Aviso neutro e passageiro (ex.: resultado da divisão de vãos).
   const [mensagem, setMensagem] = useState<string | null>(null);
+  // Vão alvo global (m): começa no máximo da norma; o usuário pode reduzir.
+  const [vaoAlvo, setVaoAlvo] = useState(VAO_MAXIMO_M);
   const inputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
 
@@ -82,10 +93,13 @@ export function App() {
   }, [rede]);
   const posteModelado = rede && selecionado ? rede.postes.get(selecionado.id) : undefined;
 
-  // Vãos acima do máximo (B2): quantos e comprimento do trecho selecionado.
-  const longos = useMemo(() => (projeto ? vaosLongos(projeto) : []), [projeto]);
+  // Vãos acima do alvo (B2): quantos, se há postes automáticos, e info do vão.
+  const longos = useMemo(() => (projeto ? vaosLongos(projeto, vaoAlvo) : []), [projeto, vaoAlvo]);
+  const temAuto = useMemo(() => (projeto ? temPostesAuto(projeto) : false), [projeto]);
   const compTrecho =
     projeto && selecionadoTrecho ? comprimentoTrechoM(projeto, selecionadoTrecho) : null;
+  const vaoInfo =
+    projeto && selecionadoTrecho ? infoVao(projeto, selecionadoTrecho.id) : null;
 
   // Seleção de ponto e de trecho são mutuamente exclusivas. Trocar de seleção
   // sempre RETRAVA: sai do modo mover e re-tranca coordenada de campo.
@@ -173,16 +187,24 @@ export function App() {
 
   const dividir = useCallback(() => {
     if (!projeto) return;
-    const { projeto: novo, postesAdicionados, trechosDivididos } = dividirVaos(projeto);
-    if (postesAdicionados === 0) {
-      setMensagem(`Nenhum vão acima de ${VAO_MAXIMO_M} m — nada a dividir.`);
-      return;
-    }
+    const { projeto: novo, postesAdicionados } = dividirVaos(projeto, vaoAlvo);
     atualizar(novo);
-    setMensagem(
-      `${postesAdicionados} poste(s) adicionado(s) em ${trechosDivididos} vão(s) — agora nenhum passa de ${VAO_MAXIMO_M} m.`,
-    );
-  }, [projeto, atualizar]);
+    setSelecionadoTrechoId(null);
+    setMensagem(`Rede repartida em vãos de até ${vaoAlvo} m (${postesAdicionados} poste(s) intermediário(s)).`);
+  }, [projeto, vaoAlvo, atualizar]);
+
+  // Ajuste fino de UM vão (poste a mais/menos onde houve interferência em campo).
+  const ajustarVaoSel = useCallback(
+    (delta: number) => {
+      if (!projeto || !selecionadoTrechoId) return;
+      const r = ajustarVao(projeto, selecionadoTrechoId, delta);
+      if (!r) return;
+      atualizar(r.projeto);
+      setSelecionadoTrechoId(r.trechoSelId); // mantém o vão selecionado
+      setMensagem(`Vão agora com ${r.vaos} trecho(s) de ~${r.subVaoM.toFixed(0)} m.`);
+    },
+    [projeto, selecionadoTrechoId, atualizar],
+  );
 
   const aoSoltar = useCallback(
     (e: React.DragEvent) => {
@@ -288,18 +310,39 @@ export function App() {
             </button>
           )}
           {projeto && (
-            <button
-              className="btn"
-              onClick={dividir}
-              disabled={longos.length === 0}
-              title={
-                longos.length
-                  ? `Insere postes intermediários para nenhum vão passar de ${VAO_MAXIMO_M} m (${longos.length} vão(s) longo(s))`
-                  : `Todos os vãos já estão dentro de ${VAO_MAXIMO_M} m`
-              }
-            >
-              Dividir vãos{longos.length ? ` (${longos.length})` : ""}
-            </button>
+            <span className="vao-ctrl" title={`Vão alvo (${VAO_MINIMO_M}–${VAO_MAXIMO_M} m). Reduza para incluir mais postes.`}>
+              <span className="vao-ctrl-lbl">Vão alvo</span>
+              <input
+                type="number"
+                className="vao-input"
+                min={VAO_MINIMO_M}
+                max={VAO_MAXIMO_M}
+                step={5}
+                value={vaoAlvo}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n)) {
+                    setVaoAlvo(Math.min(VAO_MAXIMO_M, Math.max(VAO_MINIMO_M, Math.round(n))));
+                  }
+                }}
+              />
+              <span className="vao-ctrl-lbl">m</span>
+              <button
+                className="btn btn-mini"
+                onClick={dividir}
+                disabled={longos.length === 0 && !temAuto}
+                title={
+                  longos.length
+                    ? `${longos.length} vão(s) acima de ${vaoAlvo} m — repartir em vãos ≤ ${vaoAlvo} m`
+                    : temAuto
+                      ? `Refazer a divisão com o alvo de ${vaoAlvo} m`
+                      : `Todos os vãos já estão dentro de ${vaoAlvo} m`
+                }
+              >
+                {temAuto ? "Redividir" : "Dividir vãos"}
+                {longos.length ? ` (${longos.length})` : ""}
+              </button>
+            </span>
           )}
           {projeto && (
             <button
@@ -470,6 +513,8 @@ export function App() {
             key={selecionadoTrecho.id}
             trecho={selecionadoTrecho}
             comprimentoM={compTrecho}
+            vaoInfo={vaoInfo}
+            onAjustarVao={ajustarVaoSel}
             onEditar={(patch: PatchTrecho) =>
               atualizar(editarTrecho(projeto, selecionadoTrecho.id, patch))
             }
@@ -518,7 +563,7 @@ export function App() {
             )}
             {longos.length > 0 && (
               <div className="rede-hud-aviso">
-                {longos.length} vão(s) acima de {VAO_MAXIMO_M} m — use “Dividir vãos”.
+                {longos.length} vão(s) acima de {vaoAlvo} m — use “{temAuto ? "Redividir" : "Dividir vãos"}”.
               </div>
             )}
             {rede.avisos.map((a, i) => (

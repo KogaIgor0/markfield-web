@@ -275,6 +275,49 @@ body {
   padding: 6px 8px;
 }
 
+/* Controle do vão alvo (topbar) */
+.vao-ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 10px;
+  border-left: 1px solid var(--hair);
+}
+
+.vao-ctrl-lbl {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.vao-input {
+  width: 54px;
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding: 5px 6px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+}
+
+/* Ajuste por vão (painel do trecho) */
+.vao-ajuste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px dashed var(--hair);
+  padding-top: 8px;
+}
+
+.vao-ajuste-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.vao-ajuste-btns .btn-mini-sec {
+  flex: 1;
+}
+
 /* Popups do mapa */
 .pop {
   font-family: system-ui, -apple-system, sans-serif;

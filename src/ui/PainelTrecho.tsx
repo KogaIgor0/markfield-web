@@ -11,16 +11,37 @@ const CLASSES: { valor: Trecho["classe"]; rotulo: string }[] = [
   { valor: "ramal", rotulo: "Ramal" },
 ];
 
+interface VaoInfo {
+  /** Nº de sub-vãos do vão a que este trecho pertence. */
+  vaos: number;
+  /** Comprimento total do vão (entre as pontas reais), em metros. */
+  comprimentoM: number;
+  /** Comprimento de cada sub-vão, em metros. */
+  subVaoM: number;
+}
+
 interface Props {
   trecho: Trecho;
-  /** Comprimento do vão em metros (quando o trecho liga dois postes). */
+  /** Comprimento deste sub-trecho em metros (quando liga dois postes). */
   comprimentoM?: number | null;
+  /** Info do vão inteiro a que o trecho pertence (para o ajuste por vão). */
+  vaoInfo?: VaoInfo | null;
+  /** +1 adiciona um poste ao vão; -1 remove. */
+  onAjustarVao?: (delta: number) => void;
   onEditar: (patch: PatchTrecho) => void;
   onExcluir: () => void;
   onFechar: () => void;
 }
 
-export function PainelTrecho({ trecho, comprimentoM, onEditar, onExcluir, onFechar }: Props) {
+export function PainelTrecho({
+  trecho,
+  comprimentoM,
+  vaoInfo,
+  onAjustarVao,
+  onEditar,
+  onExcluir,
+  onFechar,
+}: Props) {
   const longo = comprimentoM != null && comprimentoM > VAO_MAXIMO_M;
   return (
     <aside className="painel">
@@ -63,6 +84,33 @@ export function PainelTrecho({ trecho, comprimentoM, onEditar, onExcluir, onFech
           {longo && (
             <div className="vao-alerta">
               Acima de {VAO_MAXIMO_M} m — divida os vãos (botão “Dividir vãos”).
+            </div>
+          )}
+          {vaoInfo && onAjustarVao && (
+            <div className="vao-ajuste">
+              <div className="rede-linha">
+                <span>Vão dividido em</span>
+                <strong>
+                  {vaoInfo.vaos}× ~{vaoInfo.subVaoM.toFixed(0)} m
+                </strong>
+              </div>
+              <div className="vao-ajuste-btns">
+                <button
+                  className="btn-mini-sec"
+                  onClick={() => onAjustarVao(-1)}
+                  disabled={vaoInfo.vaos <= 1}
+                  title="Um poste a menos neste vão (vãos mais longos)"
+                >
+                  − poste
+                </button>
+                <button
+                  className="btn-mini-sec"
+                  onClick={() => onAjustarVao(1)}
+                  title="Um poste a mais neste vão (vãos mais curtos — ex.: interferência no campo)"
+                >
+                  + poste
+                </button>
+              </div>
             </div>
           )}
         </div>

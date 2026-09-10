@@ -112,6 +112,13 @@ export interface Ponto {
    * ponto de partida da modelagem (B1) — a rota é traçada a partir dele.
    */
   ehFonte?: boolean;
+  /**
+   * Poste inserido **automaticamente** pela divisão de vãos (B2). É um poste
+   * comum (pode mover/editar/excluir), mas a marca permite ao sistema
+   * **redividir** — desfazer a divisão automática e refazer com outro alvo —
+   * sem apagar os postes de campo/manuais.
+   */
+  auto?: boolean;
 }
 
 /**
