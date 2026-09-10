@@ -20,6 +20,7 @@ import {
   type PatchTrecho,
 } from "./domain/edicao";
 import { modelarRede } from "./domain/rede";
+import { comprimentoTrechoM, dividirVaos, vaosLongos, VAO_MAXIMO_M } from "./domain/vaos";
 import type { LatLng, Projeto, TipoPonto } from "./domain/model";
 
 /**
@@ -63,6 +64,8 @@ export function App() {
   const [movendoId, setMovendoId] = useState<string | null>(null);
   // Ponto de campo com a coordenada temporariamente destravada (após confirmar).
   const [destravadoId, setDestravadoId] = useState<string | null>(null);
+  // Aviso neutro e passageiro (ex.: resultado da divisão de vãos).
+  const [mensagem, setMensagem] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
 
@@ -78,6 +81,11 @@ export function App() {
     return m;
   }, [rede]);
   const posteModelado = rede && selecionado ? rede.postes.get(selecionado.id) : undefined;
+
+  // Vãos acima do máximo (B2): quantos e comprimento do trecho selecionado.
+  const longos = useMemo(() => (projeto ? vaosLongos(projeto) : []), [projeto]);
+  const compTrecho =
+    projeto && selecionadoTrecho ? comprimentoTrechoM(projeto, selecionadoTrecho) : null;
 
   // Seleção de ponto e de trecho são mutuamente exclusivas. Trocar de seleção
   // sempre RETRAVA: sai do modo mover e re-tranca coordenada de campo.
@@ -130,6 +138,7 @@ export function App() {
       setLigarDeId(null);
       setMovendoId(null);
       setDestravadoId(null);
+      setMensagem(null);
       setModo("selecionar");
       setChaveEnq((c) => c + 1);
       setSalvo(true);
@@ -161,6 +170,19 @@ export function App() {
       setErro(e instanceof Error ? e.message : "Falha ao exportar o DXF.");
     }
   }, [projeto]);
+
+  const dividir = useCallback(() => {
+    if (!projeto) return;
+    const { projeto: novo, postesAdicionados, trechosDivididos } = dividirVaos(projeto);
+    if (postesAdicionados === 0) {
+      setMensagem(`Nenhum vão acima de ${VAO_MAXIMO_M} m — nada a dividir.`);
+      return;
+    }
+    atualizar(novo);
+    setMensagem(
+      `${postesAdicionados} poste(s) adicionado(s) em ${trechosDivididos} vão(s) — agora nenhum passa de ${VAO_MAXIMO_M} m.`,
+    );
+  }, [projeto, atualizar]);
 
   const aoSoltar = useCallback(
     (e: React.DragEvent) => {
@@ -263,6 +285,20 @@ export function App() {
               }}
             >
               Ligar postes
+            </button>
+          )}
+          {projeto && (
+            <button
+              className="btn"
+              onClick={dividir}
+              disabled={longos.length === 0}
+              title={
+                longos.length
+                  ? `Insere postes intermediários para nenhum vão passar de ${VAO_MAXIMO_M} m (${longos.length} vão(s) longo(s))`
+                  : `Todos os vãos já estão dentro de ${VAO_MAXIMO_M} m`
+              }
+            >
+              Dividir vãos{longos.length ? ` (${longos.length})` : ""}
             </button>
           )}
           {projeto && (
@@ -433,6 +469,7 @@ export function App() {
           <PainelTrecho
             key={selecionadoTrecho.id}
             trecho={selecionadoTrecho}
+            comprimentoM={compTrecho}
             onEditar={(patch: PatchTrecho) =>
               atualizar(editarTrecho(projeto, selecionadoTrecho.id, patch))
             }
@@ -479,6 +516,11 @@ export function App() {
                 para traçar a rota.
               </div>
             )}
+            {longos.length > 0 && (
+              <div className="rede-hud-aviso">
+                {longos.length} vão(s) acima de {VAO_MAXIMO_M} m — use “Dividir vãos”.
+              </div>
+            )}
             {rede.avisos.map((a, i) => (
               <div key={i} className="rede-hud-aviso">{a}</div>
             ))}
@@ -489,6 +531,13 @@ export function App() {
           <div className="erro" role="alert">
             {erro}
             <button className="erro-x" onClick={() => setErro(null)} aria-label="Fechar">×</button>
+          </div>
+        )}
+
+        {mensagem && !erro && (
+          <div className="aviso-ok" role="status">
+            {mensagem}
+            <button className="erro-x" onClick={() => setMensagem(null)} aria-label="Fechar">×</button>
           </div>
         )}
       </main>
