@@ -125,6 +125,18 @@ export interface Ponto {
    * pode subir (ex.: 600) para conferir se o estai deixa de ser necessário.
    */
   capacidadeDaN?: number;
+  /**
+   * Estrutura definida **manualmente** pelo projetista (B3), sobrepondo a
+   * sugestão automática da norma. Ex.: forçar CE4 (ancoragem) numa travessia de
+   * estrada, ou CE3-CE3 num ângulo > 90°. Vazio/ausente = automático (norma).
+   */
+  estruturaManual?: string;
+  /**
+   * O projetista **instalou o estai** neste poste (B4). Quando o esforço passa
+   * da capacidade, o sistema pede estai; marcar isto registra que o estai foi
+   * previsto e **tira a pendência** de projeto.
+   */
+  estaiInstalado?: boolean;
 }
 
 /**

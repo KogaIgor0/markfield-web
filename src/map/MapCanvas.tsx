@@ -66,6 +66,7 @@ const LYR = {
   preview: "mkf-preview",
   sel: "mkf-sel",
   estai: "mkf-estai",
+  estaiOk: "mkf-estai-ok",
   fotos: "mkf-fotos",
   pontos: "mkf-pontos",
   medicaoLinha: "mkf-medicao-linha",
@@ -101,8 +102,10 @@ interface MapCanvasProps {
   movendoId?: string | null;
   /** id do poste → rótulo de estrutura (B3). Aparece sobre o poste no modo Rede. */
   rotulosEstrutura?: Map<string, string>;
-  /** ids dos postes que precisam de estai (B4). Ganham anel vermelho no modo Rede. */
+  /** ids dos postes com estai PENDENTE (B4). Anel vermelho no modo Rede. */
   estaiIds?: Set<string>;
+  /** ids dos postes com estai já instalado (B4). Anel verde no modo Rede. */
+  estaiInstaladoIds?: Set<string>;
   /** Pontos da régua de medição (modo "medir"). */
   medicao?: LatLng[];
   onMedirPonto?: (wgs84: LatLng) => void;
@@ -160,6 +163,7 @@ export function MapCanvas(props: MapCanvasProps) {
     modoRede,
     rotulosEstrutura,
     estaiIds,
+    estaiInstaladoIds,
     medicao,
     mostrarFotos,
   } = props;
@@ -336,7 +340,12 @@ export function MapCanvas(props: MapCanvasProps) {
     const map = mapRef.current;
     if (!map || !projeto) return;
     const desenhar = () => {
-      const fc = pontosGeoJson(projeto, propsRef.current.papeis, propsRef.current.estaiIds);
+      const fc = pontosGeoJson(
+        projeto,
+        propsRef.current.papeis,
+        propsRef.current.estaiIds,
+        propsRef.current.estaiInstaladoIds,
+      );
       fcRef.current = fc;
       const cor = propsRef.current.modoRede ? COR_PAPEL : COR_TIPO;
       desenharProjeto(map, projeto, fc, cor, Boolean(propsRef.current.modoRede));
@@ -388,18 +397,18 @@ export function MapCanvas(props: MapCanvasProps) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !projeto || !map.getSource(SRC.pontos)) return;
-    const fc = pontosGeoJson(projeto, papeis, estaiIds);
+    const fc = pontosGeoJson(projeto, papeis, estaiIds, estaiInstaladoIds);
     fcRef.current = fc;
     (map.getSource(SRC.pontos) as maplibregl.GeoJSONSource).setData(fc);
-  }, [papeis, estaiIds, projeto]);
+  }, [papeis, estaiIds, estaiInstaladoIds, projeto]);
 
   // Alterna a cor dos postes (papel x tipo) e o anel de estai só no modo Rede.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.getLayer(LYR.pontos)) return;
     map.setPaintProperty(LYR.pontos, "circle-color", modoRede ? COR_PAPEL : COR_TIPO);
-    if (map.getLayer(LYR.estai)) {
-      map.setLayoutProperty(LYR.estai, "visibility", modoRede ? "visible" : "none");
+    for (const l of [LYR.estai, LYR.estaiOk]) {
+      if (map.getLayer(l)) map.setLayoutProperty(l, "visibility", modoRede ? "visible" : "none");
     }
   }, [modoRede]);
 
@@ -550,7 +559,20 @@ function desenharProjeto(
     },
   });
 
-  // Anel de estai (B4): destaca postes cujo esforço passa da capacidade.
+  // Anel de estai INSTALADO (verde) e PENDENTE (vermelho) (B4).
+  map.addLayer({
+    id: LYR.estaiOk,
+    type: "circle",
+    source: SRC.pontos,
+    filter: ["==", ["get", "estaiOk"], true],
+    layout: { visibility: modoRede ? "visible" : "none" },
+    paint: {
+      "circle-radius": 12,
+      "circle-color": "rgba(0,0,0,0)",
+      "circle-stroke-width": 3,
+      "circle-stroke-color": "#16a34a",
+    },
+  });
   map.addLayer({
     id: LYR.estai,
     type: "circle",

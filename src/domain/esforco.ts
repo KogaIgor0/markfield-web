@@ -48,8 +48,12 @@ export interface EsforcoPoste {
   esforcoDaN: number;
   /** Capacidade nominal considerada (daN). */
   capacidadeDaN: number;
-  /** R > capacidade → precisa de estai. */
+  /** R > capacidade → o poste precisa de estai. */
   precisaEstai: boolean;
+  /** O projetista registrou o estai instalado. */
+  estaiInstalado: boolean;
+  /** Precisa de estai E ainda não foi instalado → pendência de projeto. */
+  pendente: boolean;
   /** Quantas lanças (vãos) chegam ao poste. */
   vaos: number;
   /** Resultado é aproximado (tração H provisória — ver topo do arquivo). */
@@ -66,8 +70,12 @@ export interface RedeEsforcos {
   condicao: CondicaoVento;
   tracaoDaN: number;
   postes: Map<string, EsforcoPoste>;
-  /** Quantos postes precisam de estai. */
+  /** Postes que precisam de estai (total). */
   totalEstais: number;
+  /** Precisam e ainda NÃO têm estai instalado (pendências). */
+  pendentes: number;
+  /** Já têm estai instalado. */
+  instalados: number;
 }
 
 /** Vetores unitários (em UTM) do poste `id` até cada vizinho na topologia. */
@@ -112,6 +120,8 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
 
   const postes = new Map<string, EsforcoPoste>();
   let totalEstais = 0;
+  let pendentes = 0;
+  let instalados = 0;
   for (const p of projeto.pontos) {
     const us = unitariosAosVizinhos(p.id, porId, adj);
     let sx = 0;
@@ -123,15 +133,23 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
     const esforcoDaN = H * Math.hypot(sx, sy);
     const capacidadeDaN = p.capacidadeDaN ?? capacidadePadrao;
     const precisaEstai = us.length > 0 && esforcoDaN > capacidadeDaN + 1e-6;
-    if (precisaEstai) totalEstais++;
+    const estaiInstalado = Boolean(p.estaiInstalado);
+    const pendente = precisaEstai && !estaiInstalado;
+    if (precisaEstai) {
+      totalEstais++;
+      if (estaiInstalado) instalados++;
+      else pendentes++;
+    }
     postes.set(p.id, {
       esforcoDaN,
       capacidadeDaN,
       precisaEstai,
+      estaiInstalado,
+      pendente,
       vaos: us.length,
       aproximado: true,
     });
   }
 
-  return { condicao, tracaoDaN: H, postes, totalEstais };
+  return { condicao, tracaoDaN: H, postes, totalEstais, pendentes, instalados };
 }

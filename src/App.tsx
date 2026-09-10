@@ -28,6 +28,7 @@ import {
   type CondicaoVento,
   type EsforcoPoste,
 } from "./domain/esforco";
+import { validarAmarracao, LANCE_MAX_AMARRACAO_M } from "./domain/amarracao";
 import {
   ajustarVao,
   comprimentoTrechoM,
@@ -140,11 +141,22 @@ export function App() {
   );
   const estaiIds = useMemo(() => {
     const s = new Set<string>();
-    if (esforcos) for (const [id, e] of esforcos.postes) if (e.precisaEstai) s.add(id);
+    if (esforcos) for (const [id, e] of esforcos.postes) if (e.pendente) s.add(id);
+    return s;
+  }, [esforcos]);
+  const estaiInstaladoIds = useMemo(() => {
+    const s = new Set<string>();
+    if (esforcos) for (const [id, e] of esforcos.postes) if (e.precisaEstai && e.estaiInstalado) s.add(id);
     return s;
   }, [esforcos]);
   const esforcoSel: EsforcoPoste | undefined =
     esforcos && selecionado ? esforcos.postes.get(selecionado.id) : undefined;
+
+  // Validação de amarração (CE4 a cada 500 m).
+  const lancesLongos = useMemo(
+    () => (projeto && rede ? validarAmarracao(projeto, estruturas, rede) : []),
+    [projeto, estruturas, rede],
+  );
 
   // Comprimento total da régua de medição (m, em UTM).
   const medicaoTotalM = useMemo(() => {
@@ -505,6 +517,7 @@ export function App() {
           movendoId={movendoId}
           rotulosEstrutura={rotulosEstrutura}
           estaiIds={estaiIds}
+          estaiInstaladoIds={estaiInstaladoIds}
           medicao={medicao}
           onMedirPonto={onMedirPonto}
           mostrarFotos={mostrarFotos && !modoRede}
@@ -701,10 +714,18 @@ export function App() {
                 </label>
                 <span className="hud-estai">
                   <i className="pin" style={{ background: "transparent", boxShadow: "inset 0 0 0 2px #e11d48" }} />{" "}
-                  Estai: <strong>{esforcos.totalEstais}</strong> · tração {esforcos.tracaoDaN} daN
+                  Estai pendente: <strong>{esforcos.pendentes}</strong>
+                  {esforcos.instalados > 0 && ` · instalado ${esforcos.instalados}`} · tração{" "}
+                  {esforcos.tracaoDaN} daN
                 </span>
               </div>
             )}
+            {lancesLongos.map((l, i) => (
+              <div key={`amarra-${i}`} className="rede-hud-aviso">
+                Lance de {l.comprimentoM.toFixed(0)} m sem amarração — norma pede CE4 a cada{" "}
+                {LANCE_MAX_AMARRACAO_M} m (force CE4 num poste do trecho).
+              </div>
+            ))}
             {rede.avisos.map((a, i) => (
               <div key={i} className="rede-hud-aviso">{a}</div>
             ))}

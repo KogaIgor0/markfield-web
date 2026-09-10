@@ -74,6 +74,35 @@ describe("classificarEstrutura — casos a revisar", () => {
   });
 });
 
+describe("override manual de estrutura", () => {
+  it("respeita a estrutura escolhida na mão e mostra o que a norma sugere", () => {
+    // ângulo 75° → norma sugere CE4; projetista força CE3-CE3
+    const e = classificarEstrutura(
+      pm({ papel: "angulo", deflexaoGraus: 75 }),
+      pt({ estruturaManual: "CE3-CE3" }),
+    );
+    expect(e.codigo).toBe("CE3-CE3");
+    expect(e.confianca).toBe("manual");
+    expect(e.motivo).toMatch(/CE4/);
+  });
+
+  it("sem motivo quando o manual coincide com a norma", () => {
+    const e = classificarEstrutura(
+      pm({ papel: "tangente", deflexaoGraus: 2 }),
+      pt({ estruturaManual: "CE1" }),
+    );
+    expect(e.codigo).toBe("CE1");
+    expect(e.confianca).toBe("manual");
+    expect(e.motivo).toBeUndefined();
+  });
+
+  it("estruturaManual vazia volta ao automático", () => {
+    const e = classificarEstrutura(pm({ papel: "angulo", deflexaoGraus: 30 }), pt({ estruturaManual: "  " }));
+    expect(e.codigo).toBe("CE2");
+    expect(e.confianca).toBe("ok");
+  });
+});
+
 describe("rotuloEstrutura", () => {
   it("ok mostra só o código; revisar adiciona ?", () => {
     expect(rotuloEstrutura({ codigo: "CE2", descricao: "", confianca: "ok" })).toBe("CE2");

@@ -695,6 +695,42 @@ body {
   font-weight: 600;
 }
 
+.estai-linha.resolvido {
+  color: #0f7a37;
+  font-weight: 600;
+}
+
+.btn-estai {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #b4231a;
+  background: #fff;
+  border: 1px solid #e8c0bc;
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.btn-estai:hover {
+  background: #fbecea;
+}
+
+.estr-override {
+  border-top: 1px dashed var(--hair);
+  padding-top: 8px;
+}
+
+.estr-override select,
+.estr-override input {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 6px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  width: 100%;
+}
+
 .rede-hud-esforco {
   display: flex;
   flex-direction: column;

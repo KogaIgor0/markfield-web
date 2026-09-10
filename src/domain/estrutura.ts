@@ -24,18 +24,24 @@ import { LIMITE_TANGENTE_GRAUS } from "./rede";
  * -PU poste existente, -SAH afastador, -SUH seccionador.
  */
 
-export type Confianca = "ok" | "revisar";
+export type Confianca = "ok" | "revisar" | "manual";
 
 export interface EstruturaAtribuida {
   /** Código da estrutura (ex.: "CE2", "CE3TR"). Vazio quando não se aplica. */
   codigo: string;
   /** Rótulo legível. */
   descricao: string;
-  /** `ok` = regra confirmada; `revisar` = a norma não fecha só pelo ângulo. */
+  /** `ok` = regra confirmada; `revisar` = a norma não fecha só pelo ângulo; `manual` = definida pelo projetista. */
   confianca: Confianca;
-  /** Por que revisar / observação. */
+  /** Por que revisar / observação (ou o que a norma sugere, no caso manual). */
   motivo?: string;
 }
+
+/**
+ * Códigos que o projetista pode escolher na mão (override). A lista cobre os
+ * principais da rede compacta; o campo "Outro" aceita qualquer código da norma.
+ */
+export const CODIGOS_ESTRUTURA = ["CE1", "CE1A", "CE2", "CE3", "CE3-CE3", "CE4", "CE3TR"] as const;
 
 /** Limite superior (°) do CE2; acima disso (até 90°) é CE4. */
 export const ANGULO_CE2_MAX = 60;
@@ -63,10 +69,26 @@ function porAngulo(d: number | undefined): EstruturaAtribuida {
 }
 
 /**
- * Classifica a estrutura de um poste a partir do modelo de rede e do ponto.
- * Determinístico; não decide estai/tração (isso é o B4).
+ * Classifica a estrutura de um poste. Se o projetista definiu uma estrutura
+ * **manual** (`estruturaManual`), ela manda — mesmo contra a norma — e mostramos
+ * o que a norma sugeriria. Senão, usa a regra automática.
  */
 export function classificarEstrutura(pm: PosteModelado, ponto: Ponto): EstruturaAtribuida {
+  const manual = ponto.estruturaManual?.trim();
+  if (manual) {
+    const auto = estruturaAutomatica(pm, ponto);
+    return {
+      codigo: manual,
+      descricao: "Definida pelo projetista",
+      confianca: "manual",
+      motivo: auto.codigo && auto.codigo !== manual ? `norma sugere ${auto.codigo}` : undefined,
+    };
+  }
+  return estruturaAutomatica(pm, ponto);
+}
+
+/** Regra automática da norma (sem override). */
+function estruturaAutomatica(pm: PosteModelado, ponto: Ponto): EstruturaAtribuida {
   const trafo = ponto.tipo === "transformador";
 
   // Transformador: no fim da rede é CE3TR (confirmado); no meio, a confirmar.

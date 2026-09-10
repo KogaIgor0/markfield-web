@@ -94,6 +94,23 @@ describe("modelarEsforcos — estai", () => {
     expect(urbana.totalEstais).toBe(2); // A e B são as duas pontas (fim de rede)
   });
 
+  it("marcar estai instalado tira a pendência (mas ainda 'precisa' fisicamente)", () => {
+    const proj = projeto(
+      [P("A", 0, 0), P("B", 100, 0, { estaiInstalado: true })],
+      [tr("t", "A", "B")],
+    );
+    const r = modelarEsforcos(proj);
+    const b = r.postes.get("B")!;
+    expect(b.precisaEstai).toBe(true); // R ainda > capacidade
+    expect(b.estaiInstalado).toBe(true);
+    expect(b.pendente).toBe(false); // resolvido — não é mais erro de projeto
+    // A (fim, sem estai) segue pendente
+    expect(r.postes.get("A")!.pendente).toBe(true);
+    expect(r.pendentes).toBe(1);
+    expect(r.instalados).toBe(1);
+    expect(r.totalEstais).toBe(2);
+  });
+
   it("poste solto (grau 0) não tem esforço nem estai", () => {
     const proj = projeto([P("A", 0, 0), P("B", 100, 0)], []); // sem trecho
     const r = modelarEsforcos(proj);

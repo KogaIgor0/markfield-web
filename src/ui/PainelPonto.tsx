@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { LatLng, Ponto, TipoPonto } from "../domain/model";
 import type { PatchPonto } from "../domain/edicao";
 import { rotuloPapel, type Papel } from "../domain/rede";
-import type { EstruturaAtribuida } from "../domain/estrutura";
+import { CODIGOS_ESTRUTURA, type EstruturaAtribuida } from "../domain/estrutura";
 import type { EsforcoPoste } from "../domain/esforco";
 import { deUtm, formatarUtm, paraUtm } from "../geo/utm";
 
@@ -72,6 +72,7 @@ export function PainelPonto({
   // não dá pra digitar coordenada nem entrar no modo mover.
   const bloqueado = Boolean(travado && !destravado);
   const [confirmando, setConfirmando] = useState(false);
+  const [outroCE, setOutroCE] = useState(false);
   // Buffers locais para os campos de coordenada (comitam no blur).
   const [lat, setLat] = useState(String(ponto.wgs84.lat));
   const [lng, setLng] = useState(String(ponto.wgs84.lng));
@@ -253,7 +254,61 @@ export function PainelPonto({
         {estrutura && (
           <div className="estr-desc">
             {estrutura.descricao}
-            {estrutura.confianca === "revisar" && estrutura.motivo ? ` — ${estrutura.motivo}` : ""}
+            {estrutura.motivo ? ` — ${estrutura.motivo}` : ""}
+          </div>
+        )}
+        {papel && (
+          <div className="estr-override">
+            {(() => {
+              const manual = ponto.estruturaManual?.trim();
+              const conhecido = manual ? (CODIGOS_ESTRUTURA as readonly string[]).includes(manual) : false;
+              const mostrarOutro = outroCE || Boolean(manual && !conhecido);
+              const valorSel = mostrarOutro ? "__outro__" : conhecido ? manual! : "";
+              return (
+                <div className="coord-linha">
+                  <label className="campo campo-mini">
+                    <span>Estrutura (manual)</span>
+                    <select
+                      value={valorSel}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "__outro__") {
+                          setOutroCE(true);
+                        } else if (v === "") {
+                          setOutroCE(false);
+                          onEditar({ estruturaManual: undefined });
+                        } else {
+                          setOutroCE(false);
+                          onEditar({ estruturaManual: v });
+                        }
+                      }}
+                    >
+                      <option value="">Automático (norma)</option>
+                      {CODIGOS_ESTRUTURA.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                      <option value="__outro__">Outro…</option>
+                    </select>
+                  </label>
+                  {mostrarOutro && (
+                    <label className="campo campo-mini">
+                      <span>Código</span>
+                      <input
+                        type="text"
+                        defaultValue={manual ?? ""}
+                        placeholder="ex.: CE4-TR"
+                        onBlur={(e) =>
+                          onEditar({ estruturaManual: e.target.value.trim() || undefined })
+                        }
+                        onKeyDown={enterBlur}
+                      />
+                    </label>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
         {esforco && esforco.vaos > 0 && (
@@ -281,11 +336,27 @@ export function PainelPonto({
                 <span>daN</span>
               </span>
             </div>
-            <div className={`estai-linha${esforco.precisaEstai ? " ativo" : ""}`}>
-              {esforco.precisaEstai
-                ? `⚡ Precisa de estai (${esforco.esforcoDaN.toFixed(0)} > ${esforco.capacidadeDaN} daN)`
-                : "Sem estai — esforço dentro da capacidade"}
-            </div>
+            {!esforco.precisaEstai && (
+              <div className="estai-linha">Sem estai — esforço dentro da capacidade.</div>
+            )}
+            {esforco.pendente && (
+              <>
+                <div className="estai-linha ativo">
+                  ⚡ Precisa de estai ({esforco.esforcoDaN.toFixed(0)} &gt; {esforco.capacidadeDaN} daN)
+                </div>
+                <button className="btn-estai" onClick={() => onEditar({ estaiInstalado: true })}>
+                  Marcar estai instalado
+                </button>
+              </>
+            )}
+            {esforco.precisaEstai && esforco.estaiInstalado && (
+              <>
+                <div className="estai-linha resolvido">✓ Estai instalado — pendência resolvida.</div>
+                <button className="btn-mini-sec" onClick={() => onEditar({ estaiInstalado: false })}>
+                  Remover estai
+                </button>
+              </>
+            )}
             <div className="estr-desc">Tração de projeto provisória (DIS-NOR-013) — a confirmar.</div>
           </>
         )}
