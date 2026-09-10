@@ -4,7 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { FeatureCollection, Point } from "geojson";
 import type { LatLng, Projeto, TipoPonto } from "../domain/model";
 import { fotosGeoJson, linhasGeoJson, pontosGeoJson } from "./geojson";
-import { BASE_MAPA, MAPTILER_KEY } from "../config";
+import { BASE_MAPA, ESRI_MAXZOOM, MAPTILER_KEY } from "../config";
 
 /**
  * Mapa base + render + EDIÇÃO do projeto (Fase 2).
@@ -29,7 +29,9 @@ const FONTE_ESRI: maplibregl.RasterSourceSpecification = {
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   ],
   tileSize: 256,
-  maxzoom: 18,
+  // Capa no zoom com cobertura real (config): acima disso o MapLibre amplia o
+  // último tile bom em vez de pedir o tile cinza "Map data not yet available".
+  maxzoom: ESRI_MAXZOOM,
   attribution: "Tiles © Esri — World Imagery",
 };
 
