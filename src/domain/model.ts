@@ -119,6 +119,12 @@ export interface Ponto {
    * sem apagar os postes de campo/manuais.
    */
   auto?: boolean;
+  /**
+   * Capacidade nominal (resistência) do poste em daN (B4). Padrão do sistema
+   * = 400 (concreto circular, A35P rural — DIS-NOR-013 Quadro 8). O projetista
+   * pode subir (ex.: 600) para conferir se o estai deixa de ser necessário.
+   */
+  capacidadeDaN?: number;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { FeatureCollection, Point } from "geojson";
+import type { Feature, FeatureCollection, Point } from "geojson";
 import type { LatLng, Projeto, TipoPonto } from "../domain/model";
 import { fotosGeoJson, linhasGeoJson, pontosGeoJson } from "./geojson";
 import { BASE_MAPA, ESRI_MAXZOOM, MAPTILER_KEY } from "../config";
@@ -58,14 +58,18 @@ const SRC = {
   fotos: "mkf-fotos",
   linhas: "mkf-linhas",
   preview: "mkf-preview",
+  medicao: "mkf-medicao",
 } as const;
 const LYR = {
   linhas: "mkf-linhas",
   selLinha: "mkf-sel-linha",
   preview: "mkf-preview",
   sel: "mkf-sel",
+  estai: "mkf-estai",
   fotos: "mkf-fotos",
   pontos: "mkf-pontos",
+  medicaoLinha: "mkf-medicao-linha",
+  medicaoPts: "mkf-medicao-pts",
 } as const;
 
 function esc(s: unknown): string {
@@ -75,7 +79,7 @@ function esc(s: unknown): string {
   );
 }
 
-export type Modo = "selecionar" | "ligar" | { adicionar: TipoPonto };
+export type Modo = "selecionar" | "ligar" | "medir" | { adicionar: TipoPonto };
 
 interface MapCanvasProps {
   projeto?: Projeto | null;
@@ -97,6 +101,13 @@ interface MapCanvasProps {
   movendoId?: string | null;
   /** id do poste → rótulo de estrutura (B3). Aparece sobre o poste no modo Rede. */
   rotulosEstrutura?: Map<string, string>;
+  /** ids dos postes que precisam de estai (B4). Ganham anel vermelho no modo Rede. */
+  estaiIds?: Set<string>;
+  /** Pontos da régua de medição (modo "medir"). */
+  medicao?: LatLng[];
+  onMedirPonto?: (wgs84: LatLng) => void;
+  /** Mostra as fotos no mapa (podem poluir a análise). */
+  mostrarFotos?: boolean;
   /** Muda quando um NOVO projeto é aberto — dispara o auto-enquadramento. */
   chaveEnquadramento?: number;
   onSelecionar?: (id: string | null) => void;
@@ -148,6 +159,9 @@ export function MapCanvas(props: MapCanvasProps) {
     papeis,
     modoRede,
     rotulosEstrutura,
+    estaiIds,
+    medicao,
+    mostrarFotos,
   } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -292,6 +306,10 @@ export function MapCanvas(props: MapCanvasProps) {
     // Clique geral: adicionar (modo adicionar) ou desmarcar (clique no vazio).
     map.on("click", (e) => {
       const m = propsRef.current.modo;
+      if (m === "medir") {
+        propsRef.current.onMedirPonto?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+        return;
+      }
       if (typeof m === "object") {
         propsRef.current.onAdicionarPonto?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });
         return;
@@ -318,12 +336,19 @@ export function MapCanvas(props: MapCanvasProps) {
     const map = mapRef.current;
     if (!map || !projeto) return;
     const desenhar = () => {
-      const fc = pontosGeoJson(projeto, propsRef.current.papeis);
+      const fc = pontosGeoJson(projeto, propsRef.current.papeis, propsRef.current.estaiIds);
       fcRef.current = fc;
       const cor = propsRef.current.modoRede ? COR_PAPEL : COR_TIPO;
-      desenharProjeto(map, projeto, fc, cor);
+      desenharProjeto(map, projeto, fc, cor, Boolean(propsRef.current.modoRede));
       aplicarSelecao(map, propsRef.current.selecionadoId ?? null);
       aplicarSelecaoTrecho(map, propsRef.current.selecionadoTrechoId ?? null);
+      if (map.getLayer(LYR.fotos)) {
+        map.setLayoutProperty(
+          LYR.fotos,
+          "visibility",
+          propsRef.current.mostrarFotos === false ? "none" : "visible",
+        );
+      }
     };
     if (prontoRef.current) desenhar();
     else map.once("load", desenhar);
@@ -359,20 +384,23 @@ export function MapCanvas(props: MapCanvasProps) {
     aplicarSelecaoTrecho(map, selecionadoTrechoId ?? null);
   }, [selecionadoTrechoId]);
 
-  // Papéis mudaram (B1) → atualiza os dados dos postes.
+  // Papéis / estai mudaram → atualiza os dados dos postes.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !projeto || !map.getSource(SRC.pontos)) return;
-    const fc = pontosGeoJson(projeto, papeis);
+    const fc = pontosGeoJson(projeto, papeis, estaiIds);
     fcRef.current = fc;
     (map.getSource(SRC.pontos) as maplibregl.GeoJSONSource).setData(fc);
-  }, [papeis, projeto]);
+  }, [papeis, estaiIds, projeto]);
 
-  // Alterna a cor dos postes: por papel (rede) x por tipo.
+  // Alterna a cor dos postes (papel x tipo) e o anel de estai só no modo Rede.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.getLayer(LYR.pontos)) return;
     map.setPaintProperty(LYR.pontos, "circle-color", modoRede ? COR_PAPEL : COR_TIPO);
+    if (map.getLayer(LYR.estai)) {
+      map.setLayoutProperty(LYR.estai, "visibility", modoRede ? "visible" : "none");
+    }
   }, [modoRede]);
 
   // Rótulos de estrutura (B3) como marcadores HTML sobre os postes — só no modo
@@ -400,12 +428,41 @@ export function MapCanvas(props: MapCanvasProps) {
     };
   }, [projeto, rotulosEstrutura, modoRede]);
 
-  // Cursor conforme o modo (adicionar/ligar = cruz).
+  // Cursor conforme o modo (adicionar/ligar/medir = cruz).
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.getCanvas().style.cursor = typeof modo === "object" || modo === "ligar" ? "crosshair" : "";
+    map.getCanvas().style.cursor =
+      typeof modo === "object" || modo === "ligar" || modo === "medir" ? "crosshair" : "";
   }, [modo]);
+
+  // Mostra/esconde as fotos.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.getLayer(LYR.fotos)) return;
+    map.setLayoutProperty(LYR.fotos, "visibility", mostrarFotos === false ? "none" : "visible");
+  }, [mostrarFotos]);
+
+  // Régua de medição: atualiza a linha + os pontos.
+  useEffect(() => {
+    const map = mapRef.current;
+    const src = map?.getSource(SRC.medicao) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    const pts = medicao ?? [];
+    const feats: Feature[] = pts.map((c, i) => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [c.lng, c.lat] },
+      properties: { i },
+    }));
+    if (pts.length >= 2) {
+      feats.push({
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: pts.map((c) => [c.lng, c.lat]) },
+        properties: {},
+      });
+    }
+    src.setData({ type: "FeatureCollection", features: feats });
+  }, [medicao]);
 
   return <div ref={containerRef} className="map-canvas" />;
 }
@@ -430,6 +487,7 @@ function desenharProjeto(
   projeto: Projeto,
   pontosFc: FeatureCollection<Point>,
   corPonto: maplibregl.ExpressionSpecification,
+  modoRede: boolean,
 ) {
   limpar(map);
 
@@ -437,6 +495,7 @@ function desenharProjeto(
   map.addSource(SRC.fotos, { type: "geojson", data: fotosGeoJson(projeto) });
   map.addSource(SRC.pontos, { type: "geojson", data: pontosFc });
   map.addSource(SRC.preview, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addSource(SRC.medicao, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
   // Destaque do trecho selecionado (linha grossa por baixo).
   map.addLayer({
@@ -491,6 +550,21 @@ function desenharProjeto(
     },
   });
 
+  // Anel de estai (B4): destaca postes cujo esforço passa da capacidade.
+  map.addLayer({
+    id: LYR.estai,
+    type: "circle",
+    source: SRC.pontos,
+    filter: ["==", ["get", "estai"], true],
+    layout: { visibility: modoRede ? "visible" : "none" },
+    paint: {
+      "circle-radius": 12,
+      "circle-color": "rgba(0,0,0,0)",
+      "circle-stroke-width": 3,
+      "circle-stroke-color": "#e11d48",
+    },
+  });
+
   map.addLayer({
     id: LYR.fotos,
     type: "circle",
@@ -511,6 +585,27 @@ function desenharProjeto(
     paint: {
       "circle-radius": ["match", ["get", "tipo"], "transformador", 8, 7],
       "circle-color": corPonto,
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#ffffff",
+    },
+  });
+
+  // Régua de medição (por cima de tudo).
+  map.addLayer({
+    id: LYR.medicaoLinha,
+    type: "line",
+    source: SRC.medicao,
+    filter: ["==", ["geometry-type"], "LineString"],
+    paint: { "line-color": "#0ea5e9", "line-width": 2, "line-dasharray": [2, 1.5] },
+  });
+  map.addLayer({
+    id: LYR.medicaoPts,
+    type: "circle",
+    source: SRC.medicao,
+    filter: ["==", ["geometry-type"], "Point"],
+    paint: {
+      "circle-radius": 4,
+      "circle-color": "#0ea5e9",
       "circle-stroke-width": 2,
       "circle-stroke-color": "#ffffff",
     },

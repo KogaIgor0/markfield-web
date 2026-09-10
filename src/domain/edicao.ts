@@ -31,7 +31,7 @@ export function moverPonto(projeto: Projeto, id: string, wgs84: LatLng): Projeto
 }
 
 /** Campos editáveis de um ponto pela UI. */
-export type PatchPonto = Partial<Pick<Ponto, "numero" | "tipo" | "observacao">>;
+export type PatchPonto = Partial<Pick<Ponto, "numero" | "tipo" | "observacao" | "capacidadeDaN">>;
 
 /** Edita atributos de um ponto (tipo, número, observação). */
 export function editarPonto(projeto: Projeto, id: string, patch: PatchPonto): Projeto {

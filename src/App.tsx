@@ -22,8 +22,16 @@ import {
 import { modelarRede } from "./domain/rede";
 import { classificarEstrutura, rotuloEstrutura, type EstruturaAtribuida } from "./domain/estrutura";
 import {
+  modelarEsforcos,
+  ROTULO_CONDICAO,
+  CONDICAO_PADRAO,
+  type CondicaoVento,
+  type EsforcoPoste,
+} from "./domain/esforco";
+import {
   ajustarVao,
   comprimentoTrechoM,
+  distanciaM,
   dividirVaos,
   infoVao,
   redividirVao,
@@ -75,6 +83,11 @@ export function App() {
   const [destravadoId, setDestravadoId] = useState<string | null>(null);
   // Aviso neutro e passageiro (ex.: resultado da divisão de vãos).
   const [mensagem, setMensagem] = useState<string | null>(null);
+  // Condição de vento (B4): define a tração de projeto usada no esforço.
+  const [condicaoVento, setCondicaoVento] = useState<CondicaoVento>(CONDICAO_PADRAO);
+  // Régua de medição e visibilidade das fotos.
+  const [medicao, setMedicao] = useState<LatLng[]>([]);
+  const [mostrarFotos, setMostrarFotos] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
 
@@ -119,6 +132,27 @@ export function App() {
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [estruturas]);
   const estruturaSel = selecionado ? estruturas.get(selecionado.id) : undefined;
+
+  // Esforço + estai (B4): resultante por poste e onde entra estai.
+  const esforcos = useMemo(
+    () => (projeto ? modelarEsforcos(projeto, { condicao: condicaoVento }) : null),
+    [projeto, condicaoVento],
+  );
+  const estaiIds = useMemo(() => {
+    const s = new Set<string>();
+    if (esforcos) for (const [id, e] of esforcos.postes) if (e.precisaEstai) s.add(id);
+    return s;
+  }, [esforcos]);
+  const esforcoSel: EsforcoPoste | undefined =
+    esforcos && selecionado ? esforcos.postes.get(selecionado.id) : undefined;
+
+  // Comprimento total da régua de medição (m, em UTM).
+  const medicaoTotalM = useMemo(() => {
+    let s = 0;
+    for (let i = 1; i < medicao.length; i++) s += distanciaM(medicao[i - 1], medicao[i]);
+    return s;
+  }, [medicao]);
+  const emMedir = modo === "medir";
 
   // Vãos crus acima do máximo (B2): a primeira divisão econômica (100 m).
   const longos = useMemo(() => (projeto ? vaosLongos(projeto) : []), [projeto]);
@@ -179,6 +213,7 @@ export function App() {
       setMovendoId(null);
       setDestravadoId(null);
       setMensagem(null);
+      setMedicao([]);
       setModo("selecionar");
       setChaveEnq((c) => c + 1);
       setSalvo(true);
@@ -249,6 +284,8 @@ export function App() {
     [projeto, selecionadoTrechoId, atualizar],
   );
 
+  const onMedirPonto = useCallback((wgs84: LatLng) => setMedicao((m) => [...m, wgs84]), []);
+
   const aoSoltar = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
@@ -303,6 +340,7 @@ export function App() {
         setLigarDeId(null);
         setMovendoId(null);
         setDestravadoId(null);
+        setMedicao([]);
         setSelecionadoId(null);
         setSelecionadoTrechoId(null);
       }
@@ -364,6 +402,31 @@ export function App() {
               }
             >
               Dividir vãos{longos.length ? ` (${longos.length})` : ""}
+            </button>
+          )}
+          {projeto && (
+            <button
+              className={`btn${emMedir ? " btn-ativo" : ""}`}
+              onClick={() => {
+                setMedicao([]);
+                setLigarDeId(null);
+                setMovendoId(null);
+                selecionarPonto(null);
+                selecionarTrecho(null);
+                setModo(emMedir ? "selecionar" : "medir");
+              }}
+              title="Régua: clique no mapa para medir distâncias (metros)"
+            >
+              Medir
+            </button>
+          )}
+          {projeto && (
+            <button
+              className={`btn${mostrarFotos ? "" : " btn-ativo"}`}
+              onClick={() => setMostrarFotos((v) => !v)}
+              title={mostrarFotos ? "Esconder as fotos do mapa" : "Mostrar as fotos do mapa"}
+            >
+              {mostrarFotos ? "Ocultar fotos" : "Mostrar fotos"}
             </button>
           )}
           {projeto && (
@@ -441,6 +504,10 @@ export function App() {
           modoRede={modoRede}
           movendoId={movendoId}
           rotulosEstrutura={rotulosEstrutura}
+          estaiIds={estaiIds}
+          medicao={medicao}
+          onMedirPonto={onMedirPonto}
+          mostrarFotos={mostrarFotos && !modoRede}
         />
 
         {!projeto && !carregando && (
@@ -498,6 +565,22 @@ export function App() {
           </div>
         )}
 
+        {emMedir && (
+          <div className="modo-bar">
+            <span>
+              {medicao.length < 2
+                ? "Régua: clique nos pontos para medir"
+                : `Distância: ${medicaoTotalM.toFixed(1)} m · ${medicao.length} pontos`}
+            </span>
+            <button className="btn btn-mini" onClick={() => setMedicao([])} disabled={!medicao.length}>
+              Limpar
+            </button>
+            <button className="btn btn-mini" onClick={() => setModo("selecionar")}>
+              Sair (Esc)
+            </button>
+          </div>
+        )}
+
         {movendoId && !emAdd && !emLigar && (
           <div className="modo-bar modo-bar-mover">
             <span>Arraste o ponto no mapa para o novo lugar</span>
@@ -514,6 +597,7 @@ export function App() {
             papel={posteModelado?.papel}
             deflexaoGraus={posteModelado?.deflexaoGraus}
             estrutura={estruturaSel}
+            esforco={esforcoSel}
             travado={selecionado.origem !== "web"}
             destravado={destravadoId === selecionado.id}
             movendo={movendoId === selecionado.id}
@@ -598,6 +682,27 @@ export function App() {
                     {cod} <strong>{n}</strong>
                   </span>
                 ))}
+              </div>
+            )}
+            {esforcos && (
+              <div className="rede-hud-esforco">
+                <label className="hud-vento">
+                  <span>Vento</span>
+                  <select
+                    value={condicaoVento}
+                    onChange={(e) => setCondicaoVento(e.target.value as CondicaoVento)}
+                  >
+                    {(["urbana", "rural_alto", "rural_medio_baixo"] as CondicaoVento[]).map((c) => (
+                      <option key={c} value={c}>
+                        {ROTULO_CONDICAO[c]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span className="hud-estai">
+                  <i className="pin" style={{ background: "transparent", boxShadow: "inset 0 0 0 2px #e11d48" }} />{" "}
+                  Estai: <strong>{esforcos.totalEstais}</strong> · tração {esforcos.tracaoDaN} daN
+                </span>
               </div>
             )}
             {rede.avisos.map((a, i) => (

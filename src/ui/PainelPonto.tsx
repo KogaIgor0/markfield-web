@@ -3,6 +3,7 @@ import type { LatLng, Ponto, TipoPonto } from "../domain/model";
 import type { PatchPonto } from "../domain/edicao";
 import { rotuloPapel, type Papel } from "../domain/rede";
 import type { EstruturaAtribuida } from "../domain/estrutura";
+import type { EsforcoPoste } from "../domain/esforco";
 import { deUtm, formatarUtm, paraUtm } from "../geo/utm";
 
 /**
@@ -25,6 +26,8 @@ interface Props {
   deflexaoGraus?: number;
   /** Estrutura da norma (B3), quando modelada. */
   estrutura?: EstruturaAtribuida;
+  /** Esforço + estai (B4), quando modelado. */
+  esforco?: EsforcoPoste;
   /** Ponto de campo (GPS): coordenada protegida contra alteração acidental. */
   travado?: boolean;
   /** Ponto de campo com a coordenada temporariamente liberada (após confirmar). */
@@ -52,6 +55,7 @@ export function PainelPonto({
   papel,
   deflexaoGraus,
   estrutura,
+  esforco,
   travado,
   destravado,
   movendo,
@@ -251,6 +255,39 @@ export function PainelPonto({
             {estrutura.descricao}
             {estrutura.confianca === "revisar" && estrutura.motivo ? ` — ${estrutura.motivo}` : ""}
           </div>
+        )}
+        {esforco && esforco.vaos > 0 && (
+          <>
+            <div className="rede-linha">
+              <span>Esforço</span>
+              <strong className={esforco.precisaEstai ? "estr-revisar" : "estr-ok"}>
+                {esforco.esforcoDaN.toFixed(0)} daN
+              </strong>
+            </div>
+            <div className="rede-linha">
+              <span>Capacidade do poste</span>
+              <span className="cap-campo">
+                <input
+                  type="number"
+                  min={100}
+                  step={100}
+                  defaultValue={esforco.capacidadeDaN}
+                  onBlur={(e) => {
+                    const n = Number(e.target.value.replace(",", "."));
+                    if (Number.isFinite(n) && n > 0) onEditar({ capacidadeDaN: n });
+                  }}
+                  onKeyDown={enterBlur}
+                />
+                <span>daN</span>
+              </span>
+            </div>
+            <div className={`estai-linha${esforco.precisaEstai ? " ativo" : ""}`}>
+              {esforco.precisaEstai
+                ? `⚡ Precisa de estai (${esforco.esforcoDaN.toFixed(0)} > ${esforco.capacidadeDaN} daN)`
+                : "Sem estai — esforço dentro da capacidade"}
+            </div>
+            <div className="estr-desc">Tração de projeto provisória (DIS-NOR-013) — a confirmar.</div>
+          </>
         )}
         <button
           className={`btn-fonte${ponto.ehFonte ? " ativa" : ""}`}

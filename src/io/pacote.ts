@@ -3,6 +3,7 @@ import { LIMITE_PRECISAO_CONFIAVEL_M, parseKml, type ConteudoKml } from "./kml";
 import { novoId } from "../domain/ids";
 import { lerMkf, MKF_VERSION } from "../domain/mkf";
 import { projetoVazio, type Foto, type Projeto } from "../domain/model";
+import { reconstruirRede } from "../domain/reconstruir";
 
 /**
  * Importador do pacote "exportar tudo" do app (ZIP com KML + CSV/TXT + fotos/).
@@ -93,7 +94,9 @@ function montarProjeto(conteudo: ConteudoKml, fotos: Foto[]): Projeto {
   projeto.trechos = conteudo.trechos;
   projeto.linhasLivres = conteudo.linhasLivres;
   projeto.fotos = fotos;
-  return projeto;
+  // A rede do app vem como linha solta (sem ligar postes). Reconstrói a topologia
+  // na importação para o motor (dividir/estrutura/esforço) já enxergar a rede.
+  return reconstruirRede(projeto).projeto;
 }
 
 function montarRelatorio(projeto: Projeto, avisos: string[]): RelatorioImport {
