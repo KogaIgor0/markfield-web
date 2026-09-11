@@ -436,6 +436,49 @@ body {
   border-radius: 5px;
 }
 
+/* Barra do "Inserir ponto medido" (E-04) */
+.modo-bar-inserir {
+  flex-wrap: wrap;
+  max-width: min(92vw, 720px);
+}
+
+.inserir-ref {
+  white-space: nowrap;
+}
+
+.inserir-campo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.inserir-campo > span {
+  white-space: nowrap;
+}
+
+.inserir-campo select {
+  font: inherit;
+  font-size: 13px;
+  padding: 3px 6px;
+  border: 1px solid var(--hair);
+  border-radius: 5px;
+}
+
+.inserir-campo input {
+  font: inherit;
+  font-size: 13px;
+  width: 78px;
+  padding: 3px 6px;
+  border: 1px solid var(--hair);
+  border-radius: 5px;
+}
+
+.inserir-campo-mini input {
+  width: 66px;
+}
+
 /* Painel do ponto selecionado */
 .painel {
   position: absolute;

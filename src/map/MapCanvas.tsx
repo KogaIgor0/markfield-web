@@ -83,7 +83,7 @@ function esc(s: unknown): string {
   );
 }
 
-export type Modo = "selecionar" | "ligar" | "medir" | { adicionar: TipoPonto };
+export type Modo = "selecionar" | "ligar" | "medir" | "inserir" | { adicionar: TipoPonto };
 
 interface MapCanvasProps {
   projeto?: Projeto | null;
@@ -204,6 +204,7 @@ export function MapCanvas(props: MapCanvasProps) {
 
     const emModoAdicionar = () => typeof propsRef.current.modo === "object";
     const emModoLigar = () => propsRef.current.modo === "ligar";
+    const emModoInserir = () => propsRef.current.modo === "inserir";
 
     const coordDoPonto = (id: string): [number, number] | null => {
       const p = propsRef.current.projeto?.pontos.find((x) => x.id === id);
@@ -235,7 +236,7 @@ export function MapCanvas(props: MapCanvasProps) {
     map.on("mousedown", LYR.pontos, (e) => {
       const id = e.features?.[0]?.properties?.id as string | undefined;
       if (!id) return;
-      if (emModoLigar()) {
+      if (emModoLigar() || emModoInserir()) {
         e.preventDefault();
         propsRef.current.onPontoClicado?.(id);
         return;
@@ -273,7 +274,7 @@ export function MapCanvas(props: MapCanvasProps) {
 
     // Selecionar um trecho (só no modo selecionar).
     map.on("click", LYR.linhas, (e) => {
-      if (emModoLigar() || emModoAdicionar()) return;
+      if (emModoLigar() || emModoAdicionar() || emModoInserir()) return;
       const id = e.features?.[0]?.properties?.id as string | undefined;
       if (!id) return;
       propsRef.current.onSelecionarTrecho?.(id);
@@ -283,12 +284,12 @@ export function MapCanvas(props: MapCanvasProps) {
     // Ponteiro ao passar sobre um ponto (no modo selecionar): "grab" só no ponto
     // habilitado para mover; nos demais, "pointer" (seleciona, não arrasta).
     map.on("mouseenter", LYR.pontos, (e) => {
-      if (emModoAdicionar() || emModoLigar()) return;
+      if (emModoAdicionar() || emModoLigar() || emModoInserir()) return;
       const id = e.features?.[0]?.properties?.id as string | undefined;
       map.getCanvas().style.cursor = propsRef.current.movendoId === id ? "grab" : "pointer";
     });
     map.on("mouseleave", LYR.pontos, () => {
-      if (!dragRef.current && !emModoAdicionar() && !emModoLigar()) {
+      if (!dragRef.current && !emModoAdicionar() && !emModoLigar() && !emModoInserir()) {
         map.getCanvas().style.cursor = "";
       }
     });
@@ -324,7 +325,7 @@ export function MapCanvas(props: MapCanvasProps) {
         propsRef.current.onAdicionarPonto?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });
         return;
       }
-      if (m === "ligar") return; // cliques tratados pelo handler dos postes
+      if (m === "ligar" || m === "inserir") return; // cliques tratados pelo handler dos postes
       const sobre = map.queryRenderedFeatures(e.point, {
         layers: [LYR.pontos, LYR.fotos, LYR.linhas],
       });
@@ -448,7 +449,9 @@ export function MapCanvas(props: MapCanvasProps) {
     const map = mapRef.current;
     if (!map) return;
     map.getCanvas().style.cursor =
-      typeof modo === "object" || modo === "ligar" || modo === "medir" ? "crosshair" : "";
+      typeof modo === "object" || modo === "ligar" || modo === "medir" || modo === "inserir"
+        ? "crosshair"
+        : "";
   }, [modo]);
 
   // Símbolo do estai (linha + âncora) atualiza quando muda.

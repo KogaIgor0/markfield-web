@@ -3,6 +3,9 @@ import { MapCanvas, type Modo } from "./map/MapCanvas";
 import { PainelPonto } from "./ui/PainelPonto";
 import { PainelTrecho } from "./ui/PainelTrecho";
 import { importarKml, importarMkf, importarPacote, type RelatorioImport } from "./io/pacote";
+import { mesclarProjetos, type RelatorioMerge } from "./domain/merge";
+import { direcoesDePonto, ehErro, estenderPonto, inserirNoVao } from "./domain/inserir";
+import { PainelInserir, type EspecInsercao } from "./ui/PainelInserir";
 import { baixar, exportarMkf, nomeArquivoMkf } from "./io/exportar";
 import { gerarDxfCadastro } from "./io/dxf";
 import {
@@ -60,6 +63,27 @@ interface Estado {
 
 const VAZIO: Estado = { projeto: null, imagens: new Map(), blobs: new Map(), relatorio: null };
 
+/** Frase de resultado do merge, com o aviso de emenda (postes quase no mesmo lugar). */
+function mensagemMerge(r: RelatorioMerge): string {
+  const partes: string[] = [];
+  partes.push(`+${r.pontosAdicionados} poste(s)`);
+  if (r.trechosAdicionados) partes.push(`+${r.trechosAdicionados} trecho(s)`);
+  if (r.fotosAdicionadas) partes.push(`+${r.fotosAdicionadas} foto(s)`);
+  if (r.linhasAdicionadas) partes.push(`+${r.linhasAdicionadas} linha(s)`);
+  let msg = `Mesclado${r.nomeIncorporado ? ` "${r.nomeIncorporado}"` : ""}: ${partes.join(", ")}.`;
+  if (r.compartilhados) msg += ` ${r.compartilhados} elemento(s) em comum (mesmo arquivo continuado) — não duplicados.`;
+  if (r.fotosRenomeadas) msg += ` ${r.fotosRenomeadas} foto(s) renomeada(s) por conflito de nome.`;
+  if (r.duplicadasProximas.length) {
+    const lista = r.duplicadasProximas
+      .slice(0, 6)
+      .map((d) => `P${d.numeroNovo ?? "?"}≈P${d.numeroBase ?? "?"} (${d.distanciaM.toFixed(1)} m)`)
+      .join("; ");
+    const extra = r.duplicadasProximas.length > 6 ? ` +${r.duplicadasProximas.length - 6}` : "";
+    msg += ` ⚠️ ${r.duplicadasProximas.length} poste(s) quase no mesmo lugar (possível emenda das equipes): ${lista}${extra}. Revise e exclua o repetido, ou ligue os trechos.`;
+  }
+  return msg;
+}
+
 const TIPOS_ADD: { valor: TipoPonto; rotulo: string }[] = [
   { valor: "postePropostoo", rotulo: "Poste proposto" },
   { valor: "generico", rotulo: "Genérico" },
@@ -82,6 +106,8 @@ export function App() {
   const [movendoId, setMovendoId] = useState<string | null>(null);
   // Ponto de campo com a coordenada temporariamente destravada (após confirmar).
   const [destravadoId, setDestravadoId] = useState<string | null>(null);
+  // Poste de referência escolhido no modo "Inserir ponto medido" (E-04).
+  const [inserirRefId, setInserirRefId] = useState<string | null>(null);
   // Aviso neutro e passageiro (ex.: resultado da divisão de vãos).
   const [mensagem, setMensagem] = useState<string | null>(null);
   // Condição de vento (B4): define a tração de projeto usada no esforço.
@@ -90,6 +116,7 @@ export function App() {
   const [medicao, setMedicao] = useState<LatLng[]>([]);
   const [mostrarFotos, setMostrarFotos] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mergeInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
 
   const projeto = estado.projeto;
@@ -104,6 +131,19 @@ export function App() {
     return m;
   }, [rede]);
   const posteModelado = rede && selecionado ? rede.postes.get(selecionado.id) : undefined;
+
+  // Ordem da rota (B1) por poste — usada pelo "inserir medido" pra saber o lado da carga.
+  const ordemPorId = useMemo(() => {
+    const m = new Map<string, number | undefined>();
+    if (rede) for (const [id, pm] of rede.postes) m.set(id, pm.ordem);
+    return m;
+  }, [rede]);
+  // Direções possíveis a partir do poste de referência (E-04).
+  const direcoesInserir = useMemo(
+    () => (projeto && inserirRefId ? direcoesDePonto(projeto, inserirRefId, ordemPorId) : null),
+    [projeto, inserirRefId, ordemPorId],
+  );
+  const refInserir = projeto && inserirRefId ? acharPonto(projeto, inserirRefId) : undefined;
 
   // Estruturas (B3): código CE por poste, a partir do modelo de rede.
   const estruturas = useMemo(() => {
@@ -247,6 +287,64 @@ export function App() {
     }
   }, []);
 
+  // Nível 2 da conexão APP↔Web: mescla um segundo .mkf (outra equipe/dia) no
+  // projeto aberto. Identidade por id — ver domain/merge.ts.
+  const mesclar = useCallback(
+    async (arquivo: File) => {
+      if (!projeto) return;
+      setErro(null);
+      setCarregando(true);
+      try {
+        const nome = arquivo.name.toLowerCase();
+        if (!nome.endsWith(".mkf")) {
+          throw new Error("Para mesclar, use um arquivo .mkf (o formato com ids estáveis).");
+        }
+        const inc = await importarMkf(await arquivo.arrayBuffer());
+        const { projeto: merged, imagens: blobsMerged, relatorio } = mesclarProjetos(
+          projeto,
+          inc.projeto,
+          { imagensBase: estado.blobs, imagensNovo: inc.imagens },
+        );
+
+        // Recria as URLs de exibição a partir dos blobs unificados.
+        for (const url of imagensAntigas.current.values()) URL.revokeObjectURL(url);
+        const urls = new Map<string, string>();
+        for (const [chave, bytes] of blobsMerged) {
+          const parte = bytes as unknown as BlobPart;
+          urls.set(chave, URL.createObjectURL(new Blob([parte], { type: "image/jpeg" })));
+        }
+        imagensAntigas.current = urls;
+
+        setEstado((e) => ({
+          ...e,
+          projeto: merged,
+          imagens: urls,
+          blobs: blobsMerged,
+          // Atualiza os contadores do cabeçalho para o total mesclado.
+          relatorio: e.relatorio
+            ? {
+                ...e.relatorio,
+                pontos: merged.pontos.length,
+                trechos: merged.trechos.length,
+                linhasLivres: merged.linhasLivres.length,
+                fotos: merged.fotos.length,
+              }
+            : e.relatorio,
+        }));
+        setSalvo(false);
+        setSelecionadoId(null);
+        setSelecionadoTrechoId(null);
+        setChaveEnq((c) => c + 1); // reenquadra para mostrar o todo mesclado
+        setMensagem(mensagemMerge(relatorio));
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : "Falha ao mesclar o .mkf.");
+      } finally {
+        setCarregando(false);
+      }
+    },
+    [projeto, estado.blobs],
+  );
+
   const salvar = useCallback(async () => {
     if (!projeto) return;
     try {
@@ -309,6 +407,25 @@ export function App() {
 
   const onMedirPonto = useCallback((wgs84: LatLng) => setMedicao((m) => [...m, wgs84]), []);
 
+  // E-04: crava o poste medido a partir do referência, na direção/distância escolhidas.
+  const onInserirPonto = useCallback(
+    (spec: EspecInsercao) => {
+      if (!projeto || !inserirRefId) return;
+      const r =
+        spec.tipo === "vao"
+          ? inserirNoVao(projeto, inserirRefId, spec.vizinhoId, spec.distanciaM)
+          : estenderPonto(projeto, inserirRefId, spec.azimuteGraus, spec.distanciaM);
+      if (ehErro(r)) {
+        setErro(r.erro);
+        return;
+      }
+      atualizar(r.projeto);
+      setInserirRefId(null); // volta a pedir o próximo poste de referência (encadeia)
+      setMensagem(`Ponto P${r.projeto.pontos.find((p) => p.id === r.id)?.numero ?? ""} inserido a ${spec.distanciaM} m.`);
+    },
+    [projeto, inserirRefId, atualizar],
+  );
+
   const aoSoltar = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
@@ -339,9 +456,15 @@ export function App() {
   );
 
   // Modo ligar: 1º clique escolhe a origem, 2º cria o trecho.
+  // Modo inserir: o clique escolhe o poste de referência.
   const onPontoClicado = useCallback(
     (id: string) => {
-      if (!projeto || modo !== "ligar") return;
+      if (!projeto) return;
+      if (modo === "inserir") {
+        setInserirRefId(id);
+        return;
+      }
+      if (modo !== "ligar") return;
       if (!ligarDeId) {
         setLigarDeId(id);
         return;
@@ -364,6 +487,7 @@ export function App() {
         setMovendoId(null);
         setDestravadoId(null);
         setMedicao([]);
+        setInserirRefId(null);
         setSelecionadoId(null);
         setSelecionadoTrechoId(null);
       }
@@ -397,6 +521,16 @@ export function App() {
                 title="Baixa o projeto editado como .mkf (reabra depois para continuar)"
               >
                 {salvo ? "Salvar .mkf" : "● Salvar .mkf"}
+              </button>
+            )}
+            {projeto && (
+              <button
+                className="btn"
+                onClick={() => mergeInputRef.current?.click()}
+                disabled={carregando}
+                title="Junta um segundo .mkf (outra equipe/dia) neste projeto, sem duplicar o que é comum"
+              >
+                Mesclar .mkf
               </button>
             )}
             {projeto && (
@@ -447,6 +581,20 @@ export function App() {
               >
                 Dividir vãos{longos.length ? ` (${longos.length})` : ""}
               </button>
+              <button
+                className={`btn${modo === "inserir" ? " btn-ativo" : ""}`}
+                onClick={() => {
+                  setLigarDeId(null);
+                  setMovendoId(null);
+                  setInserirRefId(null);
+                  selecionarPonto(null);
+                  selecionarTrecho(null);
+                  setModo(modo === "inserir" ? "selecionar" : "inserir");
+                }}
+                title="Insere um poste no alinhamento da rede a uma distância medida a partir de um poste de referência"
+              >
+                Inserir medido
+              </button>
             </div>
           )}
 
@@ -496,6 +644,17 @@ export function App() {
               e.target.value = "";
             }}
           />
+          <input
+            ref={mergeInputRef}
+            type="file"
+            accept=".mkf"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void mesclar(f);
+              e.target.value = "";
+            }}
+          />
         </div>
 
         {rel && (
@@ -519,7 +678,7 @@ export function App() {
         <MapCanvas
           projeto={projeto}
           imagens={estado.imagens}
-          selecionadoId={selecionadoId}
+          selecionadoId={modo === "inserir" ? inserirRefId : selecionadoId}
           selecionadoTrechoId={selecionadoTrechoId}
           modo={modo}
           ligarDeId={ligarDeId}
@@ -610,6 +769,25 @@ export function App() {
               Sair (Esc)
             </button>
           </div>
+        )}
+
+        {modo === "inserir" && !inserirRefId && (
+          <div className="modo-bar">
+            <span>Inserir ponto medido: clique no poste de referência</span>
+            <button className="btn btn-mini" onClick={() => setModo("selecionar")}>
+              Sair (Esc)
+            </button>
+          </div>
+        )}
+
+        {modo === "inserir" && refInserir && direcoesInserir && (
+          <PainelInserir
+            refPonto={refInserir}
+            direcoes={direcoesInserir}
+            onInserir={onInserirPonto}
+            onTrocarReferencia={() => setInserirRefId(null)}
+            onCancelar={() => setModo("selecionar")}
+          />
         )}
 
         {movendoId && !emAdd && !emLigar && (
