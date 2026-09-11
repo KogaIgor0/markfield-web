@@ -137,6 +137,14 @@ export interface Ponto {
    * previsto e **tira a pendência** de projeto.
    */
   estaiInstalado?: boolean;
+  /**
+   * Azimute manual do estai (° 0=N, horário), a direção da ÂNCORA vista do
+   * poste. Por padrão o sistema ancora no sentido oposto ao esforço; quando o
+   * terreno não deixa (cerca, limite de propriedade, obstáculo), o projetista
+   * **gira** o estai e este valor sobrepõe a direção automática. O comprimento
+   * é fixo (ver ESTAI_COMPRIMENTO_M). Ausente = automático.
+   */
+  estaiAzimuteManual?: number;
 }
 
 /**

@@ -43,7 +43,12 @@ export const CAPACIDADE_PADRAO_DAN = 400;
 /** Condição de vento padrão do piloto rural. */
 export const CONDICAO_PADRAO: CondicaoVento = "rural_medio_baixo";
 /** Comprimento do símbolo de estai no mapa (m) — footprint aproximado. */
-export const ESTAI_COMPRIMENTO_M = 15;
+export const ESTAI_COMPRIMENTO_M = 10;
+
+/** Normaliza um azimute para o intervalo [0, 360). */
+export function normalizarAzimute(graus: number): number {
+  return ((graus % 360) + 360) % 360;
+}
 
 export interface EsforcoPoste {
   /** Esforço resultante R (daN). */
@@ -63,7 +68,15 @@ export interface EsforcoPoste {
    * pra onde a rede puxa o poste. O estai é ancorado no sentido OPOSTO.
    */
   azimuteEsforco?: number;
-  /** Ponta do estai no mapa (poste → âncora, no sentido oposto ao esforço). */
+  /**
+   * Azimute (°, 0=N, horário) da **âncora do estai** vista do poste — a direção
+   * em que o estai é desenhado. Por padrão = oposto ao esforço; se o poste tem
+   * `estaiAzimuteManual`, é esse valor (o projetista girou o estai).
+   */
+  azimuteEstai?: number;
+  /** O azimute do estai veio de ajuste manual do projetista. */
+  estaiManual?: boolean;
+  /** Ponta do estai no mapa (poste → âncora, no sentido do esforço/manual). */
   estaiAte?: LatLng;
   /** Resultado é aproximado (tração H provisória — ver topo do arquivo). */
   aproximado: boolean;
@@ -148,19 +161,37 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
       else pendentes++;
     }
 
-    // Direção do esforço (resultante) e ponta do estai no sentido OPOSTO.
+    // Direção do esforço (resultante) e ponta do estai no sentido OPOSTO —
+    // salvo quando o projetista GIRA o estai (azimute manual da âncora).
     let azimuteEsforco: number | undefined;
+    let azimuteEstai: number | undefined;
+    const estaiManual = precisaEstai && p.estaiAzimuteManual != null;
     let estaiAte: LatLng | undefined;
-    if (precisaEstai && mag > 1e-9) {
-      const rx = sx / mag; // resultante (para onde a rede puxa), unitário em UTM
-      const ry = sy / mag;
-      // azimute do esforço: 0=Norte, horário. Em UTM x=Este, y=Norte.
-      azimuteEsforco = (Math.atan2(rx, ry) * 180) / Math.PI;
+    if (precisaEstai && (mag > 1e-9 || estaiManual)) {
       const pu = porId.get(p.id)!;
-      // estai ancora no sentido oposto (−R̂), a ESTAI_COMPRIMENTO_M metros.
+      // Direção da âncora do estai (unitário em UTM: x=Este, y=Norte).
+      let ax: number;
+      let ay: number;
+      if (mag > 1e-9) {
+        const rx = sx / mag; // resultante (para onde a rede puxa)
+        const ry = sy / mag;
+        azimuteEsforco = normalizarAzimute((Math.atan2(rx, ry) * 180) / Math.PI);
+        ax = -rx; // automático: âncora no sentido oposto ao esforço
+        ay = -ry;
+      } else {
+        ax = 0;
+        ay = 1;
+      }
+      if (estaiManual) {
+        // O projetista girou: a âncora aponta para o azimute escolhido.
+        const rad = (p.estaiAzimuteManual! * Math.PI) / 180;
+        ax = Math.sin(rad);
+        ay = Math.cos(rad);
+      }
+      azimuteEstai = normalizarAzimute((Math.atan2(ax, ay) * 180) / Math.PI);
       estaiAte = deUtm({
-        easting: pu.easting - rx * ESTAI_COMPRIMENTO_M,
-        northing: pu.northing - ry * ESTAI_COMPRIMENTO_M,
+        easting: pu.easting + ax * ESTAI_COMPRIMENTO_M,
+        northing: pu.northing + ay * ESTAI_COMPRIMENTO_M,
         zone: pu.zone,
         hemisphere: pu.hemisphere,
       });
@@ -174,6 +205,8 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
       pendente,
       vaos: us.length,
       azimuteEsforco,
+      azimuteEstai,
+      estaiManual,
       estaiAte,
       aproximado: true,
     });

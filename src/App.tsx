@@ -385,100 +385,106 @@ export function App() {
         <span className="phase-tag">Fase 2 · editor</span>
 
         <div className="topbar-acoes">
-          <button className="btn" onClick={() => inputRef.current?.click()} disabled={carregando}>
-            {carregando ? "Abrindo…" : projeto ? "Abrir outro" : "Abrir projeto"}
-          </button>
-          {projeto && (
-            <button
-              className={`btn${emAdd ? " btn-ativo" : ""}`}
-              onClick={() => {
-                setLigarDeId(null);
-                setMovendoId(null);
-                setModo(emAdd ? "selecionar" : { adicionar: "postePropostoo" });
-              }}
-            >
-              + Adicionar ponto
+          {/* Arquivo: abrir, salvar, exportar */}
+          <div className="tb-grupo" role="group" aria-label="Arquivo">
+            <button className="btn" onClick={() => inputRef.current?.click()} disabled={carregando}>
+              {carregando ? "Abrindo…" : projeto ? "Abrir outro" : "Abrir projeto"}
             </button>
-          )}
+            {projeto && (
+              <button
+                className={`btn${salvo ? "" : " btn-ativo"}`}
+                onClick={() => void salvar()}
+                title="Baixa o projeto editado como .mkf (reabra depois para continuar)"
+              >
+                {salvo ? "Salvar .mkf" : "● Salvar .mkf"}
+              </button>
+            )}
+            {projeto && (
+              <button
+                className="btn"
+                onClick={exportarDxf}
+                title="Exporta o cadastro georreferenciado (UTM) em DXF, nas camadas da Elektro"
+              >
+                Exportar DXF
+              </button>
+            )}
+          </div>
+
+          {/* Editar: adicionar, ligar, dividir vãos */}
+          {projeto && <span className="tb-sep" aria-hidden="true" />}
           {projeto && (
-            <button
-              className={`btn${emLigar ? " btn-ativo" : ""}`}
-              onClick={() => {
-                setLigarDeId(null);
-                selecionarPonto(null);
-                selecionarTrecho(null);
-                setModo(emLigar ? "selecionar" : "ligar");
-              }}
-            >
-              Ligar postes
-            </button>
+            <div className="tb-grupo" role="group" aria-label="Editar">
+              <button
+                className={`btn${emAdd ? " btn-ativo" : ""}`}
+                onClick={() => {
+                  setLigarDeId(null);
+                  setMovendoId(null);
+                  setModo(emAdd ? "selecionar" : { adicionar: "postePropostoo" });
+                }}
+              >
+                + Adicionar ponto
+              </button>
+              <button
+                className={`btn${emLigar ? " btn-ativo" : ""}`}
+                onClick={() => {
+                  setLigarDeId(null);
+                  selecionarPonto(null);
+                  selecionarTrecho(null);
+                  setModo(emLigar ? "selecionar" : "ligar");
+                }}
+              >
+                Ligar postes
+              </button>
+              <button
+                className="btn"
+                onClick={dividir}
+                disabled={longos.length === 0}
+                title={
+                  longos.length
+                    ? `Posta os vãos acima de ${VAO_MAXIMO_M} m (${longos.length}) em vãos ≤ ${VAO_MAXIMO_M} m. Depois, refine cada vão pelo painel do trecho.`
+                    : `Todos os vãos já estão dentro de ${VAO_MAXIMO_M} m`
+                }
+              >
+                Dividir vãos{longos.length ? ` (${longos.length})` : ""}
+              </button>
+            </div>
           )}
+
+          {/* Ver: medir, fotos, rede */}
+          {projeto && <span className="tb-sep" aria-hidden="true" />}
           {projeto && (
-            <button
-              className="btn"
-              onClick={dividir}
-              disabled={longos.length === 0}
-              title={
-                longos.length
-                  ? `Posta os vãos acima de ${VAO_MAXIMO_M} m (${longos.length}) em vãos ≤ ${VAO_MAXIMO_M} m. Depois, refine cada vão pelo painel do trecho.`
-                  : `Todos os vãos já estão dentro de ${VAO_MAXIMO_M} m`
-              }
-            >
-              Dividir vãos{longos.length ? ` (${longos.length})` : ""}
-            </button>
+            <div className="tb-grupo" role="group" aria-label="Ver">
+              <button
+                className={`btn${emMedir ? " btn-ativo" : ""}`}
+                onClick={() => {
+                  setMedicao([]);
+                  setLigarDeId(null);
+                  setMovendoId(null);
+                  selecionarPonto(null);
+                  selecionarTrecho(null);
+                  setModo(emMedir ? "selecionar" : "medir");
+                }}
+                title="Régua: clique no mapa para medir distâncias (metros)"
+              >
+                Medir
+              </button>
+              <button
+                className={`btn${mostrarFotos ? "" : " btn-ativo"}`}
+                onClick={() => setMostrarFotos((v) => !v)}
+                title={mostrarFotos ? "Esconder as fotos do mapa" : "Mostrar as fotos do mapa"}
+              >
+                {mostrarFotos ? "Ocultar fotos" : "Mostrar fotos"}
+              </button>
+              <button
+                className={`btn btn-rede${modoRede ? " btn-ativo" : ""}`}
+                onClick={() => setModoRede((v) => !v)}
+                title="Classifica os postes (fonte, ângulo, derivação, fim) e traça a rota a partir da fonte"
+              >
+                Rede
+              </button>
+            </div>
           )}
-          {projeto && (
-            <button
-              className={`btn${emMedir ? " btn-ativo" : ""}`}
-              onClick={() => {
-                setMedicao([]);
-                setLigarDeId(null);
-                setMovendoId(null);
-                selecionarPonto(null);
-                selecionarTrecho(null);
-                setModo(emMedir ? "selecionar" : "medir");
-              }}
-              title="Régua: clique no mapa para medir distâncias (metros)"
-            >
-              Medir
-            </button>
-          )}
-          {projeto && (
-            <button
-              className={`btn${mostrarFotos ? "" : " btn-ativo"}`}
-              onClick={() => setMostrarFotos((v) => !v)}
-              title={mostrarFotos ? "Esconder as fotos do mapa" : "Mostrar as fotos do mapa"}
-            >
-              {mostrarFotos ? "Ocultar fotos" : "Mostrar fotos"}
-            </button>
-          )}
-          {projeto && (
-            <button
-              className={`btn${modoRede ? " btn-ativo" : ""}`}
-              onClick={() => setModoRede((v) => !v)}
-              title="Classifica os postes (fonte, ângulo, derivação, fim) e traça a rota a partir da fonte"
-            >
-              Rede
-            </button>
-          )}
-          {projeto && (
-            <button
-              className={`btn${salvo ? "" : " btn-ativo"}`}
-              onClick={() => void salvar()}
-              title="Baixa o projeto editado como .mkf (reabra depois para continuar)"
-            >
-              {salvo ? "Salvar .mkf" : "● Salvar .mkf"}
-            </button>
-          )}
-          {projeto && (
-            <button
-              className="btn"
-              onClick={exportarDxf}
-              title="Exporta o cadastro georreferenciado (UTM) em DXF, nas camadas da Elektro"
-            >
-              Exportar DXF
-            </button>
-          )}
+
           <input
             ref={inputRef}
             type="file"

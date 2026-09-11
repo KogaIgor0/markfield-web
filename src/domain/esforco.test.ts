@@ -124,6 +124,27 @@ describe("modelarEsforcos — estai", () => {
     expect(dEstai).toBeGreaterThan(dB);
   });
 
+  it("girar o estai: azimute manual sobrepõe a direção automática", () => {
+    // A(0,0)—B(100,0): automático ancora a leste (az≈90°). Giramos B para o Norte.
+    const A = P("A", 0, 0);
+    const B = P("B", 100, 0, { estaiAzimuteManual: 0 }); // 0 = Norte
+    const r = modelarEsforcos(projeto([A, B], [tr("t", "A", "B")]));
+    const b = r.postes.get("B")!;
+    expect(b.estaiManual).toBe(true);
+    expect(b.azimuteEstai).toBeCloseTo(0, 0); // âncora aponta pro Norte
+    expect(b.estaiAte).toBeDefined();
+    // a âncora fica ao NORTE do poste (lat maior) e ~na mesma longitude
+    expect(b.estaiAte!.lat).toBeGreaterThan(B.wgs84.lat);
+    expect(b.estaiAte!.lng).toBeCloseTo(B.wgs84.lng, 4);
+  });
+
+  it("sem azimute manual, o estai é 'auto' e aponta oposto ao esforço", () => {
+    const proj = projeto([P("A", 0, 0), P("B", 100, 0)], [tr("t", "A", "B")]);
+    const b = modelarEsforcos(proj).postes.get("B")!;
+    expect(b.estaiManual).toBe(false);
+    expect(b.azimuteEstai).toBeCloseTo(90, 0); // âncora a leste (oposto a A, a oeste)
+  });
+
   it("poste solto (grau 0) não tem esforço nem estai", () => {
     const proj = projeto([P("A", 0, 0), P("B", 100, 0)], []); // sem trecho
     const r = modelarEsforcos(proj);

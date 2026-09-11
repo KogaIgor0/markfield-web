@@ -34,7 +34,13 @@ export function moverPonto(projeto: Projeto, id: string, wgs84: LatLng): Projeto
 export type PatchPonto = Partial<
   Pick<
     Ponto,
-    "numero" | "tipo" | "observacao" | "capacidadeDaN" | "estruturaManual" | "estaiInstalado"
+    | "numero"
+    | "tipo"
+    | "observacao"
+    | "capacidadeDaN"
+    | "estruturaManual"
+    | "estaiInstalado"
+    | "estaiAzimuteManual"
   >
 >;
 

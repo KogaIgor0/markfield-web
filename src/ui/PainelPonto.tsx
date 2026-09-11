@@ -3,7 +3,7 @@ import type { LatLng, Ponto, TipoPonto } from "../domain/model";
 import type { PatchPonto } from "../domain/edicao";
 import { rotuloPapel, type Papel } from "../domain/rede";
 import { CODIGOS_ESTRUTURA, type EstruturaAtribuida } from "../domain/estrutura";
-import type { EsforcoPoste } from "../domain/esforco";
+import { normalizarAzimute, type EsforcoPoste } from "../domain/esforco";
 import { deUtm, formatarUtm, paraUtm } from "../geo/utm";
 
 /**
@@ -352,6 +352,61 @@ export function PainelPonto({
             {esforco.precisaEstai && esforco.estaiInstalado && (
               <>
                 <div className="estai-linha resolvido">✓ Estai instalado — pendência resolvida.</div>
+                {esforco.azimuteEstai != null && (
+                  <div className="estai-girar">
+                    <div className="estai-girar-topo">
+                      <span>Direção do estai</span>
+                      <strong>
+                        {Math.round(esforco.azimuteEstai)}°{" "}
+                        <span className="estai-girar-modo">
+                          {esforco.estaiManual ? "manual" : "auto (oposto ao esforço)"}
+                        </span>
+                      </strong>
+                    </div>
+                    <div className="estai-girar-ctrl">
+                      <button
+                        className="btn-gira"
+                        title="Girar 5° (anti-horário)"
+                        onClick={() =>
+                          onEditar({
+                            estaiAzimuteManual: normalizarAzimute((esforco.azimuteEstai ?? 0) - 5),
+                          })
+                        }
+                      >
+                        ↺
+                      </button>
+                      <input
+                        type="range"
+                        min={0}
+                        max={359}
+                        step={1}
+                        value={Math.round(esforco.azimuteEstai)}
+                        onChange={(e) =>
+                          onEditar({ estaiAzimuteManual: Number(e.target.value) })
+                        }
+                      />
+                      <button
+                        className="btn-gira"
+                        title="Girar 5° (horário)"
+                        onClick={() =>
+                          onEditar({
+                            estaiAzimuteManual: normalizarAzimute((esforco.azimuteEstai ?? 0) + 5),
+                          })
+                        }
+                      >
+                        ↻
+                      </button>
+                    </div>
+                    {esforco.estaiManual && (
+                      <button
+                        className="btn-mini-sec"
+                        onClick={() => onEditar({ estaiAzimuteManual: undefined })}
+                      >
+                        Voltar ao automático
+                      </button>
+                    )}
+                  </div>
+                )}
                 <button className="btn-mini-sec" onClick={() => onEditar({ estaiInstalado: false })}>
                   Remover estai
                 </button>
