@@ -119,6 +119,8 @@ interface MapCanvasProps {
   onMedirPonto?: (wgs84: LatLng) => void;
   /** Mostra as fotos no mapa (podem poluir a análise). */
   mostrarFotos?: boolean;
+  /** Mostra o número do poste como rótulo permanente (E-06). */
+  mostrarNumeros?: boolean;
   /** Muda quando um NOVO projeto é aberto — dispara o auto-enquadramento. */
   chaveEnquadramento?: number;
   onSelecionar?: (id: string | null) => void;
@@ -176,12 +178,14 @@ export function MapCanvas(props: MapCanvasProps) {
     estais,
     medicao,
     mostrarFotos,
+    mostrarNumeros,
   } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const fcRef = useRef<FeatureCollection<Point> | null>(null);
   const dragRef = useRef<string | null>(null);
   const marcadoresRef = useRef<maplibregl.Marker[]>([]);
+  const numerosRef = useRef<maplibregl.Marker[]>([]);
   const prontoRef = useRef(false); // mapa carregado (monotônico; não confiar em isStyleLoaded, que oscila)
 
   // Espelho sempre-atual das props para os handlers registrados uma vez só.
@@ -448,6 +452,31 @@ export function MapCanvas(props: MapCanvasProps) {
       marcadoresRef.current = [];
     };
   }, [projeto, rotulosEstrutura, modoRede]);
+
+  // Rótulo do NÚMERO do poste (E-06) — marcador HTML permanente, à direita do
+  // poste, em qualquer modo. Não rouba o clique. Toggle por `mostrarNumeros`.
+  useEffect(() => {
+    const map = mapRef.current;
+    for (const m of numerosRef.current) m.remove();
+    numerosRef.current = [];
+    if (!map || !mostrarNumeros || !projeto) return;
+    for (const p of projeto.pontos) {
+      const num = p.numero?.trim();
+      if (!num) continue;
+      const el = document.createElement("div");
+      el.className = "rotulo-numero";
+      el.textContent = num;
+      el.style.pointerEvents = "none";
+      const mk = new maplibregl.Marker({ element: el, anchor: "left", offset: [9, 0] })
+        .setLngLat([p.wgs84.lng, p.wgs84.lat])
+        .addTo(map);
+      numerosRef.current.push(mk);
+    }
+    return () => {
+      for (const m of numerosRef.current) m.remove();
+      numerosRef.current = [];
+    };
+  }, [projeto, mostrarNumeros]);
 
   // Cursor conforme o modo (adicionar/ligar/medir = cruz).
   useEffect(() => {

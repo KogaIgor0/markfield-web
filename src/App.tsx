@@ -116,6 +116,7 @@ export function App() {
   // Régua de medição e visibilidade das fotos.
   const [medicao, setMedicao] = useState<LatLng[]>([]);
   const [mostrarFotos, setMostrarFotos] = useState(true);
+  const [mostrarNumeros, setMostrarNumeros] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
@@ -648,6 +649,13 @@ export function App() {
                 {mostrarFotos ? "Ocultar fotos" : "Mostrar fotos"}
               </button>
               <button
+                className={`btn${mostrarNumeros ? " btn-ativo" : ""}`}
+                onClick={() => setMostrarNumeros((v) => !v)}
+                title="Mostra/esconde o número de cada poste no mapa"
+              >
+                Números
+              </button>
+              <button
                 className={`btn btn-rede${modoRede ? " btn-ativo" : ""}`}
                 onClick={() => setModoRede((v) => !v)}
                 title="Classifica os postes (fonte, ângulo, derivação, fim) e traça a rota a partir da fonte"
@@ -723,6 +731,7 @@ export function App() {
           medicao={medicao}
           onMedirPonto={onMedirPonto}
           mostrarFotos={mostrarFotos && !modoRede}
+          mostrarNumeros={mostrarNumeros}
         />
 
         {!projeto && !carregando && (
