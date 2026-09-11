@@ -39,6 +39,8 @@ export type PatchPonto = Partial<
     | "observacao"
     | "capacidadeDaN"
     | "estruturaManual"
+    | "estais"
+    // legados (E-01): aceitos só para LIMPAR ao migrar para `estais`.
     | "estaiInstalado"
     | "estaiAzimuteManual"
   >

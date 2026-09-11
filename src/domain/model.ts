@@ -132,19 +132,34 @@ export interface Ponto {
    */
   estruturaManual?: string;
   /**
-   * O projetista **instalou o estai** neste poste (B4). Quando o esforço passa
-   * da capacidade, o sistema pede estai; marcar isto registra que o estai foi
-   * previsto e **tira a pendência** de projeto.
+   * Estais instalados neste poste (B4 / E-01). Um poste pode ter **mais de um**
+   * (fim + trafo, ângulo forte, duplo encabeçamento). Vazio/ausente = nenhum.
+   * Ter ≥ 1 estai **tira a pendência** de projeto quando o esforço pede estai.
+   */
+  estais?: EstaiPonto[];
+  /**
+   * @deprecated Compatibilidade com arquivos antigos (um estai só). Na leitura,
+   * o motor converte `estaiInstalado`/`estaiAzimuteManual` para `estais[]`; ao
+   * editar, o Web passa a gravar `estais` e limpa estes campos. Não usar em código novo.
    */
   estaiInstalado?: boolean;
-  /**
-   * Azimute manual do estai (° 0=N, horário), a direção da ÂNCORA vista do
-   * poste. Por padrão o sistema ancora no sentido oposto ao esforço; quando o
-   * terreno não deixa (cerca, limite de propriedade, obstáculo), o projetista
-   * **gira** o estai e este valor sobrepõe a direção automática. O comprimento
-   * é fixo (ver ESTAI_COMPRIMENTO_M). Ausente = automático.
-   */
+  /** @deprecated ver `estais` — azimute do estai único dos arquivos antigos. */
   estaiAzimuteManual?: number;
+}
+
+/**
+ * Um estai instalado num poste (B4 / E-01). O comprimento do símbolo é fixo
+ * (ESTAI_COMPRIMENTO_M); o que varia é a **direção** (azimute da âncora).
+ */
+export interface EstaiPonto {
+  id: string;
+  /** Azimute (° 0=N, horário) da ÂNCORA vista do poste — a direção do estai. */
+  azimuteGraus: number;
+  /**
+   * `true` = ainda na direção **sugerida** pela norma (oposto ao esforço);
+   * `false` = o projetista **girou** para desviar de obstáculo/limite.
+   */
+  auto?: boolean;
 }
 
 /**

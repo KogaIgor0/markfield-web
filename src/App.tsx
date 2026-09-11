@@ -186,16 +186,16 @@ export function App() {
   }, [esforcos]);
   const estaiInstaladoIds = useMemo(() => {
     const s = new Set<string>();
-    if (esforcos) for (const [id, e] of esforcos.postes) if (e.precisaEstai && e.estaiInstalado) s.add(id);
+    if (esforcos) for (const [id, e] of esforcos.postes) if (e.precisaEstai && e.estais.length > 0) s.add(id);
     return s;
   }, [esforcos]);
-  // Segmentos do estai (poste → âncora, no sentido oposto ao esforço) — instalados.
+  // Segmentos dos estais (poste → âncora) — um por estai instalado (E-01: pode ter vários).
   const estais = useMemo(() => {
     const arr: { de: LatLng; ate: LatLng }[] = [];
     if (esforcos && projeto) {
       for (const p of projeto.pontos) {
         const e = esforcos.postes.get(p.id);
-        if (e && e.precisaEstai && e.estaiInstalado && e.estaiAte) arr.push({ de: p.wgs84, ate: e.estaiAte });
+        if (e) for (const es of e.estais) arr.push({ de: p.wgs84, ate: es.ate });
       }
     }
     return arr;

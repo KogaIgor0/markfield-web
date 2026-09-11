@@ -1,4 +1,4 @@
-import type { LatLng, Projeto, UtmPoint } from "./model";
+import type { LatLng, Ponto, Projeto, UtmPoint } from "./model";
 import { deUtm, paraUtm } from "../geo/utm";
 
 /**
@@ -50,16 +50,27 @@ export function normalizarAzimute(graus: number): number {
   return ((graus % 360) + 360) % 360;
 }
 
+/** Um estai já resolvido para desenho: direção + ponta no mapa. */
+export interface EstaiResolvido {
+  id: string;
+  /** Azimute (° 0=N, horário) da âncora vista do poste. */
+  azimuteGraus: number;
+  /** `true` = ainda na direção sugerida; `false` = girado à mão. */
+  auto: boolean;
+  /** Ponta do estai (poste → âncora), a ESTAI_COMPRIMENTO_M metros. */
+  ate: LatLng;
+}
+
 export interface EsforcoPoste {
   /** Esforço resultante R (daN). */
   esforcoDaN: number;
   /** Capacidade nominal considerada (daN). */
   capacidadeDaN: number;
-  /** R > capacidade → o poste precisa de estai. */
+  /** R > capacidade → o poste precisa de (ao menos um) estai. */
   precisaEstai: boolean;
-  /** O projetista registrou o estai instalado. */
-  estaiInstalado: boolean;
-  /** Precisa de estai E ainda não foi instalado → pendência de projeto. */
+  /** Estais instalados no poste — pode ter 0, 1 ou mais (E-01). */
+  estais: EstaiResolvido[];
+  /** Precisa de estai E não há nenhum instalado → pendência de projeto. */
   pendente: boolean;
   /** Quantas lanças (vãos) chegam ao poste. */
   vaos: number;
@@ -69,15 +80,10 @@ export interface EsforcoPoste {
    */
   azimuteEsforco?: number;
   /**
-   * Azimute (°, 0=N, horário) da **âncora do estai** vista do poste — a direção
-   * em que o estai é desenhado. Por padrão = oposto ao esforço; se o poste tem
-   * `estaiAzimuteManual`, é esse valor (o projetista girou o estai).
+   * Direção **sugerida** para um novo estai (oposto ao esforço). É o azimute que
+   * o botão "Adicionar estai" usa por padrão; o projetista gira depois.
    */
-  azimuteEstai?: number;
-  /** O azimute do estai veio de ajuste manual do projetista. */
-  estaiManual?: boolean;
-  /** Ponta do estai no mapa (poste → âncora, no sentido do esforço/manual). */
-  estaiAte?: LatLng;
+  sugestaoAzimute?: number;
   /** Resultado é aproximado (tração H provisória — ver topo do arquivo). */
   aproximado: boolean;
 }
@@ -120,6 +126,40 @@ function unitariosAosVizinhos(
   return us;
 }
 
+/** Ponta do estai (âncora) a partir do poste, num azimute, a ESTAI_COMPRIMENTO_M metros. */
+function pontaEstai(pu: UtmPoint, azimuteGraus: number): LatLng {
+  const rad = (azimuteGraus * Math.PI) / 180;
+  return deUtm({
+    easting: pu.easting + Math.sin(rad) * ESTAI_COMPRIMENTO_M, // x = Este
+    northing: pu.northing + Math.cos(rad) * ESTAI_COMPRIMENTO_M, // y = Norte
+    zone: pu.zone,
+    hemisphere: pu.hemisphere,
+  });
+}
+
+/**
+ * Estais configurados no poste, com **compatibilidade** com arquivos antigos:
+ * usa `estais[]` quando existe; senão converte o `estaiInstalado`/
+ * `estaiAzimuteManual` (um estai só) usando a sugestão como direção padrão.
+ */
+function estaisConfigurados(
+  p: Ponto,
+  sugestaoAzimute: number | undefined,
+): { id: string; azimuteGraus: number; auto: boolean }[] {
+  if (p.estais && p.estais.length) {
+    return p.estais.map((e) => ({
+      id: e.id,
+      azimuteGraus: normalizarAzimute(e.azimuteGraus),
+      auto: Boolean(e.auto),
+    }));
+  }
+  if (p.estaiInstalado) {
+    const az = p.estaiAzimuteManual ?? sugestaoAzimute ?? 0;
+    return [{ id: "legado", azimuteGraus: normalizarAzimute(az), auto: p.estaiAzimuteManual == null }];
+  }
+  return [];
+}
+
 export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): RedeEsforcos {
   const condicao = opcoes.condicao ?? CONDICAO_PADRAO;
   const H = TRACAO_DAN[condicao];
@@ -153,61 +193,40 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
     const esforcoDaN = H * mag;
     const capacidadeDaN = p.capacidadeDaN ?? capacidadePadrao;
     const precisaEstai = us.length > 0 && esforcoDaN > capacidadeDaN + 1e-6;
-    const estaiInstalado = Boolean(p.estaiInstalado);
-    const pendente = precisaEstai && !estaiInstalado;
-    if (precisaEstai) {
-      totalEstais++;
-      if (estaiInstalado) instalados++;
-      else pendentes++;
+    const pu = porId.get(p.id)!;
+
+    // Direção do esforço (resultante) e a SUGESTÃO de estai (sentido oposto).
+    let azimuteEsforco: number | undefined;
+    let sugestaoAzimute: number | undefined;
+    if (mag > 1e-9) {
+      const rx = sx / mag;
+      const ry = sy / mag;
+      azimuteEsforco = normalizarAzimute((Math.atan2(rx, ry) * 180) / Math.PI);
+      sugestaoAzimute = normalizarAzimute((Math.atan2(-rx, -ry) * 180) / Math.PI); // oposto
     }
 
-    // Direção do esforço (resultante) e ponta do estai no sentido OPOSTO —
-    // salvo quando o projetista GIRA o estai (azimute manual da âncora).
-    let azimuteEsforco: number | undefined;
-    let azimuteEstai: number | undefined;
-    const estaiManual = precisaEstai && p.estaiAzimuteManual != null;
-    let estaiAte: LatLng | undefined;
-    if (precisaEstai && (mag > 1e-9 || estaiManual)) {
-      const pu = porId.get(p.id)!;
-      // Direção da âncora do estai (unitário em UTM: x=Este, y=Norte).
-      let ax: number;
-      let ay: number;
-      if (mag > 1e-9) {
-        const rx = sx / mag; // resultante (para onde a rede puxa)
-        const ry = sy / mag;
-        azimuteEsforco = normalizarAzimute((Math.atan2(rx, ry) * 180) / Math.PI);
-        ax = -rx; // automático: âncora no sentido oposto ao esforço
-        ay = -ry;
-      } else {
-        ax = 0;
-        ay = 1;
-      }
-      if (estaiManual) {
-        // O projetista girou: a âncora aponta para o azimute escolhido.
-        const rad = (p.estaiAzimuteManual! * Math.PI) / 180;
-        ax = Math.sin(rad);
-        ay = Math.cos(rad);
-      }
-      azimuteEstai = normalizarAzimute((Math.atan2(ax, ay) * 180) / Math.PI);
-      estaiAte = deUtm({
-        easting: pu.easting + ax * ESTAI_COMPRIMENTO_M,
-        northing: pu.northing + ay * ESTAI_COMPRIMENTO_M,
-        zone: pu.zone,
-        hemisphere: pu.hemisphere,
-      });
+    // Estais instalados (0, 1 ou mais), com a ponta no mapa. Compat com o formato antigo.
+    const estais: EstaiResolvido[] = estaisConfigurados(p, sugestaoAzimute).map((e) => ({
+      ...e,
+      ate: pontaEstai(pu, e.azimuteGraus),
+    }));
+
+    const pendente = precisaEstai && estais.length === 0;
+    if (precisaEstai) {
+      totalEstais++;
+      if (estais.length > 0) instalados++;
+      else pendentes++;
     }
 
     postes.set(p.id, {
       esforcoDaN,
       capacidadeDaN,
       precisaEstai,
-      estaiInstalado,
+      estais,
       pendente,
       vaos: us.length,
       azimuteEsforco,
-      azimuteEstai,
-      estaiManual,
-      estaiAte,
+      sugestaoAzimute,
       aproximado: true,
     });
   }

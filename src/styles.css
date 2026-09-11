@@ -839,6 +839,22 @@ body {
   background: #e9f5ee;
 }
 
+.btn-estai-x {
+  font-size: 12px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  color: #b4231a;
+  background: #fff;
+  border: 1px solid #e8c0bc;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-estai-x:hover {
+  background: #fbecea;
+}
+
 .estr-override {
   border-top: 1px dashed var(--hair);
   padding-top: 8px;

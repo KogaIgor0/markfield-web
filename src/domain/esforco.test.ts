@@ -94,7 +94,7 @@ describe("modelarEsforcos — estai", () => {
     expect(urbana.totalEstais).toBe(2); // A e B são as duas pontas (fim de rede)
   });
 
-  it("marcar estai instalado tira a pendência (mas ainda 'precisa' fisicamente)", () => {
+  it("compat: estaiInstalado antigo vira 1 estai e tira a pendência", () => {
     const proj = projeto(
       [P("A", 0, 0), P("B", 100, 0, { estaiInstalado: true })],
       [tr("t", "A", "B")],
@@ -102,7 +102,7 @@ describe("modelarEsforcos — estai", () => {
     const r = modelarEsforcos(proj);
     const b = r.postes.get("B")!;
     expect(b.precisaEstai).toBe(true); // R ainda > capacidade
-    expect(b.estaiInstalado).toBe(true);
+    expect(b.estais).toHaveLength(1); // convertido do formato antigo
     expect(b.pendente).toBe(false); // resolvido — não é mais erro de projeto
     // A (fim, sem estai) segue pendente
     expect(r.postes.get("A")!.pendente).toBe(true);
@@ -111,38 +111,35 @@ describe("modelarEsforcos — estai", () => {
     expect(r.totalEstais).toBe(2);
   });
 
-  it("estai é desenhado no sentido OPOSTO ao esforço (âncora do lado contrário)", () => {
-    // A(0,0)—B(100,0): em B a rede puxa pra oeste (rumo a A); o estai ancora a leste.
-    const A = P("A", 0, 0);
-    const B = P("B", 100, 0);
-    const r = modelarEsforcos(projeto([A, B], [tr("t", "A", "B")]));
+  it("sugestão de estai aponta no sentido OPOSTO ao esforço", () => {
+    // A(0,0)—B(100,0): em B a rede puxa pra oeste; a sugestão ancora a leste (az≈90°).
+    const r = modelarEsforcos(projeto([P("A", 0, 0), P("B", 100, 0)], [tr("t", "A", "B")]));
     const b = r.postes.get("B")!;
-    expect(b.estaiAte).toBeDefined();
-    // a ponta do estai fica MAIS LONGE de A do que o próprio poste B
-    const dB = Math.hypot(B.wgs84.lng - A.wgs84.lng, B.wgs84.lat - A.wgs84.lat);
-    const dEstai = Math.hypot(b.estaiAte!.lng - A.wgs84.lng, b.estaiAte!.lat - A.wgs84.lat);
-    expect(dEstai).toBeGreaterThan(dB);
+    expect(b.precisaEstai).toBe(true);
+    expect(b.estais).toHaveLength(0); // nada instalado ainda
+    expect(b.sugestaoAzimute).toBeCloseTo(90, 0); // leste = oposto a A (oeste)
   });
 
-  it("girar o estai: azimute manual sobrepõe a direção automática", () => {
-    // A(0,0)—B(100,0): automático ancora a leste (az≈90°). Giramos B para o Norte.
+  it("vários estais: o poste desenha cada um na sua direção", () => {
+    // B com dois estais (0° = Norte, 90° = Leste).
     const A = P("A", 0, 0);
-    const B = P("B", 100, 0, { estaiAzimuteManual: 0 }); // 0 = Norte
+    const B = P("B", 100, 0, {
+      estais: [
+        { id: "e1", azimuteGraus: 0, auto: false },
+        { id: "e2", azimuteGraus: 90, auto: false },
+      ],
+    });
     const r = modelarEsforcos(projeto([A, B], [tr("t", "A", "B")]));
     const b = r.postes.get("B")!;
-    expect(b.estaiManual).toBe(true);
-    expect(b.azimuteEstai).toBeCloseTo(0, 0); // âncora aponta pro Norte
-    expect(b.estaiAte).toBeDefined();
-    // a âncora fica ao NORTE do poste (lat maior) e ~na mesma longitude
-    expect(b.estaiAte!.lat).toBeGreaterThan(B.wgs84.lat);
-    expect(b.estaiAte!.lng).toBeCloseTo(B.wgs84.lng, 4);
-  });
-
-  it("sem azimute manual, o estai é 'auto' e aponta oposto ao esforço", () => {
-    const proj = projeto([P("A", 0, 0), P("B", 100, 0)], [tr("t", "A", "B")]);
-    const b = modelarEsforcos(proj).postes.get("B")!;
-    expect(b.estaiManual).toBe(false);
-    expect(b.azimuteEstai).toBeCloseTo(90, 0); // âncora a leste (oposto a A, a oeste)
+    expect(b.estais).toHaveLength(2);
+    expect(b.pendente).toBe(false);
+    const e1 = b.estais[0];
+    const e2 = b.estais[1];
+    // e1 ao Norte (lat maior, ~mesma lng); e2 a Leste (lng maior, ~mesma lat)
+    expect(e1.ate.lat).toBeGreaterThan(B.wgs84.lat);
+    expect(e1.ate.lng).toBeCloseTo(B.wgs84.lng, 4);
+    expect(e2.ate.lng).toBeGreaterThan(B.wgs84.lng);
+    expect(e2.ate.lat).toBeCloseTo(B.wgs84.lat, 4);
   });
 
   it("poste solto (grau 0) não tem esforço nem estai", () => {
