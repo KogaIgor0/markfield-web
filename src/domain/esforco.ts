@@ -1,5 +1,5 @@
-import type { Projeto } from "./model";
-import { paraUtm } from "../geo/utm";
+import type { LatLng, Projeto, UtmPoint } from "./model";
+import { deUtm, paraUtm } from "../geo/utm";
 
 /**
  * Esforço mecânico + estai (B4 / T4) — rede compacta Elektro (DIS-NOR-013).
@@ -42,6 +42,8 @@ export const ROTULO_CONDICAO: Record<CondicaoVento, string> = {
 export const CAPACIDADE_PADRAO_DAN = 400;
 /** Condição de vento padrão do piloto rural. */
 export const CONDICAO_PADRAO: CondicaoVento = "rural_medio_baixo";
+/** Comprimento do símbolo de estai no mapa (m) — footprint aproximado. */
+export const ESTAI_COMPRIMENTO_M = 15;
 
 export interface EsforcoPoste {
   /** Esforço resultante R (daN). */
@@ -56,6 +58,13 @@ export interface EsforcoPoste {
   pendente: boolean;
   /** Quantas lanças (vãos) chegam ao poste. */
   vaos: number;
+  /**
+   * Azimute (°, 0=N, sentido horário) da **resultante do esforço** — a direção
+   * pra onde a rede puxa o poste. O estai é ancorado no sentido OPOSTO.
+   */
+  azimuteEsforco?: number;
+  /** Ponta do estai no mapa (poste → âncora, no sentido oposto ao esforço). */
+  estaiAte?: LatLng;
   /** Resultado é aproximado (tração H provisória — ver topo do arquivo). */
   aproximado: boolean;
 }
@@ -81,7 +90,7 @@ export interface RedeEsforcos {
 /** Vetores unitários (em UTM) do poste `id` até cada vizinho na topologia. */
 function unitariosAosVizinhos(
   id: string,
-  porId: Map<string, { easting: number; northing: number }>,
+  porId: Map<string, UtmPoint>,
   adj: Map<string, Set<string>>,
 ): { x: number; y: number }[] {
   const o = porId.get(id);
@@ -104,11 +113,8 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
   const capacidadePadrao = opcoes.capacidadePadraoDaN ?? CAPACIDADE_PADRAO_DAN;
 
   // UTM de cada ponto + adjacência (trechos que ligam postes).
-  const porId = new Map<string, { easting: number; northing: number }>();
-  for (const p of projeto.pontos) {
-    const u = paraUtm(p.wgs84);
-    porId.set(p.id, { easting: u.easting, northing: u.northing });
-  }
+  const porId = new Map<string, UtmPoint>();
+  for (const p of projeto.pontos) porId.set(p.id, paraUtm(p.wgs84));
   const adj = new Map<string, Set<string>>();
   for (const p of projeto.pontos) adj.set(p.id, new Set());
   for (const t of projeto.trechos) {
@@ -130,7 +136,8 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
       sx += u.x;
       sy += u.y;
     }
-    const esforcoDaN = H * Math.hypot(sx, sy);
+    const mag = Math.hypot(sx, sy);
+    const esforcoDaN = H * mag;
     const capacidadeDaN = p.capacidadeDaN ?? capacidadePadrao;
     const precisaEstai = us.length > 0 && esforcoDaN > capacidadeDaN + 1e-6;
     const estaiInstalado = Boolean(p.estaiInstalado);
@@ -140,6 +147,25 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
       if (estaiInstalado) instalados++;
       else pendentes++;
     }
+
+    // Direção do esforço (resultante) e ponta do estai no sentido OPOSTO.
+    let azimuteEsforco: number | undefined;
+    let estaiAte: LatLng | undefined;
+    if (precisaEstai && mag > 1e-9) {
+      const rx = sx / mag; // resultante (para onde a rede puxa), unitário em UTM
+      const ry = sy / mag;
+      // azimute do esforço: 0=Norte, horário. Em UTM x=Este, y=Norte.
+      azimuteEsforco = (Math.atan2(rx, ry) * 180) / Math.PI;
+      const pu = porId.get(p.id)!;
+      // estai ancora no sentido oposto (−R̂), a ESTAI_COMPRIMENTO_M metros.
+      estaiAte = deUtm({
+        easting: pu.easting - rx * ESTAI_COMPRIMENTO_M,
+        northing: pu.northing - ry * ESTAI_COMPRIMENTO_M,
+        zone: pu.zone,
+        hemisphere: pu.hemisphere,
+      });
+    }
+
     postes.set(p.id, {
       esforcoDaN,
       capacidadeDaN,
@@ -147,6 +173,8 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
       estaiInstalado,
       pendente,
       vaos: us.length,
+      azimuteEsforco,
+      estaiAte,
       aproximado: true,
     });
   }

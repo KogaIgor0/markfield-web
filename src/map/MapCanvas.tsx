@@ -59,6 +59,7 @@ const SRC = {
   linhas: "mkf-linhas",
   preview: "mkf-preview",
   medicao: "mkf-medicao",
+  estaiSim: "mkf-estai-simbolo",
 } as const;
 const LYR = {
   linhas: "mkf-linhas",
@@ -69,6 +70,8 @@ const LYR = {
   estaiOk: "mkf-estai-ok",
   fotos: "mkf-fotos",
   pontos: "mkf-pontos",
+  estaiLinha: "mkf-estai-linha",
+  estaiAncora: "mkf-estai-ancora",
   medicaoLinha: "mkf-medicao-linha",
   medicaoPts: "mkf-medicao-pts",
 } as const;
@@ -106,6 +109,8 @@ interface MapCanvasProps {
   estaiIds?: Set<string>;
   /** ids dos postes com estai já instalado (B4). Anel verde no modo Rede. */
   estaiInstaladoIds?: Set<string>;
+  /** Segmentos do estai instalado (poste → âncora), no sentido do esforço. */
+  estais?: { de: LatLng; ate: LatLng }[];
   /** Pontos da régua de medição (modo "medir"). */
   medicao?: LatLng[];
   onMedirPonto?: (wgs84: LatLng) => void;
@@ -164,6 +169,7 @@ export function MapCanvas(props: MapCanvasProps) {
     rotulosEstrutura,
     estaiIds,
     estaiInstaladoIds,
+    estais,
     medicao,
     mostrarFotos,
   } = props;
@@ -407,7 +413,7 @@ export function MapCanvas(props: MapCanvasProps) {
     const map = mapRef.current;
     if (!map || !map.getLayer(LYR.pontos)) return;
     map.setPaintProperty(LYR.pontos, "circle-color", modoRede ? COR_PAPEL : COR_TIPO);
-    for (const l of [LYR.estai, LYR.estaiOk]) {
+    for (const l of [LYR.estai, LYR.estaiOk, LYR.estaiLinha, LYR.estaiAncora]) {
       if (map.getLayer(l)) map.setLayoutProperty(l, "visibility", modoRede ? "visible" : "none");
     }
   }, [modoRede]);
@@ -444,6 +450,27 @@ export function MapCanvas(props: MapCanvasProps) {
     map.getCanvas().style.cursor =
       typeof modo === "object" || modo === "ligar" || modo === "medir" ? "crosshair" : "";
   }, [modo]);
+
+  // Símbolo do estai (linha + âncora) atualiza quando muda.
+  useEffect(() => {
+    const map = mapRef.current;
+    const src = map?.getSource(SRC.estaiSim) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    const feats: Feature[] = [];
+    for (const e of estais ?? []) {
+      feats.push({
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: [[e.de.lng, e.de.lat], [e.ate.lng, e.ate.lat]] },
+        properties: {},
+      });
+      feats.push({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [e.ate.lng, e.ate.lat] },
+        properties: {},
+      });
+    }
+    src.setData({ type: "FeatureCollection", features: feats });
+  }, [estais]);
 
   // Mostra/esconde as fotos.
   useEffect(() => {
@@ -505,6 +532,7 @@ function desenharProjeto(
   map.addSource(SRC.pontos, { type: "geojson", data: pontosFc });
   map.addSource(SRC.preview, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   map.addSource(SRC.medicao, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addSource(SRC.estaiSim, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
   // Destaque do trecho selecionado (linha grossa por baixo).
   map.addLayer({
@@ -608,6 +636,29 @@ function desenharProjeto(
       "circle-radius": ["match", ["get", "tipo"], "transformador", 8, 7],
       "circle-color": corPonto,
       "circle-stroke-width": 2,
+      "circle-stroke-color": "#ffffff",
+    },
+  });
+
+  // Estai (B4): linha do poste até a âncora, no sentido do esforço, + a âncora.
+  map.addLayer({
+    id: LYR.estaiLinha,
+    type: "line",
+    source: SRC.estaiSim,
+    filter: ["==", ["geometry-type"], "LineString"],
+    layout: { visibility: modoRede ? "visible" : "none", "line-cap": "round" },
+    paint: { "line-color": "#16a34a", "line-width": 2.5 },
+  });
+  map.addLayer({
+    id: LYR.estaiAncora,
+    type: "circle",
+    source: SRC.estaiSim,
+    filter: ["==", ["geometry-type"], "Point"],
+    layout: { visibility: modoRede ? "visible" : "none" },
+    paint: {
+      "circle-radius": 3.5,
+      "circle-color": "#16a34a",
+      "circle-stroke-width": 1.5,
       "circle-stroke-color": "#ffffff",
     },
   });

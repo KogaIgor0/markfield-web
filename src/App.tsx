@@ -149,6 +149,17 @@ export function App() {
     if (esforcos) for (const [id, e] of esforcos.postes) if (e.precisaEstai && e.estaiInstalado) s.add(id);
     return s;
   }, [esforcos]);
+  // Segmentos do estai (poste → âncora, no sentido oposto ao esforço) — instalados.
+  const estais = useMemo(() => {
+    const arr: { de: LatLng; ate: LatLng }[] = [];
+    if (esforcos && projeto) {
+      for (const p of projeto.pontos) {
+        const e = esforcos.postes.get(p.id);
+        if (e && e.precisaEstai && e.estaiInstalado && e.estaiAte) arr.push({ de: p.wgs84, ate: e.estaiAte });
+      }
+    }
+    return arr;
+  }, [esforcos, projeto]);
   const esforcoSel: EsforcoPoste | undefined =
     esforcos && selecionado ? esforcos.postes.get(selecionado.id) : undefined;
 
@@ -518,6 +529,7 @@ export function App() {
           rotulosEstrutura={rotulosEstrutura}
           estaiIds={estaiIds}
           estaiInstaladoIds={estaiInstaladoIds}
+          estais={estais}
           medicao={medicao}
           onMedirPonto={onMedirPonto}
           mostrarFotos={mostrarFotos && !modoRede}

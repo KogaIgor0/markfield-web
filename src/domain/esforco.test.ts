@@ -111,6 +111,19 @@ describe("modelarEsforcos — estai", () => {
     expect(r.totalEstais).toBe(2);
   });
 
+  it("estai é desenhado no sentido OPOSTO ao esforço (âncora do lado contrário)", () => {
+    // A(0,0)—B(100,0): em B a rede puxa pra oeste (rumo a A); o estai ancora a leste.
+    const A = P("A", 0, 0);
+    const B = P("B", 100, 0);
+    const r = modelarEsforcos(projeto([A, B], [tr("t", "A", "B")]));
+    const b = r.postes.get("B")!;
+    expect(b.estaiAte).toBeDefined();
+    // a ponta do estai fica MAIS LONGE de A do que o próprio poste B
+    const dB = Math.hypot(B.wgs84.lng - A.wgs84.lng, B.wgs84.lat - A.wgs84.lat);
+    const dEstai = Math.hypot(b.estaiAte!.lng - A.wgs84.lng, b.estaiAte!.lat - A.wgs84.lat);
+    expect(dEstai).toBeGreaterThan(dB);
+  });
+
   it("poste solto (grau 0) não tem esforço nem estai", () => {
     const proj = projeto([P("A", 0, 0), P("B", 100, 0)], []); // sem trecho
     const r = modelarEsforcos(proj);
