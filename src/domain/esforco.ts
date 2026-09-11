@@ -1,5 +1,13 @@
 import type { LatLng, Ponto, Projeto, UtmPoint } from "./model";
 import { deUtm, paraUtm } from "../geo/utm";
+import {
+  acharCabo,
+  CABO_PADRAO,
+  CONDICAO_PADRAO,
+  ROTULO_CONDICAO,
+  tracaoDoCabo,
+  type CondicaoVento,
+} from "./cabos";
 
 /**
  * Esforço mecânico + estai (B4 / T4) — rede compacta Elektro (DIS-NOR-013).
@@ -8,40 +16,28 @@ import { deUtm, paraUtm } from "../geo/utm";
  * H. A **resultante** desses puxões é o esforço que o poste precisa aguentar;
  * se passa da **capacidade nominal** do poste (daN), entra **estai**.
  *
- * Cálculo (geral e exato para tração igual H em todas as lanças):
- *   R = H · | Σ  û_i |          (û_i = vetor unitário do poste a cada vizinho, em UTM)
- * Isso reproduz a fórmula do Igor R = √(F1²+F2²+2·F1·F2·cosβ), β = 180−α:
+ * Cálculo (soma vetorial, H por lança conforme o CABO do trecho — E-03):
+ *   R = | Σ  H_i · û_i |      (û_i = unitário do poste a cada vizinho, em UTM)
+ * Com H igual em todas as lanças reproduz a fórmula do Igor R = √(F1²+F2²+2F1F2cosβ):
  *   - fim de rede (1 vão):        R = H            (puxão cheio de um lado só)
  *   - tangente (2 vãos, α≈0):     R ≈ 0            (os dois lados se equilibram)
  *   - ângulo α (2 vãos):          R = 2·H·sin(α/2)
  *   - derivação (3+ vãos):        soma vetorial das lanças
  *
- * ⚠️ **Tração H provisória:** usamos a tração de projeto da DIS-NOR-013
- * (Tab. 7–9, cabo 35 mm²/15 kV, vão de referência 50 m) como H constante por
- * lança. A tabela completa (H por vão/temperatura/vento) é um refinamento; por
- * isso o resultado sai marcado como **aproximado**. A geometria (quais postes
- * puxam mais) já é exata.
+ * H vem do **catálogo de cabos** (`cabos.ts`) pela condição de vento. Só o A35P
+ * está confirmado; os demais são provisórios → resultado marcado **aproximado**.
+ * A geometria (quais postes puxam mais) já é exata.
  */
 
-export type CondicaoVento = "urbana" | "rural_alto" | "rural_medio_baixo";
+// Re-export para compat (App e testes importam daqui).
+export { ROTULO_CONDICAO, CONDICAO_PADRAO };
+export type { CondicaoVento };
 
-/** Tração de projeto H (daN) — DIS-NOR-013 Tab.7–9 (35 mm²/15 kV, vão 50 m). */
-export const TRACAO_DAN: Record<CondicaoVento, number> = {
-  urbana: 438,
-  rural_alto: 595, // rural, alto grau de obstrução (mais abrigado → menos vento)
-  rural_medio_baixo: 714, // rural, médio/baixo grau (mais exposto → mais vento) — pior caso
-};
-
-export const ROTULO_CONDICAO: Record<CondicaoVento, string> = {
-  urbana: "Urbana",
-  rural_alto: "Rural (alta obstrução)",
-  rural_medio_baixo: "Rural (média/baixa)",
-};
+/** Tração H (daN) do cabo padrão A35P por condição — atalho de compat. */
+export const TRACAO_DAN: Record<CondicaoVento, number> = acharCabo(CABO_PADRAO).tracaoDaN;
 
 /** Capacidade nominal padrão do poste (daN) — Quadro 8, concreto circular, A35P. */
 export const CAPACIDADE_PADRAO_DAN = 400;
-/** Condição de vento padrão do piloto rural. */
-export const CONDICAO_PADRAO: CondicaoVento = "rural_medio_baixo";
 /** Comprimento do símbolo de estai no mapa (m) — footprint aproximado. */
 export const ESTAI_COMPRIMENTO_M = 10;
 
@@ -106,24 +102,33 @@ export interface RedeEsforcos {
   instalados: number;
 }
 
-/** Vetores unitários (em UTM) do poste `id` até cada vizinho na topologia. */
-function unitariosAosVizinhos(
+/** Vizinho na topologia + tração H (daN) da lança que os liga (do cabo do trecho). */
+interface Lanca {
+  viz: string;
+  H: number;
+}
+
+/**
+ * Vetores de FORÇA (em UTM) do poste `id` a cada vizinho: unitário × H da lança.
+ * Somados dão a resultante do esforço R = |Σ Hᵢ·ûᵢ|.
+ */
+function forcasAosVizinhos(
   id: string,
   porId: Map<string, UtmPoint>,
-  adj: Map<string, Set<string>>,
+  adjH: Map<string, Lanca[]>,
 ): { x: number; y: number }[] {
   const o = porId.get(id);
   if (!o) return [];
-  const us: { x: number; y: number }[] = [];
-  for (const viz of adj.get(id) ?? []) {
+  const fs: { x: number; y: number }[] = [];
+  for (const { viz, H } of adjH.get(id) ?? []) {
     const v = porId.get(viz);
     if (!v) continue;
     const dx = v.easting - o.easting;
     const dy = v.northing - o.northing;
     const d = Math.hypot(dx, dy);
-    if (d > 0) us.push({ x: dx / d, y: dy / d });
+    if (d > 0) fs.push({ x: (dx / d) * H, y: (dy / d) * H });
   }
-  return us;
+  return fs;
 }
 
 /** Ponta do estai (âncora) a partir do poste, num azimute, a ESTAI_COMPRIMENTO_M metros. */
@@ -162,18 +167,18 @@ function estaisConfigurados(
 
 export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): RedeEsforcos {
   const condicao = opcoes.condicao ?? CONDICAO_PADRAO;
-  const H = TRACAO_DAN[condicao];
   const capacidadePadrao = opcoes.capacidadePadraoDaN ?? CAPACIDADE_PADRAO_DAN;
 
-  // UTM de cada ponto + adjacência (trechos que ligam postes).
+  // UTM de cada ponto + adjacência COM a tração H de cada lança (do cabo do trecho).
   const porId = new Map<string, UtmPoint>();
   for (const p of projeto.pontos) porId.set(p.id, paraUtm(p.wgs84));
-  const adj = new Map<string, Set<string>>();
-  for (const p of projeto.pontos) adj.set(p.id, new Set());
+  const adjH = new Map<string, Lanca[]>();
+  for (const p of projeto.pontos) adjH.set(p.id, []);
   for (const t of projeto.trechos) {
-    if (t.dePontoId && t.aPontoId && adj.has(t.dePontoId) && adj.has(t.aPontoId)) {
-      adj.get(t.dePontoId)!.add(t.aPontoId);
-      adj.get(t.aPontoId)!.add(t.dePontoId);
+    if (t.dePontoId && t.aPontoId && adjH.has(t.dePontoId) && adjH.has(t.aPontoId)) {
+      const H = tracaoDoCabo(t.tipoCabo, condicao);
+      adjH.get(t.dePontoId)!.push({ viz: t.aPontoId, H });
+      adjH.get(t.aPontoId)!.push({ viz: t.dePontoId, H });
     }
   }
 
@@ -182,25 +187,25 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
   let pendentes = 0;
   let instalados = 0;
   for (const p of projeto.pontos) {
-    const us = unitariosAosVizinhos(p.id, porId, adj);
+    const fs = forcasAosVizinhos(p.id, porId, adjH);
+    const nviz = fs.length;
     let sx = 0;
     let sy = 0;
-    for (const u of us) {
-      sx += u.x;
-      sy += u.y;
+    for (const f of fs) {
+      sx += f.x;
+      sy += f.y;
     }
-    const mag = Math.hypot(sx, sy);
-    const esforcoDaN = H * mag;
+    const esforcoDaN = Math.hypot(sx, sy); // R = |Σ Hᵢ·ûᵢ|
     const capacidadeDaN = p.capacidadeDaN ?? capacidadePadrao;
-    const precisaEstai = us.length > 0 && esforcoDaN > capacidadeDaN + 1e-6;
+    const precisaEstai = nviz > 0 && esforcoDaN > capacidadeDaN + 1e-6;
     const pu = porId.get(p.id)!;
 
     // Direção do esforço (resultante) e a SUGESTÃO de estai (sentido oposto).
     let azimuteEsforco: number | undefined;
     let sugestaoAzimute: number | undefined;
-    if (mag > 1e-9) {
-      const rx = sx / mag;
-      const ry = sy / mag;
+    if (esforcoDaN > 1e-9) {
+      const rx = sx / esforcoDaN;
+      const ry = sy / esforcoDaN;
       azimuteEsforco = normalizarAzimute((Math.atan2(rx, ry) * 180) / Math.PI);
       sugestaoAzimute = normalizarAzimute((Math.atan2(-rx, -ry) * 180) / Math.PI); // oposto
     }
@@ -224,12 +229,13 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
       precisaEstai,
       estais,
       pendente,
-      vaos: us.length,
+      vaos: nviz,
       azimuteEsforco,
       sugestaoAzimute,
       aproximado: true,
     });
   }
 
-  return { condicao, tracaoDaN: H, postes, totalEstais, pendentes, instalados };
+  // tracaoDaN no resumo = H do cabo padrão na condição (referência do HUD).
+  return { condicao, tracaoDaN: TRACAO_DAN[condicao], postes, totalEstais, pendentes, instalados };
 }

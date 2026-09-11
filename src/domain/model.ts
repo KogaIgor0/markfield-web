@@ -181,6 +181,12 @@ export interface Trecho {
   caminho?: LatLng[];
   estilo?: EstiloLinha;
   observacao?: string;
+  /**
+   * Cabo do trecho (E-03) — código do catálogo (`cabos.ts`, ex.: "A35P"). Define
+   * a tração H usada no esforço/estai. Ausente = cabo padrão do piloto (A35P). Ao
+   * criar/ligar/inserir um trecho, herda o cabo do trecho a montante (sentido fonte).
+   */
+  tipoCabo?: string;
   origem: Origem;
 }
 

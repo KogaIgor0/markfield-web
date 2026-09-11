@@ -60,10 +60,11 @@ export function ehErro(s: SaidaInsercao): s is { erro: string } {
   return (s as { erro?: string }).erro !== undefined;
 }
 
-/** Atributos herdados para o trecho novo (cabo/classe entram aqui no E-03). */
+/** Atributos herdados para o trecho novo (classe/cabo — E-03). */
 export interface ModeloTrecho {
   classe?: Trecho["classe"];
   estilo?: Trecho["estilo"];
+  tipoCabo?: string;
 }
 
 /**
@@ -105,6 +106,7 @@ export function estenderPonto(
     dePontoId: refId,
     aPontoId: id,
     caminho: [{ ...R.wgs84 }, { ...novoW }],
+    tipoCabo: modelo.tipoCabo,
     origem: "web",
   };
   return {
@@ -174,6 +176,7 @@ export function inserirNoVao(
     dePontoId: refId,
     aPontoId: id,
     caminho: [{ ...R.wgs84 }, { ...novoW }],
+    tipoCabo: t.tipoCabo,
     origem: t.origem,
     observacao: t.observacao,
   };
@@ -184,6 +187,7 @@ export function inserirNoVao(
     dePontoId: id,
     aPontoId: vizinhoId,
     caminho: [{ ...novoW }, { ...V.wgs84 }],
+    tipoCabo: t.tipoCabo,
     origem: t.origem,
     observacao: t.observacao,
   };

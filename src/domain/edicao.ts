@@ -104,9 +104,21 @@ export function definirFonte(projeto: Projeto, id: string): Projeto {
 }
 
 /**
+ * Cabo herdado (E-03): pega o `tipoCabo` de um trecho já ligado ao poste, pra o
+ * trecho novo continuar o mesmo cabo. `undefined` = nenhum incidente define cabo
+ * → cai no padrão do piloto (A35P).
+ */
+export function caboHerdado(projeto: Projeto, pontoId: string): string | undefined {
+  const comCabo = projeto.trechos.find(
+    (t) => (t.dePontoId === pontoId || t.aPontoId === pontoId) && t.tipoCabo,
+  );
+  return comCabo?.tipoCabo;
+}
+
+/**
  * Liga dois postes com um trecho de rede. O caminho nasce das coordenadas
  * exatas dos postes (snap natural) e o trecho guarda os ids das pontas, então
- * ele acompanha os postes quando eles se movem.
+ * ele acompanha os postes quando eles se movem. Herda o cabo do lado da fonte.
  */
 export function adicionarTrecho(
   projeto: Projeto,
@@ -124,6 +136,7 @@ export function adicionarTrecho(
     dePontoId,
     aPontoId,
     caminho: [{ ...de.wgs84 }, { ...a.wgs84 }],
+    tipoCabo: caboHerdado(projeto, dePontoId) ?? caboHerdado(projeto, aPontoId),
     origem: "web",
   };
   return { projeto: tocar({ ...projeto, trechos: [...projeto.trechos, trecho] }), id };
@@ -134,7 +147,7 @@ export function removerTrecho(projeto: Projeto, id: string): Projeto {
   return tocar({ ...projeto, trechos: projeto.trechos.filter((t) => t.id !== id) });
 }
 
-export type PatchTrecho = Partial<Pick<Trecho, "classe" | "observacao">>;
+export type PatchTrecho = Partial<Pick<Trecho, "classe" | "observacao" | "tipoCabo">>;
 
 /** Edita atributos de um trecho (classe elétrica, observação). */
 export function editarTrecho(projeto: Projeto, id: string, patch: PatchTrecho): Projeto {

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Trecho } from "../domain/model";
 import type { PatchTrecho } from "../domain/edicao";
 import { VAO_MAXIMO_M, VAO_MINIMO_M } from "../domain/vaos";
+import { CABOS, CABO_PADRAO, acharCabo } from "../domain/cabos";
 
 /** Painel do trecho selecionado: classe elétrica, comprimento do vão, observação. */
 
@@ -70,6 +71,25 @@ export function PainelTrecho({
           ))}
         </select>
       </label>
+
+      <label className="campo">
+        <span>Cabo</span>
+        <select
+          value={trecho.tipoCabo ?? CABO_PADRAO}
+          onChange={(e) => onEditar({ tipoCabo: e.target.value })}
+        >
+          {CABOS.map((c) => (
+            <option key={c.codigo} value={c.codigo}>
+              {c.rotulo}
+            </option>
+          ))}
+        </select>
+      </label>
+      {!acharCabo(trecho.tipoCabo ?? CABO_PADRAO).tracaoConfirmada && (
+        <div className="vao-alerta">
+          Tração deste cabo ainda <strong>provisória</strong> — a confirmar na norma (só o A35P está validado).
+        </div>
+      )}
 
       <label className="campo">
         <span>Observação</span>

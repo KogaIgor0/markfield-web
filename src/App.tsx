@@ -13,6 +13,7 @@ import {
   acharTrecho,
   adicionarPonto,
   adicionarTrecho,
+  caboHerdado,
   definirFonte,
   editarPonto,
   editarTrecho,
@@ -435,7 +436,9 @@ export function App() {
       const r =
         spec.tipo === "vao"
           ? inserirNoVao(projeto, inserirRefId, spec.vizinhoId, spec.distanciaM)
-          : estenderPonto(projeto, inserirRefId, spec.azimuteGraus, spec.distanciaM);
+          : estenderPonto(projeto, inserirRefId, spec.azimuteGraus, spec.distanciaM, {
+              tipoCabo: caboHerdado(projeto, inserirRefId),
+            });
       if (ehErro(r)) {
         setErro(r.erro);
         return;
