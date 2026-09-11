@@ -38,6 +38,13 @@ export interface Cabo {
   rupturaDaN: number;
   /** Tração de projeto H (daN) por condição, vão de referência 50 m (Tab.7–9). */
   tracaoDaN: Record<CondicaoVento, number>;
+  /**
+   * Tração REDUZIDA (daN) para vão "frouxo" de transferência de esforço (E-05):
+   * o lance sai do poste-tomada com pouca tração pra não exigir estai. Valor
+   * coerente por cabo (~30% da tração de projeto rural média) — **provisório**,
+   * a confirmar. Usado só quando o projetista marca o trecho como tração reduzida.
+   */
+  tracaoReduzidaDaN: number;
   /** As trações foram confirmadas contra a norma? (só A35P por ora). */
   tracaoConfirmada: boolean;
 }
@@ -58,6 +65,7 @@ export const CABOS: Cabo[] = [
     diametroMm: 14.05,
     rupturaDaN: 455,
     tracaoDaN: { urbana: 438, rural_alto: 595, rural_medio_baixo: 714 },
+    tracaoReduzidaDaN: 215, // ~30% de 714 (vão frouxo) — provisório
     tracaoConfirmada: true, // validado contra a DIS-NOR-013
   },
   {
@@ -68,6 +76,7 @@ export const CABOS: Cabo[] = [
     diametroMm: 16.75,
     rupturaDaN: 910,
     tracaoDaN: { urbana: 511, rural_alto: 668, rural_medio_baixo: 793 },
+    tracaoReduzidaDaN: 240, // ~30% de 793 — provisório
     tracaoConfirmada: false, // do resumo do PDF — a confirmar
   },
   {
@@ -79,6 +88,7 @@ export const CABOS: Cabo[] = [
     rupturaDaN: 2405,
     // urbana 714 (resumo); rural estimado pelos deltas do A35P — A CONFIRMAR.
     tracaoDaN: { urbana: 714, rural_alto: 871, rural_medio_baixo: 990 },
+    tracaoReduzidaDaN: 300, // ~30% de 990 — provisório
     tracaoConfirmada: false,
   },
 ];

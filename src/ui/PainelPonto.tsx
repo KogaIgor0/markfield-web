@@ -2,7 +2,14 @@ import { useState } from "react";
 import type { LatLng, Ponto, TipoPonto } from "../domain/model";
 import type { PatchPonto } from "../domain/edicao";
 import { rotuloPapel, type Papel } from "../domain/rede";
-import { CODIGOS_ESTRUTURA, type EstruturaAtribuida } from "../domain/estrutura";
+import { type EstruturaAtribuida } from "../domain/estrutura";
+import {
+  CATALOGO_ESTRUTURAS,
+  CODIGOS_ESTRUTURA,
+  SUFIXOS_ESTRUTURA,
+  comporEstrutura,
+  separarEstrutura,
+} from "../domain/estruturas-catalogo";
 import { normalizarAzimute, type EsforcoPoste } from "../domain/esforco";
 import type { EstaiPonto } from "../domain/model";
 import { novoId } from "../domain/ids";
@@ -279,15 +286,16 @@ export function PainelPonto({
           <div className="estr-override">
             {(() => {
               const manual = ponto.estruturaManual?.trim();
-              const conhecido = manual ? (CODIGOS_ESTRUTURA as readonly string[]).includes(manual) : false;
-              const mostrarOutro = outroCE || Boolean(manual && !conhecido);
-              const valorSel = mostrarOutro ? "__outro__" : conhecido ? manual! : "";
+              const { base, sufixo } = separarEstrutura(manual ?? "");
+              const baseConhecida = base ? (CODIGOS_ESTRUTURA as string[]).includes(base) : false;
+              const mostrarOutro = outroCE || Boolean(manual && !baseConhecida);
+              const valorBase = mostrarOutro ? "__outro__" : baseConhecida ? base : "";
               return (
                 <div className="coord-linha">
                   <label className="campo campo-mini">
                     <span>Estrutura (manual)</span>
                     <select
-                      value={valorSel}
+                      value={valorBase}
                       onChange={(e) => {
                         const v = e.target.value;
                         if (v === "__outro__") {
@@ -297,26 +305,42 @@ export function PainelPonto({
                           onEditar({ estruturaManual: undefined });
                         } else {
                           setOutroCE(false);
-                          onEditar({ estruturaManual: v });
+                          onEditar({ estruturaManual: comporEstrutura(v, sufixo) });
                         }
                       }}
                     >
                       <option value="">Automático (norma)</option>
-                      {CODIGOS_ESTRUTURA.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
+                      {CATALOGO_ESTRUTURAS.map((c) => (
+                        <option key={c.codigo} value={c.codigo}>
+                          {c.rotulo}
                         </option>
                       ))}
                       <option value="__outro__">Outro…</option>
                     </select>
                   </label>
+                  {baseConhecida && !mostrarOutro && (
+                    <label className="campo campo-mini">
+                      <span>Equipamento</span>
+                      <select
+                        value={sufixo}
+                        onChange={(e) => onEditar({ estruturaManual: comporEstrutura(base, e.target.value) })}
+                      >
+                        <option value="">— nenhum —</option>
+                        {SUFIXOS_ESTRUTURA.map((s) => (
+                          <option key={s.sufixo} value={s.sufixo}>
+                            {s.sufixo} — {s.rotulo}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   {mostrarOutro && (
                     <label className="campo campo-mini">
                       <span>Código</span>
                       <input
                         type="text"
                         defaultValue={manual ?? ""}
-                        placeholder="ex.: CE4-TR"
+                        placeholder="ex.: CE4 CF"
                         onBlur={(e) =>
                           onEditar({ estruturaManual: e.target.value.trim() || undefined })
                         }

@@ -38,10 +38,10 @@ export interface EstruturaAtribuida {
 }
 
 /**
- * Códigos que o projetista pode escolher na mão (override). A lista cobre os
- * principais da rede compacta; o campo "Outro" aceita qualquer código da norma.
+ * Códigos de estrutura conhecidos (override). Fonte única = catálogo E-02
+ * (`estruturas-catalogo.ts`); o campo "Outro" aceita qualquer código da norma.
  */
-export const CODIGOS_ESTRUTURA = ["CE1", "CE1A", "CE2", "CE3", "CE3-CE3", "CE4", "CE3TR"] as const;
+export { CODIGOS_ESTRUTURA } from "./estruturas-catalogo";
 
 /** Limite superior (°) do CE2; acima disso (até 90°) é CE4. */
 export const ANGULO_CE2_MAX = 60;
