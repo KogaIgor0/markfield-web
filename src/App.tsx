@@ -31,7 +31,7 @@ import {
   type CondicaoVento,
   type EsforcoPoste,
 } from "./domain/esforco";
-import { validarAmarracao, LANCE_MAX_AMARRACAO_M } from "./domain/amarracao";
+import { validarAmarracao, proporAmarracao, LANCE_MAX_AMARRACAO_M } from "./domain/amarracao";
 import {
   ajustarVao,
   comprimentoTrechoM,
@@ -208,6 +208,12 @@ export function App() {
     () => (projeto && rede ? validarAmarracao(projeto, estruturas, rede) : []),
     [projeto, estruturas, rede],
   );
+  // Sugestão automática de CE4 (E-01/A): onde a norma pede amarração.
+  const sugestoesCE4 = useMemo(
+    () => (projeto && rede ? proporAmarracao(projeto, estruturas, rede) : []),
+    [projeto, estruturas, rede],
+  );
+  const sugCE4Ids = useMemo(() => new Set(sugestoesCE4.map((s) => s.pontoId)), [sugestoesCE4]);
 
   // Comprimento total da régua de medição (m, em UTM).
   const medicaoTotalM = useMemo(() => {
@@ -406,6 +412,21 @@ export function App() {
   );
 
   const onMedirPonto = useCallback((wgs84: LatLng) => setMedicao((m) => [...m, wgs84]), []);
+
+  // E-01/A: aceita a sugestão de CE4 (vira estrutura manual no poste).
+  const aplicarCE4 = useCallback(
+    (id: string) => {
+      if (projeto) atualizar(editarPonto(projeto, id, { estruturaManual: "CE4" }));
+    },
+    [projeto, atualizar],
+  );
+  const aplicarTodasCE4 = useCallback(() => {
+    if (!projeto) return;
+    let p = projeto;
+    for (const s of sugestoesCE4) p = editarPonto(p, s.pontoId, { estruturaManual: "CE4" });
+    atualizar(p);
+    setMensagem(`CE4 aplicada em ${sugestoesCE4.length} poste(s) — amarração conforme a norma.`);
+  }, [projeto, sugestoesCE4, atualizar]);
 
   // E-04: crava o poste medido a partir do referência, na direção/distância escolhidas.
   const onInserirPonto = useCallback(
@@ -694,6 +715,7 @@ export function App() {
           rotulosEstrutura={rotulosEstrutura}
           estaiIds={estaiIds}
           estaiInstaladoIds={estaiInstaladoIds}
+          sugCE4Ids={sugCE4Ids}
           estais={estais}
           medicao={medicao}
           onMedirPonto={onMedirPonto}
@@ -919,9 +941,35 @@ export function App() {
             {lancesLongos.map((l, i) => (
               <div key={`amarra-${i}`} className="rede-hud-aviso">
                 Lance de {l.comprimentoM.toFixed(0)} m sem amarração — norma pede CE4 a cada{" "}
-                {LANCE_MAX_AMARRACAO_M} m (force CE4 num poste do trecho).
+                {LANCE_MAX_AMARRACAO_M} m.
               </div>
             ))}
+            {sugestoesCE4.length > 0 && (
+              <div className="rede-hud-ce4">
+                <div className="rede-hud-ce4-topo">
+                  <span>Sugestão de CE4 (amarração)</span>
+                  <button className="btn-mini" onClick={aplicarTodasCE4}>
+                    Aplicar todas ({sugestoesCE4.length})
+                  </button>
+                </div>
+                {sugestoesCE4.map((s) => (
+                  <div key={s.pontoId} className="ce4-sug">
+                    <span>
+                      <i className="pin" style={{ background: "transparent", boxShadow: "inset 0 0 0 2px #d97706" }} />{" "}
+                      P{s.numero ?? "?"} · {s.posicaoM.toFixed(0)} m de {s.lanceComprimentoM.toFixed(0)} m
+                    </span>
+                    <span className="ce4-acoes">
+                      <button className="btn-mini" onClick={() => aplicarCE4(s.pontoId)}>
+                        Aplicar CE4
+                      </button>
+                      <button className="btn-mini-sec" onClick={() => selecionarPonto(s.pontoId)}>
+                        Ver
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             {rede.avisos.map((a, i) => (
               <div key={i} className="rede-hud-aviso">{a}</div>
             ))}

@@ -878,6 +878,39 @@ body {
   padding-top: 6px;
 }
 
+/* Sugestão automática de CE4 (E-01/A) */
+.rede-hud-ce4 {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border-top: 1px solid var(--hair);
+  padding-top: 6px;
+}
+
+.rede-hud-ce4-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: #b4530a;
+  font-weight: 600;
+}
+
+.ce4-sug {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.ce4-acoes {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
 .hud-vento {
   display: flex;
   align-items: center;

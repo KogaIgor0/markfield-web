@@ -1,4 +1,4 @@
-import type { Projeto } from "./model";
+import type { Ponto, Projeto } from "./model";
 import type { EstruturaAtribuida } from "./estrutura";
 import type { RedeModelada } from "./rede";
 import { distanciaM } from "./vaos";
@@ -31,14 +31,18 @@ export interface LanceLongo {
   comprimentoM: number;
 }
 
-/**
- * Lances retos acima de 500 m sem amarração. `codigos` e `rede` vêm do B3/B1.
- */
-export function validarAmarracao(
+/** Um poste do lance com a distância acumulada desde a amarração de início. */
+interface NoLance {
+  id: string;
+  acc: number;
+}
+
+/** Adjacência + a função `amarra` (compartilhado por validar/propor). */
+function contexto(
   projeto: Projeto,
   codigos: Map<string, EstruturaAtribuida>,
   rede: RedeModelada,
-): LanceLongo[] {
+) {
   const porId = new Map(projeto.pontos.map((p) => [p.id, p]));
   const adj = new Map<string, Set<string>>();
   for (const p of projeto.pontos) adj.set(p.id, new Set());
@@ -53,39 +57,116 @@ export function validarAmarracao(
     const grau = rede.postes.get(id)?.grau ?? 0;
     return ehAmarracao(cod, grau);
   };
+  return { porId, adj, amarra };
+}
 
-  const lances: LanceLongo[] = [];
+/**
+ * Percorre cada lance reto (entre duas amarrações) UMA vez, devolvendo a cadeia
+ * de postes com distância acumulada. Callback recebe {início, fim, cadeia, comp}.
+ */
+function percorrerLances(
+  projeto: Projeto,
+  porId: Map<string, Ponto>,
+  adj: Map<string, Set<string>>,
+  amarra: (id: string) => boolean,
+  visitar: (deId: string, ateId: string, cadeia: NoLance[], comp: number) => void,
+): void {
   const vistos = new Set<string>();
   for (const p of projeto.pontos) {
-    if (!amarra(p.id)) continue; // começa em cada amarração
+    if (!amarra(p.id)) continue;
     for (const viz of adj.get(p.id) ?? []) {
-      // caminha o lance de postes de LINHA a partir de `viz` até a próxima amarração
+      const b0 = porId.get(viz);
+      if (!b0) continue;
+      const cadeia: NoLance[] = [{ id: p.id, acc: 0 }];
       let prev = p.id;
       let cur = viz;
-      const a = porId.get(prev)!;
-      const b0 = porId.get(cur);
-      if (!b0) continue;
-      let comp = distanciaM(a.wgs84, b0.wgs84);
+      let acc = distanciaM(porId.get(prev)!.wgs84, b0.wgs84);
+      cadeia.push({ id: cur, acc });
       let guarda = 0;
       while (!amarra(cur) && guarda++ < 100000) {
         const prox = [...(adj.get(cur) ?? [])].find((v) => v !== prev);
         if (!prox) break;
-        const c1 = porId.get(cur)!;
-        const c2 = porId.get(prox)!;
-        comp += distanciaM(c1.wgs84, c2.wgs84);
+        acc += distanciaM(porId.get(cur)!.wgs84, porId.get(prox)!.wgs84);
         prev = cur;
         cur = prox;
+        cadeia.push({ id: cur, acc });
       }
       if (amarra(cur) && cur !== p.id) {
         const chave = [p.id, cur].sort().join("|");
         if (!vistos.has(chave)) {
           vistos.add(chave);
-          if (comp > LANCE_MAX_AMARRACAO_M + 1e-6) {
-            lances.push({ deId: p.id, ateId: cur, comprimentoM: comp });
-          }
+          visitar(p.id, cur, cadeia, acc);
         }
       }
     }
   }
+}
+
+/**
+ * Lances retos acima de 500 m sem amarração. `codigos` e `rede` vêm do B3/B1.
+ */
+export function validarAmarracao(
+  projeto: Projeto,
+  codigos: Map<string, EstruturaAtribuida>,
+  rede: RedeModelada,
+): LanceLongo[] {
+  const { porId, adj, amarra } = contexto(projeto, codigos, rede);
+  const lances: LanceLongo[] = [];
+  percorrerLances(projeto, porId, adj, amarra, (deId, ateId, _cadeia, comp) => {
+    if (comp > LANCE_MAX_AMARRACAO_M + 1e-6) lances.push({ deId, ateId, comprimentoM: comp });
+  });
   return lances;
+}
+
+export interface SugestaoCE4 {
+  pontoId: string;
+  numero?: string;
+  /** Posição do poste ao longo do lance (m desde a amarração de início). */
+  posicaoM: number;
+  /** Comprimento total do lance (m). */
+  lanceComprimentoM: number;
+}
+
+/**
+ * Propõe **onde colocar CE4** (E-01/A). Para cada lance > 500 m, divide-o em
+ * `n = ⌈comp/500⌉` partes iguais (cada sub-lance ≤ 500 m) e sugere a CE4 no
+ * **poste de linha existente mais próximo** de cada divisa — sem criar poste
+ * solto. O projetista aceita (vira `estruturaManual="CE4"`), move pra outro
+ * poste, ou ignora. Cada poste é sugerido no máximo uma vez.
+ */
+export function proporAmarracao(
+  projeto: Projeto,
+  codigos: Map<string, EstruturaAtribuida>,
+  rede: RedeModelada,
+): SugestaoCE4[] {
+  const { porId, adj, amarra } = contexto(projeto, codigos, rede);
+  const sugestoes: SugestaoCE4[] = [];
+  const jaSugerido = new Set<string>();
+  percorrerLances(projeto, porId, adj, amarra, (deId, ateId, cadeia, comp) => {
+    if (comp <= LANCE_MAX_AMARRACAO_M + 1e-6) return;
+    const n = Math.ceil(comp / LANCE_MAX_AMARRACAO_M);
+    const passo = comp / n;
+    // candidatos = postes interiores de linha (nem a amarração de início nem a de fim)
+    const interiores = cadeia.filter((c) => c.id !== deId && c.id !== ateId);
+    for (let k = 1; k < n; k++) {
+      const alvo = k * passo;
+      let melhor: { c: NoLance; d: number } | null = null;
+      for (const c of interiores) {
+        if (jaSugerido.has(c.id)) continue;
+        const d = Math.abs(c.acc - alvo);
+        if (!melhor || d < melhor.d) melhor = { c, d };
+      }
+      if (melhor) {
+        jaSugerido.add(melhor.c.id);
+        const pt = porId.get(melhor.c.id)!;
+        sugestoes.push({
+          pontoId: melhor.c.id,
+          numero: pt.numero,
+          posicaoM: melhor.c.acc,
+          lanceComprimentoM: comp,
+        });
+      }
+    }
+  });
+  return sugestoes;
 }

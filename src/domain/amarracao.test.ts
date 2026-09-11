@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Ponto, Projeto, Trecho } from "./model";
 import { modelarRede } from "./rede";
 import { classificarEstrutura, type EstruturaAtribuida } from "./estrutura";
-import { validarAmarracao } from "./amarracao";
+import { proporAmarracao, validarAmarracao } from "./amarracao";
 
 const lat0 = -20.71;
 const P = (id: string, ym: number, extra: Partial<Ponto> = {}): Ponto => ({
@@ -65,5 +65,51 @@ describe("validarAmarracao (CE4 / 500 m)", () => {
     const lances = validarAmarracao(projCE4, estruturas(projCE4), rede);
     // agora os dois lances (A-B e B-C) têm 300 m cada → nenhum > 500
     expect(lances).toHaveLength(0);
+  });
+});
+
+describe("proporAmarracao (sugestão de CE4)", () => {
+  it("lance de 600 m: sugere CE4 no poste do meio (B)", () => {
+    const A = P("A", 0);
+    const B = P("B", 300);
+    const C = P("C", 600);
+    const proj = projeto([A, B, C], [tr("t1", "A", "B"), tr("t2", "B", "C")]);
+    const rede = modelarRede(proj);
+    const sug = proporAmarracao(proj, estruturas(proj), rede);
+    expect(sug).toHaveLength(1);
+    expect(sug[0].pontoId).toBe("B");
+    expect(sug[0].lanceComprimentoM).toBeGreaterThan(500);
+  });
+
+  it("encaixa no poste EXISTENTE mais próximo da divisa (~350 m)", () => {
+    // A(0)-M1(250)-M2(480)-C(700): n=2, divisa em 350 → M1 (250) mais perto que M2 (480)
+    const proj = projeto(
+      [P("A", 0), P("M1", 250), P("M2", 480), P("C", 700)],
+      [tr("t1", "A", "M1"), tr("t2", "M1", "M2"), tr("t3", "M2", "C")],
+    );
+    const rede = modelarRede(proj);
+    const sug = proporAmarracao(proj, estruturas(proj), rede);
+    expect(sug).toHaveLength(1);
+    expect(sug[0].pontoId).toBe("M1");
+  });
+
+  it("aceitar a sugestão (CE4 no poste) zera os lances longos", () => {
+    const A = P("A", 0);
+    const B = P("B", 300);
+    const C = P("C", 600);
+    const proj = projeto([A, B, C], [tr("t1", "A", "B"), tr("t2", "B", "C")]);
+    const sug = proporAmarracao(proj, estruturas(proj), modelarRede(proj));
+    // aplica CE4 no poste sugerido
+    const aplicado = projeto(
+      proj.pontos.map((p) => (p.id === sug[0].pontoId ? { ...p, estruturaManual: "CE4" } : p)),
+      proj.trechos,
+    );
+    expect(validarAmarracao(aplicado, estruturas(aplicado), modelarRede(aplicado))).toHaveLength(0);
+    expect(proporAmarracao(aplicado, estruturas(aplicado), modelarRede(aplicado))).toHaveLength(0);
+  });
+
+  it("sem lance longo, não propõe nada", () => {
+    const proj = projeto([P("A", 0), P("B", 200)], [tr("t", "A", "B")]);
+    expect(proporAmarracao(proj, estruturas(proj), modelarRede(proj))).toHaveLength(0);
   });
 });

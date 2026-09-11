@@ -68,6 +68,7 @@ const LYR = {
   sel: "mkf-sel",
   estai: "mkf-estai",
   estaiOk: "mkf-estai-ok",
+  sugCE4: "mkf-sug-ce4",
   fotos: "mkf-fotos",
   pontos: "mkf-pontos",
   estaiLinha: "mkf-estai-linha",
@@ -109,6 +110,8 @@ interface MapCanvasProps {
   estaiIds?: Set<string>;
   /** ids dos postes com estai já instalado (B4). Anel verde no modo Rede. */
   estaiInstaladoIds?: Set<string>;
+  /** ids dos postes sugeridos para CE4 (E-01/A). Anel âmbar tracejado no modo Rede. */
+  sugCE4Ids?: Set<string>;
   /** Segmentos do estai instalado (poste → âncora), no sentido do esforço. */
   estais?: { de: LatLng; ate: LatLng }[];
   /** Pontos da régua de medição (modo "medir"). */
@@ -169,6 +172,7 @@ export function MapCanvas(props: MapCanvasProps) {
     rotulosEstrutura,
     estaiIds,
     estaiInstaladoIds,
+    sugCE4Ids,
     estais,
     medicao,
     mostrarFotos,
@@ -352,6 +356,7 @@ export function MapCanvas(props: MapCanvasProps) {
         propsRef.current.papeis,
         propsRef.current.estaiIds,
         propsRef.current.estaiInstaladoIds,
+        propsRef.current.sugCE4Ids,
       );
       fcRef.current = fc;
       const cor = propsRef.current.modoRede ? COR_PAPEL : COR_TIPO;
@@ -404,17 +409,17 @@ export function MapCanvas(props: MapCanvasProps) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !projeto || !map.getSource(SRC.pontos)) return;
-    const fc = pontosGeoJson(projeto, papeis, estaiIds, estaiInstaladoIds);
+    const fc = pontosGeoJson(projeto, papeis, estaiIds, estaiInstaladoIds, sugCE4Ids);
     fcRef.current = fc;
     (map.getSource(SRC.pontos) as maplibregl.GeoJSONSource).setData(fc);
-  }, [papeis, estaiIds, estaiInstaladoIds, projeto]);
+  }, [papeis, estaiIds, estaiInstaladoIds, sugCE4Ids, projeto]);
 
   // Alterna a cor dos postes (papel x tipo) e o anel de estai só no modo Rede.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.getLayer(LYR.pontos)) return;
     map.setPaintProperty(LYR.pontos, "circle-color", modoRede ? COR_PAPEL : COR_TIPO);
-    for (const l of [LYR.estai, LYR.estaiOk, LYR.estaiLinha, LYR.estaiAncora]) {
+    for (const l of [LYR.estai, LYR.estaiOk, LYR.sugCE4, LYR.estaiLinha, LYR.estaiAncora]) {
       if (map.getLayer(l)) map.setLayoutProperty(l, "visibility", modoRede ? "visible" : "none");
     }
   }, [modoRede]);
@@ -615,6 +620,20 @@ function desenharProjeto(
       "circle-color": "rgba(0,0,0,0)",
       "circle-stroke-width": 3,
       "circle-stroke-color": "#e11d48",
+    },
+  });
+  // Anel de SUGESTÃO de CE4 (âmbar), maior, por fora dos anéis de estai (E-01/A).
+  map.addLayer({
+    id: LYR.sugCE4,
+    type: "circle",
+    source: SRC.pontos,
+    filter: ["==", ["get", "sugCE4"], true],
+    layout: { visibility: modoRede ? "visible" : "none" },
+    paint: {
+      "circle-radius": 16,
+      "circle-color": "rgba(217,119,6,0.12)",
+      "circle-stroke-width": 2.5,
+      "circle-stroke-color": "#d97706",
     },
   });
 
