@@ -11,6 +11,14 @@ import {
   separarEstrutura,
 } from "../domain/estruturas-catalogo";
 import { normalizarAzimute, type EsforcoPoste } from "../domain/esforco";
+import {
+  acharPoste,
+  alturasDe,
+  cargasDe,
+  CATALOGO_POSTES,
+  POSTE_PADRAO,
+  type SecaoPoste,
+} from "../domain/postes-catalogo";
 import type { EstaiPonto } from "../domain/model";
 import { novoId } from "../domain/ids";
 import { deUtm, formatarUtm, paraUtm } from "../geo/utm";
@@ -361,23 +369,82 @@ export function PainelPonto({
                 {esforco.esforcoDaN.toFixed(0)} daN
               </strong>
             </div>
-            <div className="rede-linha">
-              <span>Capacidade do poste</span>
-              <span className="cap-campo">
-                <input
-                  type="number"
-                  min={100}
-                  step={100}
-                  defaultValue={esforco.capacidadeDaN}
-                  onBlur={(e) => {
-                    const n = Number(e.target.value.replace(",", "."));
-                    if (Number.isFinite(n) && n > 0) onEditar({ capacidadeDaN: n });
-                  }}
-                  onKeyDown={enterBlur}
-                />
-                <span>daN</span>
-              </span>
-            </div>
+            {(() => {
+              const atual =
+                acharPoste(ponto.posteTipo) ??
+                CATALOGO_POSTES.find(
+                  (p) => p.secao === "circular" && p.alturaM === 11 && p.cargaDaN === ponto.capacidadeDaN,
+                ) ??
+                acharPoste(POSTE_PADRAO)!;
+              const definido = Boolean(acharPoste(ponto.posteTipo));
+              const alturas = alturasDe(atual.secao);
+              const cargas = cargasDe(atual.secao, atual.alturaM);
+              const acha = (s: SecaoPoste, a: number, c: number) =>
+                CATALOGO_POSTES.find((p) => p.secao === s && p.alturaM === a && p.cargaDaN === c) ??
+                CATALOGO_POSTES.find((p) => p.secao === s && p.alturaM === a);
+              const setTipo = (s: SecaoPoste, a: number, c: number) => {
+                const t = acha(s, a, c);
+                if (t) onEditar({ posteTipo: t.codigo });
+              };
+              const sug = esforco.posteSugerido ? acharPoste(esforco.posteSugerido) : undefined;
+              const mostrarSug = sug && sug.codigo !== atual.codigo;
+              return (
+                <div className="poste-bloco">
+                  <div className="rede-linha">
+                    <span>Poste{!definido && <em className="poste-nao"> (padrão)</em>}</span>
+                    <strong>{atual.alturaM}/{atual.cargaDaN}</strong>
+                  </div>
+                  <div className="poste-sels">
+                    <label className="campo campo-mini">
+                      <span>Seção</span>
+                      <select
+                        value={atual.secao}
+                        onChange={(e) => setTipo(e.target.value as SecaoPoste, atual.alturaM, atual.cargaDaN)}
+                      >
+                        <option value="circular">Circular</option>
+                        <option value="duploT">Duplo T</option>
+                      </select>
+                    </label>
+                    <label className="campo campo-mini">
+                      <span>Altura</span>
+                      <select
+                        value={atual.alturaM}
+                        onChange={(e) => setTipo(atual.secao, Number(e.target.value), atual.cargaDaN)}
+                      >
+                        {alturas.map((a) => (
+                          <option key={a} value={a}>{a} m</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="campo campo-mini">
+                      <span>Carga</span>
+                      <select
+                        value={atual.cargaDaN}
+                        onChange={(e) => setTipo(atual.secao, atual.alturaM, Number(e.target.value))}
+                      >
+                        {cargas.map((c) => (
+                          <option key={c} value={c}>{c} daN</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  {mostrarSug && (
+                    <div className="poste-sug">
+                      <span>
+                        Sugerido p/ o esforço: <strong>{sug!.alturaM}/{sug!.cargaDaN}</strong>
+                        {!esforco.posteSugeridoAguenta && " (nem o maior de 11 m aguenta — suba a altura ou use estai)"}
+                      </span>
+                      <button
+                        className="btn-mini"
+                        onClick={() => onEditar({ posteTipo: sug!.codigo })}
+                      >
+                        Usar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             {!esforco.precisaEstai && esforco.estais.length === 0 && (
               <div className="estai-linha">Sem estai — esforço dentro da capacidade.</div>
             )}

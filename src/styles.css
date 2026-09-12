@@ -1221,3 +1221,34 @@ body {
     width: auto;
   }
 }
+
+/* Tipo de poste (B8) — bloco no PainelPonto */
+.poste-bloco {
+  margin: 6px 0 2px;
+}
+.poste-nao {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 12px;
+}
+.poste-sels {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin-top: 4px;
+}
+.poste-sels .campo-mini {
+  margin: 0;
+}
+.poste-sug {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: #fdf3e2;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  font-size: 12.5px;
+}

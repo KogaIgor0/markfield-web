@@ -37,6 +37,16 @@ export function PainelMateriais({ resumo, onFechar }: Props) {
         </div>
       </div>
 
+      <div className="painel-sub">Postes por tipo (altura/carga)</div>
+      <div className="mat-grid">
+        {resumo.postesPorTipo.map((p) => (
+          <div key={p.codigo} className="mat-linha">
+            <span>{p.rotulo}</span>
+            <strong>{p.n}</strong>
+          </div>
+        ))}
+      </div>
+
       <div className="painel-sub">Estruturas</div>
       {resumo.estruturas.length === 0 ? (
         <div className="mat-vazio">Sem estruturas classificadas (marque a fonte e ligue os postes).</div>

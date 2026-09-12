@@ -13,6 +13,7 @@ import {
   type Orientacao,
 } from "../domain/prancha";
 import { gerarDxfPrancha } from "../io/dxfPrancha";
+import { acharPoste } from "../domain/postes-catalogo";
 import { baixar } from "../io/exportar";
 
 /**
@@ -259,6 +260,14 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                         {Math.round(e!.esforcoDaN)} daN
                       </text>
                     )}
+                    {(() => {
+                      const tp = acharPoste(p.posteTipo);
+                      return tp ? (
+                        <text x={x + 1.6} y={y + (mostraEsf ? 7.8 : 5.2)} fontSize={2} fill="#555">
+                          {tp.alturaM}/{tp.cargaDaN}
+                        </text>
+                      ) : null;
+                    })()}
                   </g>
                 );
               })}
@@ -398,6 +407,7 @@ function SimbLinha({ dy, label, children }: { dy: number; label: string; childre
 
 function QuadroMateriais({ w, materiais }: { w: number; materiais: ResumoMateriais }) {
   const linhas: { rot: string; val: string }[] = [];
+  for (const p of materiais.postesPorTipo) linhas.push({ rot: `Poste ${p.rotulo}`, val: String(p.n) });
   for (const e of materiais.estruturas) linhas.push({ rot: e.codigo, val: String(e.n) });
   for (const c of materiais.cabos)
     linhas.push({ rot: `Cabo ${c.codigo}${c.provisorio ? "*" : ""}`, val: `${Math.round(c.comprimentoM)} m` });

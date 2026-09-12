@@ -8,6 +8,7 @@ import {
   tracaoDoCabo,
   type CondicaoVento,
 } from "./cabos";
+import { capacidadeDoPoste, sugerirPoste } from "./postes-catalogo";
 
 /**
  * Esforço mecânico + estai (B4 / T4) — rede compacta Elektro (DIS-NOR-013).
@@ -82,6 +83,12 @@ export interface EsforcoPoste {
   sugestaoAzimute?: number;
   /** Resultado é aproximado (tração H provisória — ver topo do arquivo). */
   aproximado: boolean;
+  /** Tipo de poste efetivo do ponto (código do catálogo), quando definido. */
+  posteTipo?: string;
+  /** Poste SUGERIDO pelo esforço (menor que aguenta, 11 m circular) — código. */
+  posteSugerido?: string;
+  /** `false` = nem o maior poste (dessa altura/seção) aguenta → subir altura/estai. */
+  posteSugeridoAguenta?: boolean;
 }
 
 export interface OpcoesEsforco {
@@ -200,8 +207,11 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
       sy += f.y;
     }
     const esforcoDaN = Math.hypot(sx, sy); // R = |Σ Hᵢ·ûᵢ|
-    const capacidadeDaN = p.capacidadeDaN ?? capacidadePadrao;
+    // Capacidade: prioridade pro tipo de poste (B8); senão o valor manual; senão o padrão.
+    const capacidadeDaN = capacidadeDoPoste(p.posteTipo) ?? p.capacidadeDaN ?? capacidadePadrao;
     const precisaEstai = nviz > 0 && esforcoDaN > capacidadeDaN + 1e-6;
+    // Poste sugerido pelo esforço (menor que aguenta, 11 m circular — piloto).
+    const sug = sugerirPoste(esforcoDaN);
     const pu = porId.get(p.id)!;
 
     // Direção do esforço (resultante) e a SUGESTÃO de estai (sentido oposto).
@@ -237,6 +247,9 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
       azimuteEsforco,
       sugestaoAzimute,
       aproximado: true,
+      posteTipo: p.posteTipo,
+      posteSugerido: sug.tipo.codigo,
+      posteSugeridoAguenta: sug.aguenta,
     });
   }
 

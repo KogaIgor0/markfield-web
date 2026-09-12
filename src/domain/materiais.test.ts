@@ -75,6 +75,23 @@ describe("resumoMateriais", () => {
     expect(r.espacadoresEstimado).toBe(true);
   });
 
+  it("agrupa postes por tipo (altura/carga) e marca os sem tipo", () => {
+    const proj = projeto(
+      [
+        P("A", 0, { ehFonte: true, posteTipo: "C-11/600" }),
+        P("B", 100, { posteTipo: "C-11/600" }),
+        P("C", 200), // sem tipo
+      ],
+      [tr("t1", "A", "B"), tr("t2", "B", "C")],
+    );
+    const r = resumoMateriais(proj, estruturas(proj), modelarEsforcos(proj), 0);
+    const c11 = r.postesPorTipo.find((p) => p.codigo === "C-11/600");
+    const semTipo = r.postesPorTipo.find((p) => p.codigo === "—");
+    expect(c11?.n).toBe(2);
+    expect(semTipo?.n).toBe(1);
+    expect(r.postesPorTipo.reduce((s, p) => s + p.n, 0)).toBe(r.postes);
+  });
+
   it("conta para-raios pela estrutura -PR e cabo provisório", () => {
     const proj = projeto(
       [P("A", 0, { ehFonte: true }), P("B", 100, { estruturaManual: "CE3 PR" })],

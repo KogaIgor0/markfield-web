@@ -150,6 +150,23 @@ describe("modelarEsforcos — estai", () => {
   });
 });
 
+describe("poste (B8) — tipo dita a capacidade e a sugestão", () => {
+  it("poste 1500 daN no fim não precisa de estai (714 < 1500)", () => {
+    const proj = projeto([P("A", 0, 0), P("B", 100, 0, { posteTipo: "C-11/1500" })], [tr("t", "A", "B")]);
+    const b = modelarEsforcos(proj).postes.get("B")!;
+    expect(b.capacidadeDaN).toBe(1500);
+    expect(b.precisaEstai).toBe(false);
+    expect(b.posteTipo).toBe("C-11/1500");
+  });
+
+  it("sem tipo, sugere o menor poste que aguenta (714 → C-11/1000)", () => {
+    const proj = projeto([P("A", 0, 0), P("B", 100, 0)], [tr("t", "A", "B")]);
+    const b = modelarEsforcos(proj).postes.get("B")!;
+    expect(b.posteSugerido).toBe("C-11/1000"); // 714: > 600 e ≤ 1000
+    expect(b.posteSugeridoAguenta).toBe(true);
+  });
+});
+
 describe("tração reduzida — transferência de esforço (E-05)", () => {
   it("marcar o vão como reduzido derruba o esforço e tira o estai", () => {
     const A = P("A", 0, 0);

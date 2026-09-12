@@ -9,6 +9,7 @@ import {
   type FolhaId,
   type Orientacao,
 } from "../domain/prancha";
+import { acharPoste } from "../domain/postes-catalogo";
 
 /**
  * DXF da PRANCHA (B6) — a folha formatada, em milímetros de papel.
@@ -146,9 +147,10 @@ export function gerarDxfPrancha(p: ParamsPrancha): string {
       const cod = p.rotulosEstrutura.get(pt.id);
       if (cod) text(CAM.estrutura.nome, x + 1.6, y + 2.6, 2.2, cod);
       const e = p.esforcos?.postes.get(pt.id);
-      if (e && e.esforcoDaN >= 1 && (e.precisaEstai || e.estais.length > 0)) {
-        text(CAM.esforco.nome, x + 1.6, y + 5.2, 2, `${Math.round(e.esforcoDaN)} daN`);
-      }
+      const mostraEsf = e && e.esforcoDaN >= 1 && (e.precisaEstai || e.estais.length > 0);
+      if (mostraEsf) text(CAM.esforco.nome, x + 1.6, y + 5.2, 2, `${Math.round(e!.esforcoDaN)} daN`);
+      const tp = acharPoste(pt.posteTipo);
+      if (tp) text(CAM.numero.nome, x + 1.6, y + (mostraEsf ? 7.8 : 5.2), 2, `${tp.alturaM}/${tp.cargaDaN}`);
     }
   } else {
     text(CAM.cota.nome, L.desenho.x + L.desenho.w / 2, L.desenho.y + L.desenho.h / 2, 4, "Sem pontos", 1);
@@ -217,6 +219,7 @@ export function gerarDxfPrancha(p: ParamsPrancha): string {
 function linhasMateriais(m: ResumoMateriais | null): { rot: string; val: string }[] {
   if (!m) return [{ rot: "Materiais", val: "-" }];
   const linhas: { rot: string; val: string }[] = [];
+  for (const p of m.postesPorTipo) linhas.push({ rot: `Poste ${p.rotulo}`, val: String(p.n) });
   for (const e of m.estruturas) linhas.push({ rot: e.codigo, val: String(e.n) });
   for (const cb of m.cabos)
     linhas.push({ rot: `Cabo ${cb.codigo}${cb.provisorio ? "*" : ""}`, val: `${Math.round(cb.comprimentoM)} m` });

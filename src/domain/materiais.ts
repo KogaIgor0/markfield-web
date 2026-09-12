@@ -3,6 +3,7 @@ import type { EstruturaAtribuida } from "./estrutura";
 import type { RedeEsforcos } from "./esforco";
 import { comprimentoTrechoM } from "./vaos";
 import { acharCabo, CABO_PADRAO } from "./cabos";
+import { acharPoste } from "./postes-catalogo";
 
 /**
  * Quantitativo do projeto (B5, v1) — números que o sistema deriva sozinho do
@@ -29,6 +30,8 @@ export interface CaboQuant {
 
 export interface ResumoMateriais {
   postes: number;
+  /** Postes por tipo (altura/carga). `codigo` "—" = tipo ainda não definido. */
+  postesPorTipo: { codigo: string; rotulo: string; n: number }[];
   trechos: number;
   comprimentoRedeM: number;
   estruturas: { codigo: string; n: number }[];
@@ -87,8 +90,23 @@ export function resumoMateriais(
   let estais = 0;
   if (esforcos) for (const e of esforcos.postes.values()) estais += e.estais.length;
 
+  // Postes por tipo (altura/carga). Sem tipo definido → "—".
+  const porTipo = new Map<string, { rotulo: string; n: number }>();
+  for (const p of projeto.pontos) {
+    const t = acharPoste(p.posteTipo);
+    const codigo = t ? t.codigo : "—";
+    const rotulo = t ? `${t.alturaM}/${t.cargaDaN} ${t.secao === "duploT" ? "DT" : ""}`.trim() : "(a definir)";
+    const cur = porTipo.get(codigo);
+    if (cur) cur.n++;
+    else porTipo.set(codigo, { rotulo, n: 1 });
+  }
+  const postesPorTipo = [...porTipo.entries()]
+    .map(([codigo, v]) => ({ codigo, rotulo: v.rotulo, n: v.n }))
+    .sort((a, b) => a.codigo.localeCompare(b.codigo));
+
   return {
     postes: projeto.pontos.length,
+    postesPorTipo,
     trechos: projeto.trechos.filter((t) => t.dePontoId && t.aPontoId).length,
     comprimentoRedeM,
     estruturas: [...porCodigo.entries()].map(([codigo, n]) => ({ codigo, n })).sort((a, b) => a.codigo.localeCompare(b.codigo)),

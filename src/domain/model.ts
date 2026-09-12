@@ -126,6 +126,13 @@ export interface Ponto {
    */
   capacidadeDaN?: number;
   /**
+   * Tipo de poste do catálogo (B8 / DIS-ETE-011) — código altura/carga, ex.:
+   * "C-11/600" (11 m, 600 daN, circular). Quando definido, a **carga do tipo é a
+   * capacidade** que o esforço usa (tem prioridade sobre `capacidadeDaN`).
+   * Ausente = usa `capacidadeDaN` ou o padrão do sistema.
+   */
+  posteTipo?: string;
+  /**
    * Estrutura definida **manualmente** pelo projetista (B3), sobrepondo a
    * sugestão automática da norma. Ex.: forçar CE4 (ancoragem) numa travessia de
    * estrada, ou CE3-CE3 num ângulo > 90°. Vazio/ausente = automático (norma).
