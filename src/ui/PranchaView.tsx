@@ -4,15 +4,16 @@ import type { RedeEsforcos } from "../domain/esforco";
 import type { ResumoMateriais } from "../domain/materiais";
 import {
   bboxProjeto,
-  dimFolha,
-  dimensaoDesenhoMm,
   escalaParaCaber,
   ESCALAS_PADRAO,
+  layoutFolha,
   passoEscalaM,
-  projetarCoord,
+  projecaoNaFolha,
   type FolhaId,
   type Orientacao,
 } from "../domain/prancha";
+import { gerarDxfPrancha } from "../io/dxfPrancha";
+import { baixar } from "../io/exportar";
 
 /**
  * Prancha (B6) — a folha de projeto em ESCALA (SVG em mm), com moldura, Norte,
@@ -32,12 +33,6 @@ interface Props {
   onFechar: () => void;
 }
 
-// Margens/blocos da folha, em mm.
-const MARGEM = 8; // borda do papel até a moldura
-const PAINEL_W = 58; // coluna direita (Norte, escala, simbologia, materiais)
-const CARIMBO_H = 36; // faixa do carimbo (base)
-const PAD = 4; // respiro interno da área de desenho
-
 type EscalaModo = "auto" | number;
 
 export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, onFechar }: Props) {
@@ -48,21 +43,9 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   const [mostrarEstrutura, setMostrarEstrutura] = useState(true);
   const [mostrarEsforco, setMostrarEsforco] = useState(true);
 
-  const { larguraMm: W, alturaMm: H } = dimFolha(folha, orientacao);
-
-  // Regiões da folha (mm).
-  const cx0 = MARGEM;
-  const cy0 = MARGEM;
-  const cx1 = W - MARGEM;
-  const cy1 = H - MARGEM;
-  const desenho = {
-    x: cx0 + PAD,
-    y: cy0 + PAD,
-    w: cx1 - PAINEL_W - cx0 - 2 * PAD,
-    h: cy1 - CARIMBO_H - cy0 - 2 * PAD,
-  };
-  const painel = { x: cx1 - PAINEL_W, y: cy0, w: PAINEL_W, h: cy1 - CARIMBO_H - cy0 };
-  const carimbo = { x: cx0, y: cy1 - CARIMBO_H, w: cx1 - cx0, h: CARIMBO_H };
+  // Layout da folha (mm) — o mesmo do DXF (domain/prancha.ts).
+  const layout = useMemo(() => layoutFolha(folha, orientacao), [folha, orientacao]);
+  const { W, H, moldura, desenho, painel, carimbo } = layout;
 
   const bbox = useMemo(() => bboxProjeto(projeto), [projeto]);
 
@@ -72,20 +55,18 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   );
   const escala = escalaModo === "auto" ? escalaAuto : escalaModo;
 
-  // Conteúdo centralizado na área de desenho.
-  const dim = bbox ? dimensaoDesenhoMm(bbox, escala) : { larguraMm: 0, alturaMm: 0 };
-  const padX = Math.max(0, (desenho.w - dim.larguraMm) / 2);
-  const padY = Math.max(0, (desenho.h - dim.alturaMm) / 2);
-  const cabe = dim.larguraMm <= desenho.w + 0.5 && dim.alturaMm <= desenho.h + 0.5;
-
-  // WGS84 → coordenada SVG (mm), Norte pra cima.
-  const toSvg = (c: LatLng): [number, number] => {
-    if (!bbox) return [0, 0];
-    const pm = projetarCoord(c, bbox, escala);
-    return [desenho.x + padX + pm.xMm, desenho.y + desenho.h - padY - pm.yMm];
-  };
+  // Projeção compartilhada (conteúdo centralizado na área de desenho).
+  const proj = useMemo(() => projecaoNaFolha(bbox, escala, desenho), [bbox, escala, desenho]);
+  const toSvg = proj.toXY;
+  const cabe = proj.cabe;
 
   const porId = useMemo(() => new Map(projeto.pontos.map((p) => [p.id, p])), [projeto]);
+
+  const baixarDxf = () => {
+    const dxf = gerarDxfPrancha({ projeto, esforcos, rotulosEstrutura, materiais, folha, orientacao, escala });
+    const base = (projeto.meta.nome || "projeto").replace(/[^\p{L}\p{N}_-]+/gu, "_");
+    baixar(new Blob([dxf], { type: "application/dxf" }), `${base}-prancha.dxf`);
+  };
 
   // @page com o tamanho da folha, pra o PDF do navegador sair no tamanho certo.
   useEffect(() => {
@@ -158,7 +139,10 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
           Esforço
         </label>
         <span className="prancha-barra-sep" />
-        <button className="btn" onClick={() => window.print()}>
+        <button className="btn" onClick={baixarDxf} title="Baixa a prancha em DXF (a folha em mm), como pede a norma junto do PDF">
+          Baixar DXF
+        </button>
+        <button className="btn" onClick={() => window.print()} title="Imprime / salva em PDF no tamanho da folha">
           Imprimir / PDF
         </button>
         <button className="btn" onClick={onFechar}>
@@ -182,11 +166,11 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
 
           {/* Fundo + moldura */}
           <rect x={0} y={0} width={W} height={H} fill="#ffffff" />
-          <rect x={cx0} y={cy0} width={cx1 - cx0} height={cy1 - cy0} fill="none" stroke="#000" strokeWidth={0.5} />
+          <rect x={moldura.x} y={moldura.y} width={moldura.w} height={moldura.h} fill="none" stroke="#000" strokeWidth={0.5} />
 
           {/* Divisórias do painel direito e do carimbo */}
-          <line x1={painel.x} y1={cy0} x2={painel.x} y2={carimbo.y} stroke="#000" strokeWidth={0.3} />
-          <line x1={cx0} y1={carimbo.y} x2={cx1} y2={carimbo.y} stroke="#000" strokeWidth={0.5} />
+          <line x1={painel.x} y1={moldura.y} x2={painel.x} y2={carimbo.y} stroke="#000" strokeWidth={0.3} />
+          <line x1={moldura.x} y1={carimbo.y} x2={moldura.x + moldura.w} y2={carimbo.y} stroke="#000" strokeWidth={0.5} />
 
           {/* --- Área de desenho (rede em escala) --- */}
           <g clipPath="url(#clip-desenho)">
@@ -381,7 +365,7 @@ function PainelDireito({
         </SimbLinha>
       </g>
       <text x={x + 3} y={by + 42} fontSize={1.8} fill="#888">
-        (Provisória — Anexo VIII a validar)
+        DIS-NOR-012 · Anexo VIII
       </text>
 
       {/* Quadro de materiais */}
@@ -448,56 +432,32 @@ function QuadroMateriais({ w, materiais }: { w: number; materiais: ResumoMateria
 function Carimbo({ x, y, w, h, projeto, escala }: { x: number; y: number; w: number; h: number; projeto: Projeto; escala: number }) {
   const meta = projeto.meta;
   const data = new Date(meta.atualizadoEm || meta.criadoEm || Date.now()).toLocaleDateString("pt-BR");
-  // Colunas: bloco de identificação (esq.) | campos (dir.).
-  const colDir = x + w - 70;
-  const campos: { rot: string; val: string }[] = [
-    { rot: "Projeto", val: meta.nome || "—" },
-    { rot: "Concessionária", val: meta.concessionaria || "Neoenergia Elektro" },
-    { rot: "Município / Cliente", val: "—" },
-    { rot: "Responsável técnico / ART", val: "—" },
-  ];
-  const camposDir: { rot: string; val: string }[] = [
-    { rot: "Escala", val: `1:${escala}` },
-    { rot: "Folha", val: "1/1" },
-    { rot: "Data", val: data },
-    { rot: "Revisão", val: "0" },
-  ];
+  // Divisão: espaço reservado do carimbo (esq.) | espaço de aprovação (dir.).
+  const divX = x + w * 0.62;
   return (
     <g>
-      {/* Título */}
-      <text x={x + 3} y={y + 5} fontSize={3.2} fontWeight="bold" fill="#000">
+      {/* Divisória carimbo | aprovação */}
+      <line x1={divX} y1={y} x2={divX} y2={y + h} stroke="#000" strokeWidth={0.3} />
+
+      {/* Esquerda: espaço reservado do carimbo (sem campos inventados) */}
+      <text x={x + 3} y={y + 6} fontSize={3.2} fontWeight="bold" fill="#000">
         MARKFIELD · Projeto de rede de distribuição
       </text>
-      <text x={x + 3} y={y + 9} fontSize={2} fill="#888">
-        Carimbo provisório — a substituir pelo modelo da DIS-NOR-012 (Anexo I)
+      <text x={x + 3} y={y + 10.5} fontSize={2} fill="#888">
+        Espaço reservado para o carimbo (DIS-NOR-012 · Anexo I)
+      </text>
+      {/* Rodapé factual: nome, escala, folha, data (não é campo do carimbo) */}
+      <text x={x + 3} y={y + h - 3} fontSize={2.2} fill="#000">
+        {(meta.nome || "—") + "   ·   Escala 1:" + escala + "   ·   Folha 1/1   ·   " + data}
       </text>
 
-      {/* Campos da esquerda */}
-      {campos.map((c, i) => (
-        <g key={c.rot} transform={`translate(${x + 3}, ${y + 15 + i * 5})`}>
-          <text x={0} y={0} fontSize={1.9} fill="#888">
-            {c.rot}
-          </text>
-          <text x={0} y={3.4} fontSize={2.6} fill="#000">
-            {c.val}
-          </text>
-        </g>
-      ))}
-
-      {/* Linha divisória vertical */}
-      <line x1={colDir - 4} y1={y} x2={colDir - 4} y2={y + h} stroke="#000" strokeWidth={0.3} />
-
-      {/* Campos da direita */}
-      {camposDir.map((c, i) => (
-        <g key={c.rot} transform={`translate(${colDir}, ${y + 8 + i * 6.5})`}>
-          <text x={0} y={0} fontSize={1.9} fill="#888">
-            {c.rot}
-          </text>
-          <text x={0} y={3.6} fontSize={2.8} fill="#000">
-            {c.val}
-          </text>
-        </g>
-      ))}
+      {/* Direita: espaço de aprovação da concessionária (em branco) */}
+      <text x={divX + 4} y={y + 6} fontSize={3} fontWeight="bold" fill="#000">
+        APROVAÇÃO
+      </text>
+      <text x={divX + 4} y={y + 10.5} fontSize={2} fill="#888">
+        {meta.concessionaria ? meta.concessionaria : "Concessionária"}
+      </text>
     </g>
   );
 }

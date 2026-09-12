@@ -166,3 +166,86 @@ export function passoEscalaM(maxMm: number, escala: number): number {
   }
   return pot;
 }
+
+// --------------------------------------------------------------------------
+// Layout da folha (compartilhado entre o SVG na tela e o DXF)
+// --------------------------------------------------------------------------
+
+/** Constantes de composição da folha (mm). */
+export const MARGEM = 8; // borda do papel até a moldura
+export const PAINEL_W = 58; // coluna direita (Norte, escala, simbologia, materiais)
+export const CARIMBO_H = 36; // faixa do carimbo/aprovação (base)
+export const PAD = 4; // respiro interno da área de desenho
+
+export interface Regiao {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface LayoutFolha {
+  /** Folha (mm). */
+  W: number;
+  H: number;
+  /** Moldura interna. */
+  moldura: Regiao;
+  /** Área de desenho (rede em escala). */
+  desenho: Regiao;
+  /** Painel direito (Norte/escala/simbologia/materiais). */
+  painel: Regiao;
+  /** Faixa do carimbo/aprovação (base). */
+  carimbo: Regiao;
+}
+
+/** Composição da folha (mesma para tela e DXF). */
+export function layoutFolha(folha: FolhaId, orientacao: Orientacao): LayoutFolha {
+  const { larguraMm: W, alturaMm: H } = dimFolha(folha, orientacao);
+  const cx0 = MARGEM;
+  const cy0 = MARGEM;
+  const cx1 = W - MARGEM;
+  const cy1 = H - MARGEM;
+  return {
+    W,
+    H,
+    moldura: { x: cx0, y: cy0, w: cx1 - cx0, h: cy1 - cy0 },
+    desenho: {
+      x: cx0 + PAD,
+      y: cy0 + PAD,
+      w: cx1 - PAINEL_W - cx0 - 2 * PAD,
+      h: cy1 - CARIMBO_H - cy0 - 2 * PAD,
+    },
+    painel: { x: cx1 - PAINEL_W, y: cy0, w: PAINEL_W, h: cy1 - CARIMBO_H - cy0 },
+    carimbo: { x: cx0, y: cy1 - CARIMBO_H, w: cx1 - cx0, h: CARIMBO_H },
+  };
+}
+
+/**
+ * Projeção pronta pra desenhar: converte WGS84 em coordenada de PÁGINA (mm),
+ * convenção de tela (x pra direita, **y pra baixo** a partir do topo), com o
+ * conteúdo centralizado na área de desenho. O DXF (y pra cima) inverte com
+ * `H - y`. `cabe=false` quando a rede estoura a área na escala dada.
+ */
+export interface Projecao {
+  padX: number;
+  padY: number;
+  cabe: boolean;
+  toXY: (coord: LatLng) => [number, number];
+}
+
+export function projecaoNaFolha(
+  bbox: Bbox | null,
+  escala: number,
+  desenho: Regiao,
+): Projecao {
+  const dim = bbox ? dimensaoDesenhoMm(bbox, escala) : { larguraMm: 0, alturaMm: 0 };
+  const padX = Math.max(0, (desenho.w - dim.larguraMm) / 2);
+  const padY = Math.max(0, (desenho.h - dim.alturaMm) / 2);
+  const cabe = dim.larguraMm <= desenho.w + 0.5 && dim.alturaMm <= desenho.h + 0.5;
+  const toXY = (coord: LatLng): [number, number] => {
+    if (!bbox) return [desenho.x, desenho.y];
+    const pm = projetarCoord(coord, bbox, escala);
+    return [desenho.x + padX + pm.xMm, desenho.y + desenho.h - padY - pm.yMm];
+  };
+  return { padX, padY, cabe, toXY };
+}

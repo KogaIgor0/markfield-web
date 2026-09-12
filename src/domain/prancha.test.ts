@@ -5,7 +5,9 @@ import {
   dimensaoDesenhoMm,
   dimFolha,
   escalaParaCaber,
+  layoutFolha,
   passoEscalaM,
+  projecaoNaFolha,
   projetar,
   tamanhoRealM,
   type Bbox,
@@ -106,5 +108,36 @@ describe("prancha — bounding box", () => {
 
   it("lista vazia → null", () => {
     expect(bboxDeCoords([])).toBeNull();
+  });
+});
+
+describe("prancha — layout da folha", () => {
+  it("A3 paisagem: regiões não se sobrepõem e somam a folha", () => {
+    const L = layoutFolha("A3", "paisagem");
+    expect(L.W).toBe(420);
+    expect(L.H).toBe(297);
+    // Painel encosta na moldura direita; carimbo na base.
+    expect(L.painel.x + L.painel.w).toBeCloseTo(L.moldura.x + L.moldura.w, 3);
+    expect(L.carimbo.y + L.carimbo.h).toBeCloseTo(L.moldura.y + L.moldura.h, 3);
+    // Desenho fica à esquerda do painel e acima do carimbo.
+    expect(L.desenho.x + L.desenho.w).toBeLessThanOrEqual(L.painel.x + 0.001);
+    expect(L.desenho.y + L.desenho.h).toBeLessThanOrEqual(L.carimbo.y + 0.001);
+  });
+});
+
+describe("prancha — projeção na folha", () => {
+  const b: Bbox = { minE: 0, minN: 0, maxE: 100, maxN: 50 };
+  const desenho = layoutFolha("A3", "paisagem").desenho;
+
+  it("centraliza o desenho na área (folgas iguais dos dois lados)", () => {
+    const p = projecaoNaFolha(b, 1000, desenho);
+    expect(p.cabe).toBe(true);
+    expect(p.padX).toBeCloseTo((desenho.w - 100) / 2, 3);
+    expect(p.padY).toBeCloseTo((desenho.h - 50) / 2, 3);
+  });
+
+  it("cabe=false quando a rede estoura a área", () => {
+    const grande: Bbox = { minE: 0, minN: 0, maxE: 1000, maxN: 1000 };
+    expect(projecaoNaFolha(grande, 1000, desenho).cabe).toBe(false);
   });
 });
