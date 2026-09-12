@@ -36,6 +36,7 @@ import { validarAmarracao, proporAmarracao, proporEstribos, LANCE_MAX_AMARRACAO_
 import { validarPararaios } from "./domain/validacoes";
 import { resumoMateriais } from "./domain/materiais";
 import { PainelMateriais } from "./ui/PainelMateriais";
+import { PranchaView } from "./ui/PranchaView";
 import { comporEstrutura, separarEstrutura } from "./domain/estruturas-catalogo";
 import {
   ajustarVao,
@@ -122,6 +123,7 @@ export function App() {
   const [mostrarFotos, setMostrarFotos] = useState(true);
   const [mostrarNumeros, setMostrarNumeros] = useState(true);
   const [mostrarMateriais, setMostrarMateriais] = useState(false);
+  const [mostrarPrancha, setMostrarPrancha] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
@@ -542,6 +544,7 @@ export function App() {
         setMedicao([]);
         setInserirRefId(null);
         setMostrarMateriais(false);
+        setMostrarPrancha(false);
         setSelecionadoId(null);
         setSelecionadoTrechoId(null);
       }
@@ -697,6 +700,21 @@ export function App() {
                 title="Quantitativo do projeto (estruturas, cabo, espaçadores, estais, para-raios)"
               >
                 Materiais
+              </button>
+              <button
+                className={`btn${mostrarPrancha ? " btn-ativo" : ""}`}
+                onClick={() => {
+                  const abrir = !mostrarPrancha;
+                  setMostrarPrancha(abrir);
+                  if (abrir) {
+                    selecionarPonto(null);
+                    selecionarTrecho(null);
+                    setMostrarMateriais(false);
+                  }
+                }}
+                title="Gera a prancha do projeto (folha em escala com moldura, carimbo, simbologia e materiais) — imprime em PDF"
+              >
+                Prancha
               </button>
               <button
                 className={`btn btn-rede${modoRede ? " btn-ativo" : ""}`}
@@ -1074,6 +1092,16 @@ export function App() {
           </div>
         )}
       </main>
+
+      {mostrarPrancha && projeto && (
+        <PranchaView
+          projeto={projeto}
+          esforcos={esforcos}
+          rotulosEstrutura={rotulosEstrutura}
+          materiais={materiais}
+          onFechar={() => setMostrarPrancha(false)}
+        />
+      )}
     </div>
   );
 }

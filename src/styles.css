@@ -1129,3 +1129,95 @@ body {
 .modo-bar-mover {
   border-color: var(--accent);
 }
+
+/* ---------------------------------------------------------------------------
+   Prancha (B6) — folha de projeto em escala + impressão/PDF
+   --------------------------------------------------------------------------- */
+.prancha-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: #4a4640;
+}
+
+.prancha-barra {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--hair);
+}
+
+.prancha-barra strong {
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.prancha-barra label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.prancha-barra select {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.prancha-chk {
+  gap: 5px !important;
+}
+
+.prancha-barra-sep {
+  flex: 1;
+}
+
+.prancha-papel {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px;
+}
+
+.prancha-svg {
+  width: min(1200px, 96%);
+  height: auto;
+  background: #fff;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+}
+
+@media print {
+  .topbar,
+  .workspace,
+  .prancha-barra {
+    display: none !important;
+  }
+  .prancha-overlay {
+    position: static !important;
+    inset: auto !important;
+    background: #fff !important;
+    display: block !important;
+  }
+  .prancha-papel {
+    overflow: visible !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+  .prancha-svg {
+    box-shadow: none !important;
+    width: auto;
+  }
+}
