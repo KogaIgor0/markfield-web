@@ -128,25 +128,23 @@ export interface SugestaoCE4 {
 }
 
 /**
- * Propõe **onde colocar CE4** (E-01/A). Para cada lance > 500 m, divide-o em
- * `n = ⌈comp/500⌉` partes iguais (cada sub-lance ≤ 500 m) e sugere a CE4 no
- * **poste de linha existente mais próximo** de cada divisa — sem criar poste
- * solto. O projetista aceita (vira `estruturaManual="CE4"`), move pra outro
- * poste, ou ignora. Cada poste é sugerido no máximo uma vez.
+ * Genérico: para cada lance > `maxM`, divide em `⌈comp/maxM⌉` partes iguais e
+ * sugere o **poste de linha existente mais próximo** de cada divisa (sem criar
+ * poste solto). Base da CE4 (500 m) e do estribo temporário (300 m).
  */
-export function proporAmarracao(
+function proporPontosEmLances(
   projeto: Projeto,
   codigos: Map<string, EstruturaAtribuida>,
   rede: RedeModelada,
+  maxM: number,
 ): SugestaoCE4[] {
   const { porId, adj, amarra } = contexto(projeto, codigos, rede);
   const sugestoes: SugestaoCE4[] = [];
   const jaSugerido = new Set<string>();
   percorrerLances(projeto, porId, adj, amarra, (deId, ateId, cadeia, comp) => {
-    if (comp <= LANCE_MAX_AMARRACAO_M + 1e-6) return;
-    const n = Math.ceil(comp / LANCE_MAX_AMARRACAO_M);
+    if (comp <= maxM + 1e-6) return;
+    const n = Math.ceil(comp / maxM);
     const passo = comp / n;
-    // candidatos = postes interiores de linha (nem a amarração de início nem a de fim)
     const interiores = cadeia.filter((c) => c.id !== deId && c.id !== ateId);
     for (let k = 1; k < n; k++) {
       const alvo = k * passo;
@@ -159,14 +157,38 @@ export function proporAmarracao(
       if (melhor) {
         jaSugerido.add(melhor.c.id);
         const pt = porId.get(melhor.c.id)!;
-        sugestoes.push({
-          pontoId: melhor.c.id,
-          numero: pt.numero,
-          posicaoM: melhor.c.acc,
-          lanceComprimentoM: comp,
-        });
+        sugestoes.push({ pontoId: melhor.c.id, numero: pt.numero, posicaoM: melhor.c.acc, lanceComprimentoM: comp });
       }
     }
   });
   return sugestoes;
+}
+
+/**
+ * Propõe **onde colocar CE4** (E-01/A) — DIS-NOR-013 6.17.3, lance ≤ 500 m.
+ * O projetista aceita (vira `estruturaManual="CE4"`), move, ou ignora.
+ */
+export function proporAmarracao(
+  projeto: Projeto,
+  codigos: Map<string, EstruturaAtribuida>,
+  rede: RedeModelada,
+): SugestaoCE4[] {
+  return proporPontosEmLances(projeto, codigos, rede, LANCE_MAX_AMARRACAO_M);
+}
+
+/** Espaçamento máximo do estribo de espera (m) — DIS-NOR-013 6.15.2. */
+export const LANCE_ESTRIBO_M = 300;
+
+/**
+ * Propõe pontos de **estribo de espera para aterramento temporário** — DIS-NOR-013
+ * **6.15.2**: a cada 300 m de rede nos trechos sem partes expostas. v1: sugere o
+ * poste mais próximo a cada 300 m ao longo de cada lance (mesma máquina da CE4).
+ * (6.15.3 — estribos nas chaves — entra quando houver os equipamentos no modelo.)
+ */
+export function proporEstribos(
+  projeto: Projeto,
+  codigos: Map<string, EstruturaAtribuida>,
+  rede: RedeModelada,
+): SugestaoCE4[] {
+  return proporPontosEmLances(projeto, codigos, rede, LANCE_ESTRIBO_M);
 }

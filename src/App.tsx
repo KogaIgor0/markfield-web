@@ -32,7 +32,11 @@ import {
   type CondicaoVento,
   type EsforcoPoste,
 } from "./domain/esforco";
-import { validarAmarracao, proporAmarracao, LANCE_MAX_AMARRACAO_M } from "./domain/amarracao";
+import { validarAmarracao, proporAmarracao, proporEstribos, LANCE_MAX_AMARRACAO_M } from "./domain/amarracao";
+import { validarPararaios } from "./domain/validacoes";
+import { resumoMateriais } from "./domain/materiais";
+import { PainelMateriais } from "./ui/PainelMateriais";
+import { comporEstrutura, separarEstrutura } from "./domain/estruturas-catalogo";
 import {
   ajustarVao,
   comprimentoTrechoM,
@@ -117,6 +121,7 @@ export function App() {
   const [medicao, setMedicao] = useState<LatLng[]>([]);
   const [mostrarFotos, setMostrarFotos] = useState(true);
   const [mostrarNumeros, setMostrarNumeros] = useState(true);
+  const [mostrarMateriais, setMostrarMateriais] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
@@ -216,6 +221,20 @@ export function App() {
     [projeto, estruturas, rede],
   );
   const sugCE4Ids = useMemo(() => new Set(sugestoesCE4.map((s) => s.pontoId)), [sugestoesCE4]);
+  // Validadores normativos (avisos): para-raios (6.21.2) e estribo 300 m (6.15.2).
+  const pararaios = useMemo(
+    () => (projeto && rede ? validarPararaios(projeto, rede, estruturas) : []),
+    [projeto, rede, estruturas],
+  );
+  const estribos = useMemo(
+    () => (projeto && rede ? proporEstribos(projeto, estruturas, rede) : []),
+    [projeto, estruturas, rede],
+  );
+  // Quantitativo de materiais (B5).
+  const materiais = useMemo(
+    () => (projeto ? resumoMateriais(projeto, estruturas, esforcos, estribos.length) : null),
+    [projeto, estruturas, esforcos, estribos],
+  );
 
   // Comprimento total da régua de medição (m, em UTM).
   const medicaoTotalM = useMemo(() => {
@@ -422,6 +441,15 @@ export function App() {
     },
     [projeto, atualizar],
   );
+  // Aplica para-raios: acrescenta o sufixo -PR à estrutura do poste.
+  const aplicarPR = useCallback(
+    (id: string) => {
+      if (!projeto) return;
+      const base = separarEstrutura(estruturas.get(id)?.codigo ?? "").base || "CE3";
+      atualizar(editarPonto(projeto, id, { estruturaManual: comporEstrutura(base, "PR") }));
+    },
+    [projeto, estruturas, atualizar],
+  );
   const aplicarTodasCE4 = useCallback(() => {
     if (!projeto) return;
     let p = projeto;
@@ -513,6 +541,7 @@ export function App() {
         setDestravadoId(null);
         setMedicao([]);
         setInserirRefId(null);
+        setMostrarMateriais(false);
         setSelecionadoId(null);
         setSelecionadoTrechoId(null);
       }
@@ -654,6 +683,20 @@ export function App() {
                 title="Mostra/esconde o número de cada poste no mapa"
               >
                 Números
+              </button>
+              <button
+                className={`btn${mostrarMateriais ? " btn-ativo" : ""}`}
+                onClick={() => {
+                  const abrir = !mostrarMateriais;
+                  setMostrarMateriais(abrir);
+                  if (abrir) {
+                    selecionarPonto(null);
+                    selecionarTrecho(null);
+                  }
+                }}
+                title="Quantitativo do projeto (estruturas, cabo, espaçadores, estais, para-raios)"
+              >
+                Materiais
               </button>
               <button
                 className={`btn btn-rede${modoRede ? " btn-ativo" : ""}`}
@@ -878,6 +921,10 @@ export function App() {
           />
         )}
 
+        {mostrarMateriais && materiais && !selecionado && !selecionadoTrecho && (
+          <PainelMateriais resumo={materiais} onFechar={() => setMostrarMateriais(false)} />
+        )}
+
         {projeto && !modoRede && (
           <div className="legenda">
             <span><i className="pin" style={{ background: "#f59e0b" }} /> Poste proposto</span>
@@ -980,6 +1027,31 @@ export function App() {
                     </span>
                   </div>
                 ))}
+              </div>
+            )}
+            {(pararaios.length > 0 || estribos.length > 0) && (
+              <div className="rede-hud-ce4">
+                <div className="rede-hud-ce4-topo">
+                  <span>Validações da norma</span>
+                </div>
+                {pararaios.map((pr) => (
+                  <div key={pr.pontoId} className="ce4-sug">
+                    <span>⚡ P{pr.numero ?? "?"} — para-raios ({pr.motivo})</span>
+                    <span className="ce4-acoes">
+                      <button className="btn-mini" onClick={() => aplicarPR(pr.pontoId)}>
+                        Aplicar -PR
+                      </button>
+                      <button className="btn-mini-sec" onClick={() => selecionarPonto(pr.pontoId)}>
+                        Ver
+                      </button>
+                    </span>
+                  </div>
+                ))}
+                {estribos.length > 0 && (
+                  <div className="ce4-sug">
+                    <span>Estribo de espera (300 m): {estribos.length} ponto(s) sugerido(s)</span>
+                  </div>
+                )}
               </div>
             )}
             {rede.avisos.map((a, i) => (

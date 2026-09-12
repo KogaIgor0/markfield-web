@@ -855,6 +855,41 @@ body {
   background: #fbecea;
 }
 
+/* Painel de materiais (B5) */
+.painel-materiais {
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+
+.mat-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.mat-linha {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+  border-bottom: 1px dotted var(--hair);
+  padding-bottom: 3px;
+}
+
+.mat-linha strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.mat-vazio {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
 .estr-override {
   border-top: 1px dashed var(--hair);
   padding-top: 8px;

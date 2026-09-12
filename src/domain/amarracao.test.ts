@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Ponto, Projeto, Trecho } from "./model";
 import { modelarRede } from "./rede";
 import { classificarEstrutura, type EstruturaAtribuida } from "./estrutura";
-import { proporAmarracao, validarAmarracao } from "./amarracao";
+import { proporAmarracao, proporEstribos, validarAmarracao } from "./amarracao";
 
 const lat0 = -20.71;
 const P = (id: string, ym: number, extra: Partial<Ponto> = {}): Ponto => ({
@@ -111,5 +111,23 @@ describe("proporAmarracao (sugestão de CE4)", () => {
   it("sem lance longo, não propõe nada", () => {
     const proj = projeto([P("A", 0), P("B", 200)], [tr("t", "A", "B")]);
     expect(proporAmarracao(proj, estruturas(proj), modelarRede(proj))).toHaveLength(0);
+  });
+});
+
+describe("proporEstribos (300 m, DIS-NOR-013 6.15.2)", () => {
+  it("lance de 700 m: sugere estribo nos postes mais próximos das divisas de 300 m", () => {
+    // A(0)-M1(250)-M2(480)-C(700): n=⌈700/300⌉=3, divisas ~233 e ~467
+    const proj = projeto(
+      [P("A", 0), P("M1", 250), P("M2", 480), P("C", 700)],
+      [tr("t1", "A", "M1"), tr("t2", "M1", "M2"), tr("t3", "M2", "C")],
+    );
+    const sug = proporEstribos(proj, estruturas(proj), modelarRede(proj));
+    expect(sug).toHaveLength(2);
+    expect(sug.map((s) => s.pontoId).sort()).toEqual(["M1", "M2"]);
+  });
+
+  it("lance curto (< 300 m) não pede estribo", () => {
+    const proj = projeto([P("A", 0), P("B", 200)], [tr("t", "A", "B")]);
+    expect(proporEstribos(proj, estruturas(proj), modelarRede(proj))).toHaveLength(0);
   });
 });
