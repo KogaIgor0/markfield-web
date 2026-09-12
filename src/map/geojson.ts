@@ -60,6 +60,7 @@ export function linhasGeoJson(projeto: Projeto): FeatureCollection<LineString> {
         id: t.id,
         kind: "trecho",
         estilo: t.estilo ?? "rede",
+        reduzida: Boolean(t.tracaoReduzida),
         observacao: t.observacao ?? "",
       },
     }));

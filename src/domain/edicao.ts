@@ -147,7 +147,9 @@ export function removerTrecho(projeto: Projeto, id: string): Projeto {
   return tocar({ ...projeto, trechos: projeto.trechos.filter((t) => t.id !== id) });
 }
 
-export type PatchTrecho = Partial<Pick<Trecho, "classe" | "observacao" | "tipoCabo">>;
+export type PatchTrecho = Partial<
+  Pick<Trecho, "classe" | "observacao" | "tipoCabo" | "tracaoReduzida">
+>;
 
 /** Edita atributos de um trecho (classe elétrica, observação). */
 export function editarTrecho(projeto: Projeto, id: string, patch: PatchTrecho): Projeto {

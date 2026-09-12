@@ -176,7 +176,11 @@ export function modelarEsforcos(projeto: Projeto, opcoes: OpcoesEsforco = {}): R
   for (const p of projeto.pontos) adjH.set(p.id, []);
   for (const t of projeto.trechos) {
     if (t.dePontoId && t.aPontoId && adjH.has(t.dePontoId) && adjH.has(t.aPontoId)) {
-      const H = tracaoDoCabo(t.tipoCabo, condicao);
+      // Vão "frouxo" (E-05): usa a tração REDUZIDA do cabo — o lance puxa pouco,
+      // transferindo o esforço da tomada pro poste da frente (some o estai lá).
+      const H = t.tracaoReduzida
+        ? acharCabo(t.tipoCabo).tracaoReduzidaDaN
+        : tracaoDoCabo(t.tipoCabo, condicao);
       adjH.get(t.dePontoId)!.push({ viz: t.aPontoId, H });
       adjH.get(t.aPontoId)!.push({ viz: t.dePontoId, H });
     }

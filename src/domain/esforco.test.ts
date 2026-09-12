@@ -149,3 +149,34 @@ describe("modelarEsforcos — estai", () => {
     expect(r.postes.get("A")!.precisaEstai).toBe(false);
   });
 });
+
+describe("tração reduzida — transferência de esforço (E-05)", () => {
+  it("marcar o vão como reduzido derruba o esforço e tira o estai", () => {
+    const A = P("A", 0, 0);
+    const B = P("B", 100, 0);
+    const normal = modelarEsforcos(projeto([A, B], [tr("t", "A", "B")]));
+    expect(normal.postes.get("B")!.precisaEstai).toBe(true); // 714 > 400
+
+    const reduzido = modelarEsforcos(
+      projeto([A, B], [{ ...tr("t", "A", "B"), tracaoReduzida: true }]),
+    );
+    const b = reduzido.postes.get("B")!;
+    expect(b.esforcoDaN).toBeCloseTo(215, 0); // tração reduzida do A35P
+    expect(b.precisaEstai).toBe(false); // 215 < 400 → sem estai
+  });
+
+  it("transfere o esforço: derivação com ramal frouxo não pede estai", () => {
+    // A—D—C colineares (D tangente) + ramal D—B ao sul.
+    const A = P("A", -100, 0);
+    const D = P("D", 0, 0);
+    const C = P("C", 100, 0);
+    const B = P("B", 0, -100);
+    const trs = [tr("t1", "A", "D"), tr("t2", "D", "C"), tr("t3", "D", "B")];
+    const comNormal = modelarEsforcos(projeto([A, D, C, B], trs));
+    expect(comNormal.postes.get("D")!.precisaEstai).toBe(true); // ramal cheio puxa D (714)
+
+    const trsFrouxo = [trs[0], trs[1], { ...trs[2], tracaoReduzida: true }];
+    const comFrouxo = modelarEsforcos(projeto([A, D, C, B], trsFrouxo));
+    expect(comFrouxo.postes.get("D")!.precisaEstai).toBe(false); // ramal frouxo (215 < 400)
+  });
+});

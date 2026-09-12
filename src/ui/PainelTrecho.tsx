@@ -91,6 +91,23 @@ export function PainelTrecho({
         </div>
       )}
 
+      <label className="campo-check">
+        <input
+          type="checkbox"
+          checked={Boolean(trecho.tracaoReduzida)}
+          onChange={(e) => onEditar({ tracaoReduzida: e.target.checked })}
+        />
+        <span>
+          Vão de <strong>tração reduzida</strong> (frouxo — transfere o esforço)
+        </span>
+      </label>
+      {trecho.tracaoReduzida && (
+        <div className="vao-nota">
+          Puxa com ~{acharCabo(trecho.tipoCabo ?? CABO_PADRAO).tracaoReduzidaDaN} daN — a tomada
+          não pede estai; o esforço vai para o poste da frente.
+        </div>
+      )}
+
       <label className="campo">
         <span>Observação</span>
         <textarea

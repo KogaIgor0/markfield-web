@@ -187,6 +187,13 @@ export interface Trecho {
    * criar/ligar/inserir um trecho, herda o cabo do trecho a montante (sentido fonte).
    */
   tipoCabo?: string;
+  /**
+   * Vão de **tração reduzida** (E-05) — o "vão frouxo" que sai de uma tomada/
+   * derivação. Marca este lance para o esforço usar a tração REDUZIDA do cabo
+   * (`Cabo.tracaoReduzidaDaN`), transferindo o esforço da tomada para o poste da
+   * frente (evita estai no poste sem espaço). Ausente = tração de projeto normal.
+   */
+  tracaoReduzida?: boolean;
   origem: Origem;
 }
 

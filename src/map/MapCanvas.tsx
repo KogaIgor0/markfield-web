@@ -63,6 +63,7 @@ const SRC = {
 } as const;
 const LYR = {
   linhas: "mkf-linhas",
+  linhaReduzida: "mkf-linha-reduzida",
   selLinha: "mkf-sel-linha",
   preview: "mkf-preview",
   sel: "mkf-sel",
@@ -600,6 +601,15 @@ function desenharProjeto(
       ],
       "line-width": 3,
     },
+  });
+
+  // Vão de tração reduzida (E-05): tracejado ciano por cima, pra identificar o "frouxo".
+  map.addLayer({
+    id: LYR.linhaReduzida,
+    type: "line",
+    source: SRC.linhas,
+    filter: ["==", ["get", "reduzida"], true],
+    paint: { "line-color": "#0891b2", "line-width": 3, "line-dasharray": [2, 2] },
   });
 
   // Preview elástico do modo ligar (tracejado).
