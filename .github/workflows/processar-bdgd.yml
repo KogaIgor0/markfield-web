@@ -54,9 +54,16 @@ jobs:
       - name: Baixar BDGD (.gdb.zip) da ANEEL
         run: |
           echo "⬇  Baixando dataset ${{ inputs.dataset_id }} …"
-          curl -L --fail --retry 3 --retry-delay 10 \
-            "https://opendata.arcgis.com/api/v3/datasets/${{ inputs.dataset_id }}/downloads/data?format=fgdb&spatialRefId=4674" \
-            -o bdgd.gdb.zip
+          # Tenta primeiro via ArcGIS Online REST API (item/data) — mais confiável para .gdb
+          HTTP=$(curl -L --retry 3 --retry-delay 10 --write-out "%{http_code}" --silent --output bdgd.gdb.zip \
+            "https://www.arcgis.com/sharing/rest/content/items/${{ inputs.dataset_id }}/data")
+          echo "HTTP status: $HTTP"
+          if [ "$HTTP" -lt 200 ] || [ "$HTTP" -ge 300 ]; then
+            echo "⚠  Falhou ($HTTP). Tentando URL alternativa via Hub API v3…"
+            curl -L --fail --retry 3 --retry-delay 10 \
+              "https://opendata.arcgis.com/api/v3/datasets/${{ inputs.dataset_id }}/downloads/data?format=fgdb&spatialRefId=4674" \
+              -o bdgd.gdb.zip
+          fi
           ls -lh bdgd.gdb.zip
 
       # -----------------------------------------------------------------------
