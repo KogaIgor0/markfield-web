@@ -1,0 +1,134 @@
+name: Processar BDGD
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_id:
+        description: 'ID do dataset no ArcGIS Hub (opendata.arcgis.com)'
+        required: true
+        default: '8eaa712a707745adac9948b24e188bd9'
+      prefixo:
+        description: 'Prefixo dos arquivos de saida (ex: elektro_2024)'
+        required: true
+        default: 'elektro_2024'
+      tag:
+        description: 'Tag do Release (ex: bdgd-elektro-2024)'
+        required: true
+        default: 'bdgd-elektro-2024'
+      camada_nome:
+        description: 'Nome da camada de saida (ex: rede_mt, trafos)'
+        required: true
+        default: 'rede_mt'
+      tipo_saida:
+        description: 'pmtiles (linhas grandes) ou geojson (pontos)'
+        required: true
+        default: 'pmtiles'
+
+jobs:
+  processar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar dependencias
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends gdal-bin tippecanoe unzip python3 jq
+          echo "GDAL: $(ogr2ogr --version)"
+          echo "tippecanoe: $(tippecanoe --version)"
+
+      - name: Diagnosticar e baixar BDGD
+        run: |
+          echo "Consultando metadados do dataset ${{ inputs.dataset_id }}..."
+          METADATA=$(curl -sf "https://opendata.arcgis.com/api/v3/datasets/${{ inputs.dataset_id }}" || echo '{}')
+          echo "$METADATA" | jq -r '"Tipo: \(.data.attributes.layerType // .data.attributes.type // "?") | Feicoes: \(.data.attributes.recordCount // "?") | Downloads: \([.data.attributes.downloads[]?.format] | join(", "))"' 2>/dev/null || echo "metadados nao parseados"
+          echo "$METADATA" | jq -r '.data.attributes.url // "Feature Service URL nao encontrado"' 2>/dev/null | cut -c1-120
+
+          echo ""
+          echo "--- Tentativa 1: GeoJSON (EPSG:4326) ---"
+          HTTP=$(curl -L -s -o bdgd.geojson -w "%{http_code}" "https://opendata.arcgis.com/api/v3/datasets/${{ inputs.dataset_id }}/downloads/data?format=geojson&spatialRefId=4326")
+          BYTES=$(stat -c%s bdgd.geojson 2>/dev/null || echo 0)
+          echo "HTTP: $HTTP | bytes: $BYTES"
+
+          if [ "$HTTP" -ge 200 ] && [ "$HTTP" -lt 300 ] && [ "$BYTES" -gt 1000 ]; then
+            echo "GeoJSON baixado com sucesso"
+            echo "FORMATO=geojson" >> $GITHUB_ENV
+          else
+            echo "Resposta recebida (primeiros 300 bytes):"
+            head -c 300 bdgd.geojson 2>/dev/null || true
+            rm -f bdgd.geojson
+
+            echo ""
+            echo "--- Tentativa 2: FGDB (EPSG:4326) ---"
+            HTTP=$(curl -L -s -o bdgd.gdb.zip -w "%{http_code}" "https://opendata.arcgis.com/api/v3/datasets/${{ inputs.dataset_id }}/downloads/data?format=fgdb&spatialRefId=4326")
+            BYTES=$(stat -c%s bdgd.gdb.zip 2>/dev/null || echo 0)
+            echo "HTTP: $HTTP | bytes: $BYTES"
+
+            if [ "$HTTP" -ge 200 ] && [ "$HTTP" -lt 300 ] && [ "$BYTES" -gt 10000 ]; then
+              echo "FGDB baixado com sucesso"
+              echo "FORMATO=fgdb" >> $GITHUB_ENV
+            else
+              echo "Resposta recebida (primeiros 500 bytes):"
+              head -c 500 bdgd.gdb.zip 2>/dev/null || true
+              echo ""
+              echo "Metadados completos do dataset:"
+              echo "$METADATA" | jq . 2>/dev/null | head -100
+              exit 1
+            fi
+          fi
+
+      - name: Processar GeoJSON
+        if: env.FORMATO == 'geojson'
+        run: |
+          mkdir -p out
+          echo "Feicoes: $(python3 -c "import json; d=json.load(open('bdgd.geojson')); print(len(d.get('features',[])), 'features')")"
+          ls -lh bdgd.geojson
+          if [ "${{ inputs.tipo_saida }}" = "pmtiles" ]; then
+            OUT="out/${{ inputs.prefixo }}-${{ inputs.camada_nome }}.pmtiles"
+            echo "Gerando PMTiles: $OUT"
+            tippecanoe --output="$OUT" --minimum-zoom=10 --maximum-zoom=16 --simplification=4 --force --read-parallel -l "${{ inputs.camada_nome }}" bdgd.geojson
+          else
+            OUT="out/${{ inputs.prefixo }}-${{ inputs.camada_nome }}.geojson"
+            echo "Reprojetando GeoJSON: $OUT"
+            ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES "$OUT" bdgd.geojson
+          fi
+          ls -lh out/
+
+      - name: Processar FGDB
+        if: env.FORMATO == 'fgdb'
+        run: |
+          mkdir -p out
+          unzip -q bdgd.gdb.zip
+          GDB=$(find . -maxdepth 2 -name "*.gdb" -type d | head -1)
+          echo "GDB encontrado: $GDB"
+          echo "Camadas disponiveis:"
+          ogrinfo -al -so "$GDB" 2>/dev/null | grep "^Layer name:" | awk '{print "  -", $NF}' || true
+          CAMADA=$(ogrinfo -al -so "$GDB" 2>/dev/null | grep "^Layer name:" | head -1 | awk '{print $NF}')
+          echo "Processando: $CAMADA"
+          if [ "${{ inputs.tipo_saida }}" = "pmtiles" ]; then
+            OUT="out/${{ inputs.prefixo }}-${{ inputs.camada_nome }}.pmtiles"
+            ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES /vsistdout/ "$GDB" "$CAMADA" 2>/dev/null | tippecanoe --output="$OUT" --minimum-zoom=10 --maximum-zoom=16 --simplification=4 --force --read-parallel -l "${{ inputs.camada_nome }}" /dev/stdin
+          else
+            OUT="out/${{ inputs.prefixo }}-${{ inputs.camada_nome }}.geojson"
+            ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES "$OUT" "$GDB" "$CAMADA" 2>/dev/null
+          fi
+          ls -lh out/
+          rm -rf bdgd.gdb.zip "$GDB"
+
+      - name: Publicar no GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: "BDGD ${{ inputs.prefixo }}"
+          body: |
+            Dados BDGD (ANEEL) processados automaticamente.
+            Dataset: ${{ inputs.dataset_id }}
+            Camada: ${{ inputs.camada_nome }}
+            Gerado em run ${{ github.run_id }}
+          files: out/*
+          make_latest: false
