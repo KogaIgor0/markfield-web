@@ -1,0 +1,194 @@
+name: Processar BDGD
+
+# Roda manualmente (ou pode agendar 1x por ano quando a ANEEL publicar a BDGD nova)
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_id:
+        description: 'ID do dataset no ArcGIS Hub (opendata.arcgis.com)'
+        required: true
+        default: '8eaa712a707745adac9948b24e188bd9'   # Neoenergia Elektro 2024
+      prefixo:
+        description: 'Prefixo dos arquivos de saída (ex: elektro_2024)'
+        required: true
+        default: 'elektro_2024'
+      tag:
+        description: 'Tag do Release onde publicar (ex: bdgd-elektro-2024)'
+        required: true
+        default: 'bdgd-elektro-2024'
+      camadas:
+        description: 'Camadas a processar (separadas por vírgula)'
+        required: false
+        default: 'SSDMT,UNTRMT'
+
+# Para rodar em schedule anual (descomente e ajuste):
+#  schedule:
+#    - cron: '0 6 1 10 *'   # 1º de outubro, 06h UTC (ANEEL publica ~setembro)
+
+jobs:
+  processar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90        # .gdb grande pode demorar
+
+    permissions:
+      contents: write          # necessário para criar/atualizar Release
+
+    steps:
+      # -----------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      - name: Instalar GDAL e tippecanoe
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            gdal-bin \
+            tippecanoe \
+            unzip \
+            python3
+          echo "GDAL: $(ogr2ogr --version)"
+          echo "tippecanoe: $(tippecanoe --version)"
+
+      # -----------------------------------------------------------------------
+      - name: Baixar BDGD (.gdb.zip) da ANEEL
+        run: |
+          echo "⬇  Baixando dataset ${{ inputs.dataset_id }} …"
+          curl -L --fail --retry 3 --retry-delay 10 \
+            "https://opendata.arcgis.com/api/v3/datasets/${{ inputs.dataset_id }}/downloads/data?format=fgdb&spatialRefId=4674" \
+            -o bdgd.gdb.zip
+          ls -lh bdgd.gdb.zip
+
+      # -----------------------------------------------------------------------
+      - name: Extrair .gdb
+        run: |
+          unzip -q bdgd.gdb.zip
+          GDB=$(find . -maxdepth 2 -name "*.gdb" -type d | head -1)
+          echo "GDB=$GDB" >> $GITHUB_ENV
+          echo "✔  GDB encontrado: $GDB"
+
+          echo "Camadas disponíveis:"
+          ogrinfo -al -so "$GDB" 2>/dev/null \
+            | grep "^Layer name:" | awk '{print "  •", $NF}' || true
+
+      # -----------------------------------------------------------------------
+      - name: Converter camadas → GeoJSON / PMTiles
+        run: |
+          mkdir -p out
+          IFS=',' read -ra CAMADAS <<< "${{ inputs.camadas }}"
+
+          for CAMADA in "${CAMADAS[@]}"; do
+            CAMADA=$(echo "$CAMADA" | tr -d ' ')
+            echo ""
+            echo "━━━ $CAMADA ━━━"
+
+            case "$CAMADA" in
+
+              # ── Rede MT: grande → PMTiles direto (pipe, sem arquivo intermediário) ──
+              SSDMT)
+                OUT="out/${{ inputs.prefixo }}-rede-mt.pmtiles"
+                echo "  GeoJSON (stdout) | tippecanoe → $OUT"
+                ogr2ogr \
+                  -t_srs EPSG:4326 \
+                  -f GeoJSON \
+                  -lco RFC7946=YES \
+                  /vsistdout/ \
+                  "$GDB" SSDMT \
+                  2>/dev/null \
+                | tippecanoe \
+                    --output="$OUT" \
+                    --minimum-zoom=10 \
+                    --maximum-zoom=16 \
+                    --simplification=4 \
+                    --force \
+                    --read-parallel \
+                    -l rede_mt \
+                    /dev/stdin
+                ls -lh "$OUT"
+                ;;
+
+              # ── Rede BT: grande → PMTiles direto ──
+              SSDBT)
+                OUT="out/${{ inputs.prefixo }}-rede-bt.pmtiles"
+                ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES \
+                  /vsistdout/ "$GDB" SSDBT 2>/dev/null \
+                | tippecanoe \
+                    --output="$OUT" \
+                    --minimum-zoom=13 \
+                    --maximum-zoom=16 \
+                    --simplification=2 \
+                    --force --read-parallel \
+                    -l rede_bt /dev/stdin
+                ls -lh "$OUT"
+                ;;
+
+              # ── Transformadores: pequeno → GeoJSON simples ──
+              UNTRMT)
+                OUT="out/${{ inputs.prefixo }}-trafos.geojson"
+                ogr2ogr \
+                  -t_srs EPSG:4326 \
+                  -f GeoJSON \
+                  -lco RFC7946=YES \
+                  "$OUT" \
+                  "$GDB" UNTRMT \
+                  2>/dev/null
+                python3 -c "
+import json
+with open('$OUT') as f:
+    d=json.load(f)
+print(f'  {len(d[\"features\"])} transformadores')
+"
+                ls -lh "$OUT"
+                ;;
+
+              # ── Postes: médio → GeoJSON (ou PMTiles se ficar >30 MB) ──
+              PONNOT)
+                TMP="out/${{ inputs.prefixo }}-postes.geojson"
+                ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES \
+                  "$TMP" "$GDB" PONNOT 2>/dev/null
+                SIZE=$(stat -c%s "$TMP")
+                if [ "$SIZE" -gt 30000000 ]; then
+                  OUT="out/${{ inputs.prefixo }}-postes.pmtiles"
+                  tippecanoe --output="$OUT" \
+                    --minimum-zoom=13 --maximum-zoom=16 \
+                    --force -l postes "$TMP"
+                  rm "$TMP"
+                  ls -lh "$OUT"
+                else
+                  ls -lh "$TMP"
+                fi
+                ;;
+
+              *)
+                echo "  ⚠  Camada '$CAMADA' não reconhecida, pulando."
+                ;;
+            esac
+          done
+
+          echo ""
+          echo "📦  Arquivos gerados:"
+          ls -lh out/
+
+      # -----------------------------------------------------------------------
+      - name: Liberar espaço (remove .gdb e .zip)
+        run: |
+          rm -rf bdgd.gdb.zip "$GDB"
+          df -h .
+
+      # -----------------------------------------------------------------------
+      - name: Publicar no GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: "BDGD ${{ inputs.prefixo }}"
+          body: |
+            Dados BDGD (ANEEL) processados automaticamente.
+
+            **Dataset:** `${{ inputs.dataset_id }}`
+            **Camadas:** `${{ inputs.camadas }}`
+            **Gerado em:** ${{ github.run_id }}
+
+            Para usar no Markfield, copie as URLs dos arquivos abaixo
+            e cole em `src/map/bdgd.ts` → `BDGD_FONTES[...].urls`.
+          files: out/*
+          make_latest: false
