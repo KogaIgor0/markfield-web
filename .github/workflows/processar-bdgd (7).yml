@@ -1,0 +1,132 @@
+name: Processar BDGD
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_id:
+        description: 'ArcGIS Online item ID (arcgis.com/home/item.html?id=...)'
+        required: true
+        default: '8eaa712a707745adac9948b24e188bd9'
+      prefixo:
+        description: 'Prefixo dos arquivos de saida (ex: elektro_2024)'
+        required: true
+        default: 'elektro_2024'
+      tag:
+        description: 'Tag do Release (ex: bdgd-elektro-2024)'
+        required: true
+        default: 'bdgd-elektro-2024'
+      camadas:
+        description: 'Camadas a processar separadas por virgula'
+        required: false
+        default: 'SSDMT,UNTRMT'
+
+jobs:
+  processar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar dependencias
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends gdal-bin tippecanoe unzip python3
+          echo "GDAL $(ogr2ogr --version)"
+          echo "tippecanoe $(tippecanoe --version)"
+
+      - name: Baixar BDGD do ArcGIS Online
+        run: |
+          echo "Baixando item ${{ inputs.dataset_id }} (~1.4 GB)..."
+          curl -L \
+            --retry 3 \
+            --retry-delay 30 \
+            --connect-timeout 60 \
+            --max-time 3600 \
+            -H "Referer: https://www.arcgis.com/" \
+            --fail \
+            -o bdgd.gdb.zip \
+            "https://www.arcgis.com/sharing/rest/content/items/${{ inputs.dataset_id }}/data"
+          ls -lh bdgd.gdb.zip
+
+      - name: Extrair GDB
+        run: |
+          unzip -q bdgd.gdb.zip
+          GDB=$(find . -maxdepth 2 -name "*.gdb" -type d | head -1)
+          echo "GDB=$GDB" >> $GITHUB_ENV
+          echo "GDB encontrado: $GDB"
+          echo "Camadas disponiveis:"
+          ogrinfo -al -so "$GDB" 2>/dev/null | grep "^Layer name:" | awk '{print "  -", $NF}' || true
+
+      - name: Converter camadas
+        run: |
+          mkdir -p out
+          IFS=',' read -ra CAMADAS <<< "${{ inputs.camadas }}"
+          for CAMADA in "${CAMADAS[@]}"; do
+            CAMADA=$(echo "$CAMADA" | tr -d ' ')
+            echo ""
+            echo "=== $CAMADA ==="
+            case "$CAMADA" in
+              SSDMT)
+                OUT="out/${{ inputs.prefixo }}-rede-mt.pmtiles"
+                ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES /vsistdout/ "$GDB" SSDMT 2>/dev/null \
+                | tippecanoe --output="$OUT" --minimum-zoom=10 --maximum-zoom=16 \
+                    --simplification=4 --force --read-parallel -l rede_mt /dev/stdin
+                ls -lh "$OUT"
+                ;;
+              SSDBT)
+                OUT="out/${{ inputs.prefixo }}-rede-bt.pmtiles"
+                ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES /vsistdout/ "$GDB" SSDBT 2>/dev/null \
+                | tippecanoe --output="$OUT" --minimum-zoom=13 --maximum-zoom=16 \
+                    --simplification=2 --force --read-parallel -l rede_bt /dev/stdin
+                ls -lh "$OUT"
+                ;;
+              UNTRMT)
+                OUT="out/${{ inputs.prefixo }}-trafos.geojson"
+                ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES "$OUT" "$GDB" UNTRMT 2>/dev/null
+                python3 -c "import json; d=json.load(open('$OUT')); print(str(len(d.get('features',[]))) + ' transformadores')"
+                ls -lh "$OUT"
+                ;;
+              PONNOT)
+                TMP="out/${{ inputs.prefixo }}-postes.geojson"
+                ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES "$TMP" "$GDB" PONNOT 2>/dev/null
+                SIZE=$(stat -c%s "$TMP")
+                if [ "$SIZE" -gt 30000000 ]; then
+                  OUT="out/${{ inputs.prefixo }}-postes.pmtiles"
+                  tippecanoe --output="$OUT" --minimum-zoom=13 --maximum-zoom=16 --force -l postes "$TMP"
+                  rm "$TMP"
+                  ls -lh "$OUT"
+                else
+                  ls -lh "$TMP"
+                fi
+                ;;
+              *)
+                echo "Camada $CAMADA nao reconhecida, pulando."
+                ;;
+            esac
+          done
+          echo ""
+          echo "Arquivos gerados:"
+          ls -lh out/
+
+      - name: Liberar espaco
+        run: |
+          rm -rf bdgd.gdb.zip "$GDB"
+          df -h .
+
+      - name: Publicar no GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: "BDGD ${{ inputs.prefixo }}"
+          body: |
+            Dados BDGD (ANEEL) processados automaticamente.
+            Dataset: ${{ inputs.dataset_id }}
+            Camadas: ${{ inputs.camadas }}
+            Run: ${{ github.run_id }}
+            Para usar no Markfield: copie as URLs abaixo e cole em src/map/bdgd.ts
+          files: out/*
+          make_latest: false
