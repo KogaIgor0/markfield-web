@@ -20,6 +20,10 @@
     "proj4": "^2.15.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
+    "dependencies": {
+  "pmtiles": "^4.5.0",
+  ...outras dependências que já estão lá...
+}
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.14",
