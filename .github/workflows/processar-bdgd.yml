@@ -132,12 +132,7 @@ jobs:
                   "$OUT" \
                   "$GDB" UNTRMT \
                   2>/dev/null
-                python3 -c "
-import json
-with open('$OUT') as f:
-    d=json.load(f)
-print(f'  {len(d[\"features\"])} transformadores')
-"
+                python3 -c "import json; d=json.load(open('$OUT')); print(str(len(d.get('features',[]))) + ' transformadores')"
                 ls -lh "$OUT"
                 ;;
 
