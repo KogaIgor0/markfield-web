@@ -16,22 +16,22 @@ on:
         description: 'Tag do Release onde publicar (ex: bdgd-elektro-2024)'
         required: true
         default: 'bdgd-elektro-2024'
-      camadas:
-        description: 'Camadas a processar (separadas por vírgula)'
-        required: false
-        default: 'SSDMT,UNTRMT'
-
-# Para rodar em schedule anual (descomente e ajuste):
-#  schedule:
-#    - cron: '0 6 1 10 *'   # 1º de outubro, 06h UTC (ANEEL publica ~setembro)
+      camada_nome:
+        description: 'Nome da camada no arquivo de saída (ex: rede_mt, trafos)'
+        required: true
+        default: 'rede_mt'
+      tipo_saida:
+        description: 'Tipo de saída: pmtiles (linhas/polígonos grandes) ou geojson (pontos pequenos)'
+        required: true
+        default: 'pmtiles'
 
 jobs:
   processar:
     runs-on: ubuntu-latest
-    timeout-minutes: 90        # .gdb grande pode demorar
+    timeout-minutes: 90
 
     permissions:
-      contents: write          # necessário para criar/atualizar Release
+      contents: write
 
     steps:
       # -----------------------------------------------------------------------
@@ -51,131 +51,133 @@ jobs:
           echo "tippecanoe: $(tippecanoe --version)"
 
       # -----------------------------------------------------------------------
-      - name: Baixar BDGD (.gdb.zip) da ANEEL
+      - name: Diagnosticar dataset e baixar dados
         run: |
-          echo "⬇  Baixando dataset ${{ inputs.dataset_id }} …"
-          # Tenta primeiro via ArcGIS Online REST API (item/data) — mais confiável para .gdb
-          HTTP=$(curl -L --retry 3 --retry-delay 10 --write-out "%{http_code}" --silent --output bdgd.gdb.zip \
-            "https://www.arcgis.com/sharing/rest/content/items/${{ inputs.dataset_id }}/data")
-          echo "HTTP status: $HTTP"
-          if [ "$HTTP" -lt 200 ] || [ "$HTTP" -ge 300 ]; then
-            echo "⚠  Falhou ($HTTP). Tentando URL alternativa via Hub API v3…"
-            curl -L --fail --retry 3 --retry-delay 10 \
-              "https://opendata.arcgis.com/api/v3/datasets/${{ inputs.dataset_id }}/downloads/data?format=fgdb&spatialRefId=4674" \
-              -o bdgd.gdb.zip
-          fi
-          ls -lh bdgd.gdb.zip
+          echo "🔍 Consultando metadados do dataset ${{ inputs.dataset_id }}..."
+          METADATA=$(curl -sf \
+            "https://opendata.arcgis.com/api/v3/datasets/${{ inputs.dataset_id }}" \
+            || echo '{}')
 
-      # -----------------------------------------------------------------------
-      - name: Extrair .gdb
-        run: |
-          unzip -q bdgd.gdb.zip
-          GDB=$(find . -maxdepth 2 -name "*.gdb" -type d | head -1)
-          echo "GDB=$GDB" >> $GITHUB_ENV
-          echo "✔  GDB encontrado: $GDB"
-
-          echo "Camadas disponíveis:"
-          ogrinfo -al -so "$GDB" 2>/dev/null \
-            | grep "^Layer name:" | awk '{print "  •", $NF}' || true
-
-      # -----------------------------------------------------------------------
-      - name: Converter camadas → GeoJSON / PMTiles
-        run: |
-          mkdir -p out
-          IFS=',' read -ra CAMADAS <<< "${{ inputs.camadas }}"
-
-          for CAMADA in "${CAMADAS[@]}"; do
-            CAMADA=$(echo "$CAMADA" | tr -d ' ')
-            echo ""
-            echo "━━━ $CAMADA ━━━"
-
-            case "$CAMADA" in
-
-              # ── Rede MT: grande → PMTiles direto (pipe, sem arquivo intermediário) ──
-              SSDMT)
-                OUT="out/${{ inputs.prefixo }}-rede-mt.pmtiles"
-                echo "  GeoJSON (stdout) | tippecanoe → $OUT"
-                ogr2ogr \
-                  -t_srs EPSG:4326 \
-                  -f GeoJSON \
-                  -lco RFC7946=YES \
-                  /vsistdout/ \
-                  "$GDB" SSDMT \
-                  2>/dev/null \
-                | tippecanoe \
-                    --output="$OUT" \
-                    --minimum-zoom=10 \
-                    --maximum-zoom=16 \
-                    --simplification=4 \
-                    --force \
-                    --read-parallel \
-                    -l rede_mt \
-                    /dev/stdin
-                ls -lh "$OUT"
-                ;;
-
-              # ── Rede BT: grande → PMTiles direto ──
-              SSDBT)
-                OUT="out/${{ inputs.prefixo }}-rede-bt.pmtiles"
-                ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES \
-                  /vsistdout/ "$GDB" SSDBT 2>/dev/null \
-                | tippecanoe \
-                    --output="$OUT" \
-                    --minimum-zoom=13 \
-                    --maximum-zoom=16 \
-                    --simplification=2 \
-                    --force --read-parallel \
-                    -l rede_bt /dev/stdin
-                ls -lh "$OUT"
-                ;;
-
-              # ── Transformadores: pequeno → GeoJSON simples ──
-              UNTRMT)
-                OUT="out/${{ inputs.prefixo }}-trafos.geojson"
-                ogr2ogr \
-                  -t_srs EPSG:4326 \
-                  -f GeoJSON \
-                  -lco RFC7946=YES \
-                  "$OUT" \
-                  "$GDB" UNTRMT \
-                  2>/dev/null
-                python3 -c "import json; d=json.load(open('$OUT')); print(str(len(d.get('features',[]))) + ' transformadores')"
-                ls -lh "$OUT"
-                ;;
-
-              # ── Postes: médio → GeoJSON (ou PMTiles se ficar >30 MB) ──
-              PONNOT)
-                TMP="out/${{ inputs.prefixo }}-postes.geojson"
-                ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES \
-                  "$TMP" "$GDB" PONNOT 2>/dev/null
-                SIZE=$(stat -c%s "$TMP")
-                if [ "$SIZE" -gt 30000000 ]; then
-                  OUT="out/${{ inputs.prefixo }}-postes.pmtiles"
-                  tippecanoe --output="$OUT" \
-                    --minimum-zoom=13 --maximum-zoom=16 \
-                    --force -l postes "$TMP"
-                  rm "$TMP"
-                  ls -lh "$OUT"
-                else
-                  ls -lh "$TMP"
-                fi
-                ;;
-
-              *)
-                echo "  ⚠  Camada '$CAMADA' não reconhecida, pulando."
-                ;;
-            esac
-          done
+          python3 -c "
+import json, sys
+d = json.loads(sys.argv[1])
+attrs = d.get('data', {}).get('attributes', {})
+print('Tipo:', attrs.get('layerType', attrs.get('type', 'desconhecido')))
+print('Acesso:', attrs.get('access', '?'))
+print('Geometria:', attrs.get('geometryType', '?'))
+print('Feições:', attrs.get('recordCount', '?'))
+fs_url = attrs.get('url', '')
+print('Feature Service URL:', fs_url[:120] if fs_url else 'não disponível')
+dls = attrs.get('downloads', [])
+print('Downloads pré-gerados:', [x.get('format') for x in dls] if dls else 'nenhum')
+" "$METADATA" 2>/dev/null || echo "(não foi possível ler metadados)"
 
           echo ""
-          echo "📦  Arquivos gerados:"
+          echo "━━━ Tentativa 1: GeoJSON (Hub API v3, EPSG:4326) ━━━"
+          HTTP=$(curl -L -s \
+            -o bdgd.geojson \
+            -w "%{http_code}" \
+            "https://opendata.arcgis.com/api/v3/datasets/${{ inputs.dataset_id }}/downloads/data?format=geojson&spatialRefId=4326")
+          BYTES=$(stat -c%s bdgd.geojson 2>/dev/null || echo 0)
+          echo "HTTP: $HTTP  |  bytes: $BYTES"
+
+          if [ "$HTTP" -ge 200 ] && [ "$HTTP" -lt 300 ] && [ "$BYTES" -gt 1000 ]; then
+            echo "✔ GeoJSON baixado com sucesso"
+            echo "FORMATO=geojson" >> $GITHUB_ENV
+          else
+            echo "⚠  GeoJSON falhou ou vazio. Resposta:"
+            head -c 300 bdgd.geojson 2>/dev/null || true
+            rm -f bdgd.geojson
+
+            echo ""
+            echo "━━━ Tentativa 2: FGDB (Hub API v3, EPSG:4326) ━━━"
+            HTTP=$(curl -L -s \
+              -o bdgd.gdb.zip \
+              -w "%{http_code}" \
+              "https://opendata.arcgis.com/api/v3/datasets/${{ inputs.dataset_id }}/downloads/data?format=fgdb&spatialRefId=4326")
+            BYTES=$(stat -c%s bdgd.gdb.zip 2>/dev/null || echo 0)
+            echo "HTTP: $HTTP  |  bytes: $BYTES"
+
+            if [ "$HTTP" -ge 200 ] && [ "$HTTP" -lt 300 ] && [ "$BYTES" -gt 10000 ]; then
+              echo "✔ FGDB baixado com sucesso"
+              echo "FORMATO=fgdb" >> $GITHUB_ENV
+            else
+              echo ""
+              echo "❌ Todos os formatos falharam."
+              echo "   Resposta da última tentativa:"
+              head -c 500 bdgd.gdb.zip 2>/dev/null || true
+              echo ""
+              echo "   Metadados completos do dataset:"
+              echo "$METADATA" | python3 -m json.tool 2>/dev/null | head -100
+              exit 1
+            fi
+          fi
+
+      # -----------------------------------------------------------------------
+      - name: Processar GeoJSON → saída final
+        if: env.FORMATO == 'geojson'
+        run: |
+          mkdir -p out
+          echo "📐 Formato de entrada: GeoJSON"
+          echo "   Feições: $(python3 -c "import json; d=json.load(open('bdgd.geojson')); print(len(d.get('features',[])))")"
+          ls -lh bdgd.geojson
+
+          if [ "${{ inputs.tipo_saida }}" = "pmtiles" ]; then
+            OUT="out/${{ inputs.prefixo }}-${{ inputs.camada_nome }}.pmtiles"
+            echo "→ PMTiles: $OUT"
+            tippecanoe \
+              --output="$OUT" \
+              --minimum-zoom=10 \
+              --maximum-zoom=16 \
+              --simplification=4 \
+              --force \
+              --read-parallel \
+              -l "${{ inputs.camada_nome }}" \
+              bdgd.geojson
+          else
+            OUT="out/${{ inputs.prefixo }}-${{ inputs.camada_nome }}.geojson"
+            echo "→ GeoJSON: $OUT"
+            # reprojetar para EPSG:4326 caso necessário
+            ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES "$OUT" bdgd.geojson
+          fi
+
           ls -lh out/
 
       # -----------------------------------------------------------------------
-      - name: Liberar espaço (remove .gdb e .zip)
+      - name: Extrair .gdb e processar
+        if: env.FORMATO == 'fgdb'
         run: |
+          mkdir -p out
+          echo "📐 Formato de entrada: File Geodatabase"
+          unzip -q bdgd.gdb.zip
+          GDB=$(find . -maxdepth 2 -name "*.gdb" -type d | head -1)
+          echo "GDB encontrado: $GDB"
+          echo "Camadas disponíveis:"
+          ogrinfo -al -so "$GDB" 2>/dev/null | grep "^Layer name:" | awk '{print "  •", $NF}' || true
+
+          # Usa o nome da camada como o nome do dataset Hub (SSDMT, UNTRMT etc)
+          # Aqui assumimos camada = primeira camada disponível no GDB
+          CAMADA=$(ogrinfo -al -so "$GDB" 2>/dev/null | grep "^Layer name:" | head -1 | awk '{print $NF}')
+          echo "Processando camada: $CAMADA"
+
+          if [ "${{ inputs.tipo_saida }}" = "pmtiles" ]; then
+            OUT="out/${{ inputs.prefixo }}-${{ inputs.camada_nome }}.pmtiles"
+            ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES /vsistdout/ "$GDB" "$CAMADA" 2>/dev/null \
+            | tippecanoe \
+                --output="$OUT" \
+                --minimum-zoom=10 \
+                --maximum-zoom=16 \
+                --simplification=4 \
+                --force --read-parallel \
+                -l "${{ inputs.camada_nome }}" \
+                /dev/stdin
+          else
+            OUT="out/${{ inputs.prefixo }}-${{ inputs.camada_nome }}.geojson"
+            ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES "$OUT" "$GDB" "$CAMADA" 2>/dev/null
+          fi
+
+          ls -lh out/
           rm -rf bdgd.gdb.zip "$GDB"
-          df -h .
 
       # -----------------------------------------------------------------------
       - name: Publicar no GitHub Releases
@@ -187,7 +189,8 @@ jobs:
             Dados BDGD (ANEEL) processados automaticamente.
 
             **Dataset:** `${{ inputs.dataset_id }}`
-            **Camadas:** `${{ inputs.camadas }}`
+            **Camada:** `${{ inputs.camada_nome }}`
+            **Tipo de saída:** `${{ inputs.tipo_saida }}`
             **Gerado em:** ${{ github.run_id }}
 
             Para usar no Markfield, copie as URLs dos arquivos abaixo
