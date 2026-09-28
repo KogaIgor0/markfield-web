@@ -36,7 +36,9 @@ import { validarAmarracao, proporAmarracao, proporEstribos, LANCE_MAX_AMARRACAO_
 import { validarPararaios } from "./domain/validacoes";
 import { resumoMateriais } from "./domain/materiais";
 import { PainelMateriais } from "./ui/PainelMateriais";
+import { PainelCamadas } from "./ui/PainelCamadas";
 import { PranchaView } from "./ui/PranchaView";
+import { BDGD_CAMADAS_PADRAO, type BdgdLayerId } from "./map/bdgd";
 import { comporEstrutura, separarEstrutura } from "./domain/estruturas-catalogo";
 import {
   ajustarVao,
@@ -124,6 +126,10 @@ export function App() {
   const [mostrarNumeros, setMostrarNumeros] = useState(true);
   const [mostrarMateriais, setMostrarMateriais] = useState(false);
   const [mostrarPrancha, setMostrarPrancha] = useState(false);
+  const [mostrarCamadas, setMostrarCamadas] = useState(false);
+  const [camadasBdgdVisiveis, setCamadasBdgdVisiveis] = useState<Set<string>>(BDGD_CAMADAS_PADRAO);
+  const [bdgdFonteId] = useState("elektro");
+  const [carregandoBdgd, setCarregandoBdgd] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
@@ -264,6 +270,23 @@ export function App() {
   const selecionarTrecho = useCallback((id: string | null) => {
     setSelecionadoTrechoId(id);
     if (id) setSelecionadoId(null);
+  }, []);
+
+  const onToggleCamada = useCallback((id: BdgdLayerId) => {
+    setCamadasBdgdVisiveis((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const onCarregarBdgd = useCallback(() => {
+    // Placeholder: activates once BDGD GeoJSON URLs are populated in bdgd.ts.
+    // The button is disabled when fonte.urls === undefined, so this only fires
+    // for distribuidoras with data configured.
+    setCarregandoBdgd(true);
+    setTimeout(() => setCarregandoBdgd(false), 800);
   }, []);
 
   const atualizar = useCallback((novo: Projeto) => {
@@ -545,6 +568,7 @@ export function App() {
         setInserirRefId(null);
         setMostrarMateriais(false);
         setMostrarPrancha(false);
+        setMostrarCamadas(false);
         setSelecionadoId(null);
         setSelecionadoTrechoId(null);
       }
@@ -566,6 +590,18 @@ export function App() {
         <span className="phase-tag">Fase 2 · editor</span>
 
         <div className="topbar-acoes">
+          {/* Mapa base: rede existente (BDGD) — sempre visível */}
+          <div className="tb-grupo" role="group" aria-label="Mapa">
+            <button
+              className={`btn btn-rede-ex${mostrarCamadas ? " btn-ativo" : ""}`}
+              onClick={() => setMostrarCamadas((v) => !v)}
+              title="Rede existente da distribuidora (BDGD ANEEL)"
+            >
+              🗺 Rede existente
+            </button>
+          </div>
+          <span className="tb-sep" aria-hidden="true" />
+
           {/* Arquivo: abrir, salvar, exportar */}
           <div className="tb-grupo" role="group" aria-label="Arquivo">
             <button className="btn" onClick={() => inputRef.current?.click()} disabled={carregando}>
@@ -793,7 +829,20 @@ export function App() {
           onMedirPonto={onMedirPonto}
           mostrarFotos={mostrarFotos && !modoRede}
           mostrarNumeros={mostrarNumeros}
+          camadasBdgdVisiveis={camadasBdgdVisiveis}
+          bdgdFonteId={bdgdFonteId}
         />
+
+        {mostrarCamadas && (
+          <PainelCamadas
+            fonteId={bdgdFonteId}
+            ativas={camadasBdgdVisiveis}
+            carregando={carregandoBdgd}
+            onToggle={onToggleCamada}
+            onCarregar={onCarregarBdgd}
+            onFechar={() => setMostrarCamadas(false)}
+          />
+        )}
 
         {!projeto && !carregando && (
           <div className="vazio">
