@@ -17,6 +17,13 @@
  *
  * Dados Elektro 2024 (ref. 31/12/2024):
  *   https://dadosabertos-aneel.opendata.arcgis.com/datasets/8eaa712a707745adac9948b24e188bd9
+ *
+ * CORS em desenvolvimento (StackBlitz / WebContainers):
+ *   GitHub Releases não serve CORS headers no redirect 302 inicial, bloqueando
+ *   fetch() cross-origin em ambientes sandboxed. Solução: deploy do Cloudflare
+ *   Worker em workers/bdgd-cors-worker.js e configurar a variável de ambiente:
+ *     VITE_BDGD_CORS_PROXY=https://<seu-worker>.workers.dev
+ *   (no .env.local ou nas settings do StackBlitz)
  */
 
 import maplibregl from "maplibre-gl";
@@ -28,6 +35,30 @@ import { Protocol } from "pmtiles";
 
 const _pmtilesProtocol = new Protocol();
 maplibregl.addProtocol("pmtiles", _pmtilesProtocol.tilev4.bind(_pmtilesProtocol));
+
+// ---------------------------------------------------------------------------
+// CORS proxy (opcional — configure via VITE_BDGD_CORS_PROXY)
+// ---------------------------------------------------------------------------
+
+/**
+ * Prefixo do Cloudflare Worker proxy para contornar CORS do GitHub Releases.
+ *
+ * Produção (sem proxy): deixar em branco / não definir a variável.
+ * Desenvolvimento em StackBlitz: definir VITE_BDGD_CORS_PROXY nas env settings.
+ *
+ * Worker disponível em: workers/bdgd-cors-worker.js
+ * Deploy: https://workers.cloudflare.com → criar worker → colar o arquivo → deploy.
+ */
+const CORS_PROXY: string = import.meta.env.VITE_BDGD_CORS_PROXY ?? "";
+
+/**
+ * Se CORS_PROXY estiver configurado, mapeia o nome do arquivo para a URL do proxy.
+ * Caso contrário, usa a URL direta do GitHub Releases.
+ */
+function bdgdUrl(githubUrl: string, filename: string): string {
+  if (CORS_PROXY) return `${CORS_PROXY.replace(/\/$/, "")}/${filename}`;
+  return githubUrl;
+}
 
 // ---------------------------------------------------------------------------
 // IDs internos
@@ -114,11 +145,16 @@ export const BDGD_FONTES: BdgdFonte[] = [
     // Dados processados pelo GitHub Actions (processar-bdgd.yml) a partir da
     // BDGD Elektro 2024 (ref. 31/12/2024) publicada pela ANEEL no ArcGIS Hub.
     // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-elektro-2024
+    // CORS proxy: se VITE_BDGD_CORS_PROXY estiver configurado, o proxy é usado no lugar.
     urls: {
-      ssdmt:
+      ssdmt: bdgdUrl(
         "https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-elektro-2024/elektro_2024-rede-mt.pmtiles",
-      untrmt:
+        "rede-mt.pmtiles",
+      ),
+      untrmt: bdgdUrl(
         "https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-elektro-2024/elektro_2024-trafos.geojson",
+        "trafos.geojson",
+      ),
     },
   },
 ];
