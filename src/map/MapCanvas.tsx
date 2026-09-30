@@ -5,6 +5,12 @@ import type { Feature, FeatureCollection, Point } from "geojson";
 import type { LatLng, Projeto, TipoPonto } from "../domain/model";
 import { fotosGeoJson, linhasGeoJson, pontosGeoJson } from "./geojson";
 import { BASE_MAPA, ESRI_MAXZOOM, MAPTILER_KEY } from "../config";
+import {
+  inicializarCamadasBdgd,
+  aplicarVisibilidadeBdgd,
+  carregarDadosBdgd,
+  BDGD_FONTES,
+} from "./bdgd";
 
 /**
  * Mapa base + render + EDIÇÃO do projeto (Fase 2).
@@ -129,6 +135,12 @@ interface MapCanvasProps {
   onMoverPonto?: (id: string, wgs84: LatLng) => void;
   onAdicionarPonto?: (wgs84: LatLng) => void;
   onPontoClicado?: (id: string) => void;
+  /** Camadas BDGD que devem ficar visíveis. */
+  camadasBdgdVisiveis?: Set<string>;
+  /** Id da distribuidora BDGD selecionada. */
+  bdgdFonteId?: string | null;
+  /** Incrementar para disparar o carregamento dos dados BDGD. */
+  bdgdCarregarTrigger?: number;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -180,6 +192,9 @@ export function MapCanvas(props: MapCanvasProps) {
     medicao,
     mostrarFotos,
     mostrarNumeros,
+    camadasBdgdVisiveis,
+    bdgdFonteId,
+    bdgdCarregarTrigger,
   } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -209,6 +224,7 @@ export function MapCanvas(props: MapCanvasProps) {
     mapRef.current = map;
     map.on("load", () => {
       prontoRef.current = true;
+      inicializarCamadasBdgd(map);
     });
 
     const emModoAdicionar = () => typeof propsRef.current.modo === "object";
@@ -538,6 +554,27 @@ export function MapCanvas(props: MapCanvasProps) {
     src.setData({ type: "FeatureCollection", features: feats });
   }, [medicao]);
 
+  // BDGD — visibilidade das camadas.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !prontoRef.current || !camadasBdgdVisiveis) return;
+    aplicarVisibilidadeBdgd(map, camadasBdgdVisiveis);
+  }, [camadasBdgdVisiveis]);
+
+  // BDGD — carregamento dos dados (dispara quando bdgdCarregarTrigger incrementa).
+  useEffect(() => {
+    if (!bdgdCarregarTrigger) return;
+    const map = mapRef.current;
+    if (!map) return;
+    const fonte = BDGD_FONTES.find((f) => f.id === bdgdFonteId) ?? null;
+    if (!fonte?.urls) return;
+    if (!prontoRef.current) {
+      map.once("load", () => carregarDadosBdgd(map, fonte));
+    } else {
+      carregarDadosBdgd(map, fonte);
+    }
+  }, [bdgdCarregarTrigger, bdgdFonteId]);
+
   return <div ref={containerRef} className="map-canvas" />;
 }
 
@@ -763,3 +800,4 @@ function enquadrar(map: maplibregl.Map, projeto: Projeto) {
   if (n === 0) return;
   map.fitBounds(bounds, { padding: 64, maxZoom: 18, duration: 800 });
 }
+
