@@ -3,8 +3,8 @@
  *
  * A BDGD (Base de Dados Geográfica da Distribuidora) é publicada anualmente
  * pela ANEEL em dadosabertos-aneel.opendata.arcgis.com como arquivos .gdb
- * por distribuidora. Para servir no browser usamos GeoJSON por camada
- * (MVP) ou PMTiles (produção) conforme configurado em BDGD_FONTES.
+ * por distribuidora. Para servir no browser usamos PMTiles (Rede MT) e
+ * GeoJSON (Transformadores) via Cloudflare Worker com CORS.
  *
  * Entidades do Módulo 10 – SIG Regulatório (nomes das camadas no .gdb):
  *   SSDMT  - Segmentos de rede MT (linhas média tensão)
@@ -18,12 +18,10 @@
  * Dados Elektro 2024 (ref. 31/12/2024):
  *   https://dadosabertos-aneel.opendata.arcgis.com/datasets/8eaa712a707745adac9948b24e188bd9
  *
- * CORS em desenvolvimento (StackBlitz / WebContainers):
- *   GitHub Releases não serve CORS headers no redirect 302 inicial, bloqueando
- *   fetch() cross-origin em ambientes sandboxed. Solução: deploy do Cloudflare
- *   Worker em workers/bdgd-cors-worker.js e configurar a variável de ambiente:
- *     VITE_BDGD_CORS_PROXY=https://<seu-worker>.workers.dev
- *   (no .env.local ou nas settings do StackBlitz)
+ * CDN: Cloudflare Worker (workers/bdgd-cors-worker.js) em
+ *   https://bdgd-cors.markfield-app.workers.dev
+ * O Worker busca os arquivos do GitHub Releases e serve com CORS headers,
+ * resolvendo o bloqueio de cross-origin em ambientes sandboxed (StackBlitz).
  */
 
 import maplibregl from "maplibre-gl";
@@ -37,28 +35,11 @@ const _pmtilesProtocol = new Protocol();
 maplibregl.addProtocol("pmtiles", _pmtilesProtocol.tilev4.bind(_pmtilesProtocol));
 
 // ---------------------------------------------------------------------------
-// CORS proxy (opcional — configure via VITE_BDGD_CORS_PROXY)
+// CDN base URL
 // ---------------------------------------------------------------------------
 
-/**
- * Prefixo do Cloudflare Worker proxy para contornar CORS do GitHub Releases.
- *
- * Produção (sem proxy): deixar em branco / não definir a variável.
- * Desenvolvimento em StackBlitz: definir VITE_BDGD_CORS_PROXY nas env settings.
- *
- * Worker disponível em: workers/bdgd-cors-worker.js
- * Deploy: https://workers.cloudflare.com → criar worker → colar o arquivo → deploy.
- */
-const CORS_PROXY: string = import.meta.env.VITE_BDGD_CORS_PROXY ?? "";
-
-/**
- * Se CORS_PROXY estiver configurado, mapeia o nome do arquivo para a URL do proxy.
- * Caso contrário, usa a URL direta do GitHub Releases.
- */
-function bdgdUrl(githubUrl: string, filename: string): string {
-  if (CORS_PROXY) return `${CORS_PROXY.replace(/\/$/, "")}/${filename}`;
-  return githubUrl;
-}
+/** Cloudflare Worker que serve os assets BDGD com CORS. */
+const BDGD_CDN = "https://bdgd-cors.markfield-app.workers.dev";
 
 // ---------------------------------------------------------------------------
 // IDs internos
@@ -117,11 +98,11 @@ export interface BdgdFonte {
   nome: string;
   uf: string;
   /**
-   * URLs dos GeoJSON por entidade. `undefined` = dado não processado ainda
+   * URLs dos assets por entidade. `undefined` = dado não processado ainda
    * (layers inicializadas vazias — framework ligável, sem dados).
    *
-   * Processar com scripts/processar-bdgd.sh e hospedar numa CDN (ex.:
-   * Cloudflare R2, GitHub Releases, S3). PMTiles recomendado para produção.
+   * URLs servidas pelo Cloudflare Worker (BDGD_CDN) com CORS e range requests.
+   * PMTiles recomendado para rede MT (streaming eficiente por bbox).
    */
   urls?: {
     ssdmt?: string; // Segmentos MT
@@ -131,30 +112,17 @@ export interface BdgdFonte {
   };
 }
 
-/**
- * Distribuidoras com BDGD disponível. Para adicionar uma nova:
- *   1. Baixar o .gdb em dadosabertos-aneel.opendata.arcgis.com
- *   2. Rodar scripts/processar-bdgd.sh
- *   3. Hospedar os GeoJSONs e adicionar as URLs abaixo.
- */
 export const BDGD_FONTES: BdgdFonte[] = [
   {
     id: "elektro",
     nome: "Neoenergia Elektro",
     uf: "SP / MS",
-    // Dados processados pelo GitHub Actions (processar-bdgd.yml) a partir da
-    // BDGD Elektro 2024 (ref. 31/12/2024) publicada pela ANEEL no ArcGIS Hub.
+    // Dados processados a partir da BDGD Elektro 2024 (ref. 31/12/2024).
     // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-elektro-2024
-    // CORS proxy: se VITE_BDGD_CORS_PROXY estiver configurado, o proxy é usado no lugar.
+    // Servidos via Cloudflare Worker com CORS (workers/bdgd-cors-worker.js).
     urls: {
-      ssdmt: bdgdUrl(
-        "https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-elektro-2024/elektro_2024-rede-mt.pmtiles",
-        "rede-mt.pmtiles",
-      ),
-      untrmt: bdgdUrl(
-        "https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-elektro-2024/elektro_2024-trafos.geojson",
-        "trafos.geojson",
-      ),
+      ssdmt: `${BDGD_CDN}/rede-mt.pmtiles`,
+      untrmt: `${BDGD_CDN}/trafos.geojson`,
     },
   },
 ];
@@ -186,12 +154,8 @@ const REDE_MT_LAYER_BASE = {
  * Adiciona ao mapa os sources e layers da BDGD.
  * Deve ser chamada UMA VEZ, dentro do handler `map.on("load", ...)`,
  * ANTES de qualquer layer do projeto (mkf-*) para ficar por baixo.
- *
- * @param beforeId  ID do primeiro layer mkf- criado após (ex.: "mkf-linhas").
- *                  As layers BDGD são inseridas antes dele.
  */
 export function inicializarCamadasBdgd(map: maplibregl.Map, beforeId?: string): void {
-  // Sources — GeoJSON vazio; preenchidos com dados quando disponíveis.
   map.addSource(BDGD_SRC.redeMT, { type: "geojson", data: FC_VAZIO });
   map.addSource(BDGD_SRC.redeBT, { type: "geojson", data: FC_VAZIO });
   map.addSource(BDGD_SRC.transformadores, { type: "geojson", data: FC_VAZIO });
@@ -199,7 +163,7 @@ export function inicializarCamadasBdgd(map: maplibregl.Map, beforeId?: string): 
 
   const opts = (id: string) => (beforeId && map.getLayer(beforeId) ? { id, beforeId } : { id });
 
-  // Rede MT (linhas âmbar — destaca sobre satélite)
+  // Rede MT (linhas âmbar)
   map.addLayer(
     {
       ...opts(BDGD_LYR.redeMT),
@@ -208,7 +172,7 @@ export function inicializarCamadasBdgd(map: maplibregl.Map, beforeId?: string): 
     } as maplibregl.LayerSpecification,
   );
 
-  // Rede BT (linhas cinza — discreta)
+  // Rede BT (linhas cinza)
   map.addLayer(
     {
       ...opts(BDGD_LYR.redeBT),
@@ -241,7 +205,7 @@ export function inicializarCamadasBdgd(map: maplibregl.Map, beforeId?: string): 
     } as maplibregl.LayerSpecification,
   );
 
-  // Postes (pontos cinza-escuro — só zoom alto)
+  // Postes (pontos cinza-escuro)
   map.addLayer(
     {
       ...opts(BDGD_LYR.postes),
@@ -270,7 +234,6 @@ export function removerCamadasBdgd(map: maplibregl.Map): void {
 
 /**
  * Aplica visibilidade conforme o conjunto de layers ativos.
- * Camada presente no conjunto → visível; ausente → oculta.
  */
 export function aplicarVisibilidadeBdgd(map: maplibregl.Map, ativas: Set<string>): void {
   for (const id of Object.values(BDGD_LYR)) {
@@ -281,17 +244,13 @@ export function aplicarVisibilidadeBdgd(map: maplibregl.Map, ativas: Set<string>
 
 /**
  * Carrega os dados de uma BdgdFonte nos sources do mapa.
- * Se a fonte não tiver URLs configuradas, mantém os sources vazios.
- *
- * URLs terminadas em `.pmtiles` trocam o source GeoJSON por um source
- * vector apontando para o arquivo via protocolo `pmtiles://`. As demais
- * são tratadas como GeoJSON e carregadas com fetch + setData.
+ * URLs .pmtiles → source vector via protocolo pmtiles://.
+ * Demais URLs → GeoJSON via fetch.
  */
 export async function carregarDadosBdgd(map: maplibregl.Map, fonte: BdgdFonte): Promise<void> {
   const u = fonte.urls;
-  if (!u) return; // sem dados ainda
+  if (!u) return;
 
-  /** Carrega GeoJSON no source existente. */
   const carregarGeoJson = async (srcId: string, url: string | undefined) => {
     if (!url) return;
     try {
@@ -305,11 +264,6 @@ export async function carregarDadosBdgd(map: maplibregl.Map, fonte: BdgdFonte): 
     }
   };
 
-  /**
-   * Troca o source geojson placeholder da Rede MT por um source vector
-   * apontando para o PMTiles, e recria o layer com source-layer "rede_mt"
-   * (nome gravado pelo tippecanoe via `-l rede_mt`).
-   */
   const carregarRedeMtPmTiles = (url: string) => {
     if (map.getLayer(BDGD_LYR.redeMT)) map.removeLayer(BDGD_LYR.redeMT);
     if (map.getSource(BDGD_SRC.redeMT)) map.removeSource(BDGD_SRC.redeMT);
@@ -323,7 +277,6 @@ export async function carregarDadosBdgd(map: maplibregl.Map, fonte: BdgdFonte): 
     } as maplibregl.LayerSpecification);
   };
 
-  // Rede MT: PMTiles quando o pipeline gerou .pmtiles, GeoJSON como fallback
   if (u.ssdmt?.endsWith(".pmtiles")) {
     carregarRedeMtPmTiles(u.ssdmt);
   } else {
