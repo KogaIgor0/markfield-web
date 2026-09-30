@@ -130,6 +130,7 @@ export function App() {
   const [camadasBdgdVisiveis, setCamadasBdgdVisiveis] = useState<Set<string>>(BDGD_CAMADAS_PADRAO);
   const [bdgdFonteId] = useState("elektro");
   const [carregandoBdgd, setCarregandoBdgd] = useState(false);
+  const [bdgdCarregarTrigger, setBdgdCarregarTrigger] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
@@ -282,11 +283,10 @@ export function App() {
   }, []);
 
   const onCarregarBdgd = useCallback(() => {
-    // Placeholder: activates once BDGD GeoJSON URLs are populated in bdgd.ts.
-    // The button is disabled when fonte.urls === undefined, so this only fires
-    // for distribuidoras with data configured.
     setCarregandoBdgd(true);
-    setTimeout(() => setCarregandoBdgd(false), 800);
+    setBdgdCarregarTrigger((t) => t + 1);
+    // Libera o spinner após 3 s (o carregamento é async no MapCanvas).
+    setTimeout(() => setCarregandoBdgd(false), 3000);
   }, []);
 
   const atualizar = useCallback((novo: Projeto) => {
@@ -831,6 +831,7 @@ export function App() {
           mostrarNumeros={mostrarNumeros}
           camadasBdgdVisiveis={camadasBdgdVisiveis}
           bdgdFonteId={bdgdFonteId}
+          bdgdCarregarTrigger={bdgdCarregarTrigger}
         />
 
         {mostrarCamadas && (
@@ -1154,3 +1155,4 @@ export function App() {
     </div>
   );
 }
+
