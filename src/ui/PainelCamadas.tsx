@@ -2,7 +2,7 @@ import { BDGD_CAMADAS, BDGD_FONTES } from "../map/bdgd";
 
 interface Props {
   fonteId: string | null;
-  ativas: Record<string, boolean>;
+  ativas: Set<string>;
   carregando: boolean;
   onToggle: (id: string) => void;
   onCarregar: () => void;
@@ -30,7 +30,7 @@ export function PainelCamadas({ fonteId, ativas, carregando, onToggle, onCarrega
             <span className="pc-label">{cam.label}</span>
             <input
               type="checkbox"
-              checked={ativas[cam.id] ?? true}
+              checked={ativas.has(cam.id)}
               onChange={() => onToggle(cam.id)}
             />
           </label>
