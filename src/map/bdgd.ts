@@ -156,7 +156,12 @@ export const BDGD_FONTES: BdgdFonte[] = [
     id: "cemig",
     nome: "CEMIG-D",
     uf: "MG",
-    // Pendente: rodar workflow com dataset_id=7dcfe1549a4c4df29b02f164b0c362c5
+    // Processado: BDGD CEMIG 2024 (ref. 31/12/2024)
+    // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-cemig-2024
+    urls: {
+      ssdmt: `${BDGD_CDN}/cemig/rede-mt.pmtiles`,
+      untrmt: `${BDGD_CDN}/cemig/trafos.geojson`,
+    },
   },
   // ── PR ────────────────────────────────────────────────────────────────────
   {
