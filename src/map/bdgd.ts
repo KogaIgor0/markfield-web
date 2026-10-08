@@ -13,15 +13,18 @@
  *   PONNOT - Pontos notáveis / postes (pontos)
  *
  * Pipeline de processamento (executar uma vez por ciclo BDGD):
- *   → ver scripts/processar-bdgd.sh
+ *   → GitHub Actions › "Processar BDGD" › Run workflow
+ *   → Parâmetros em scratchpad/bdgd-distribuidoras.md
  *
- * Dados Elektro 2024 (ref. 31/12/2024):
- *   https://dadosabertos-aneel.opendata.arcgis.com/datasets/8eaa712a707745adac9948b24e188bd9
- *
- * CDN: Cloudflare Worker (workers/bdgd-cors-worker.js) em
+ * CDN: Cloudflare Worker multi-distribuidora (workers/bdgd-cors-worker.js) em
  *   https://bdgd-cors.markfield-app.workers.dev
- * O Worker busca os arquivos do GitHub Releases e serve com CORS headers,
- * resolvendo o bloqueio de cross-origin em ambientes sandboxed (StackBlitz).
+ * Roteamento: /{conc}/{arquivo} → GitHub Releases bdgd-{conc}-2024
+ * O Worker serve com CORS headers (range requests ok para PMTiles).
+ *
+ * Para adicionar nova distribuidora após workflow executado:
+ *   1. Defina `urls` na entrada correspondente em BDGD_FONTES abaixo.
+ *   2. `ssdmt` deve apontar para .pmtiles (streaming eficiente).
+ *   3. `untrmt` aponta para .geojson dos transformadores.
  */
 
 import maplibregl from "maplibre-gl";
@@ -105,27 +108,172 @@ export interface BdgdFonte {
    * PMTiles recomendado para rede MT (streaming eficiente por bbox).
    */
   urls?: {
-    ssdmt?: string; // Segmentos MT
-    ssdbt?: string; // Segmentos BT
-    untrmt?: string; // Transformadores
-    ponnot?: string; // Postes
+    ssdmt?: string; // Segmentos MT  (.pmtiles)
+    ssdbt?: string; // Segmentos BT  (.pmtiles, opcional)
+    untrmt?: string; // Transformadores (.geojson)
+    ponnot?: string; // Postes (.geojson, opcional)
   };
 }
 
 export const BDGD_FONTES: BdgdFonte[] = [
+  // ── SP / MS ───────────────────────────────────────────────────────────────
   {
     id: "elektro",
     nome: "Neoenergia Elektro",
     uf: "SP / MS",
-    // Dados processados a partir da BDGD Elektro 2024 (ref. 31/12/2024).
+    // Processado: BDGD Elektro 2024 (ref. 31/12/2024)
     // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-elektro-2024
-    // Servidos via Cloudflare Worker com CORS (workers/bdgd-cors-worker.js).
     urls: {
-      ssdmt: `${BDGD_CDN}/rede-mt.pmtiles`,
-      untrmt: `${BDGD_CDN}/trafos.geojson`,
+      ssdmt: `${BDGD_CDN}/elektro/rede-mt.pmtiles`,
+      untrmt: `${BDGD_CDN}/elektro/trafos.geojson`,
     },
   },
+  {
+    id: "cpfl-paulista",
+    nome: "CPFL Paulista",
+    uf: "SP",
+    // Processado: BDGD CPFL Paulista 2024 (ref. 31/12/2024)
+    // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-cpfl-paulista-2024
+    urls: {
+      ssdmt: `${BDGD_CDN}/cpfl-paulista/rede-mt.pmtiles`,
+      untrmt: `${BDGD_CDN}/cpfl-paulista/trafos.geojson`,
+    },
+  },
+  {
+    id: "cpfl-piratininga",
+    nome: "CPFL Piratininga",
+    uf: "SP",
+    // Pendente: rodar workflow com dataset_id=45081d05c49d4e428200311ba9d09acf
+  },
+  {
+    id: "enel-sp",
+    nome: "Enel Distribuição SP",
+    uf: "SP",
+    // Pendente: rodar workflow com dataset_id=afa54a48397745a2b2fbc550880aa2d7
+  },
+  // ── MG ────────────────────────────────────────────────────────────────────
+  {
+    id: "cemig",
+    nome: "CEMIG-D",
+    uf: "MG",
+    // Pendente: rodar workflow com dataset_id=7dcfe1549a4c4df29b02f164b0c362c5
+  },
+  // ── PR ────────────────────────────────────────────────────────────────────
+  {
+    id: "copel",
+    nome: "Copel Distribuição",
+    uf: "PR",
+    // Pendente: rodar workflow com dataset_id=d31f897573b64963ba31a820aabca897
+  },
+  // ── BA ────────────────────────────────────────────────────────────────────
+  {
+    id: "coelba",
+    nome: "Neoenergia Coelba",
+    uf: "BA",
+    // Pendente: rodar workflow com dataset_id=ac3bf2f2b06447ec80493372ca4c9845
+  },
+  // ── Equatorial ────────────────────────────────────────────────────────────
+  {
+    id: "equatorial-pa",
+    nome: "Equatorial Pará",
+    uf: "PA",
+    // Pendente: rodar workflow com dataset_id=60a26bb11754487db39fa6bb91e5dce2
+  },
+  {
+    id: "equatorial-ma",
+    nome: "Equatorial Maranhão",
+    uf: "MA",
+    // Pendente: rodar workflow com dataset_id=ba59d4a881684374b53f51656b945b18
+  },
+  {
+    id: "equatorial-pi",
+    nome: "Equatorial Piauí",
+    uf: "PI",
+    // Pendente: rodar workflow com dataset_id=642e8c25d57d4a3893c0d069c4363911
+  },
+  {
+    id: "equatorial-al",
+    nome: "Equatorial Alagoas",
+    uf: "AL",
+    // Pendente: rodar workflow com dataset_id=78d8ae0fe3cc46888dc37f2c87bc3f00
+  },
+  {
+    id: "equatorial-go",
+    nome: "Equatorial Goiás",
+    uf: "GO",
+    // Pendente: rodar workflow com dataset_id=4c2fc0e35982454bbc54db53d1532b90
+  },
+  {
+    id: "ceee",
+    nome: "CEEE Equatorial",
+    uf: "RS",
+    // Pendente: rodar workflow com dataset_id=15b77072ab3b46bb8581cca726cdf08a
+  },
+  {
+    id: "cea",
+    nome: "CEA Equatorial",
+    uf: "AP",
+    // Pendente: rodar workflow com dataset_id=123cf701fce4495bab5a673435fb4cbc
+  },
+  // ── Energisa ──────────────────────────────────────────────────────────────
+  {
+    id: "energisa-mt",
+    nome: "Energisa Mato Grosso",
+    uf: "MT",
+    // Pendente: rodar workflow com dataset_id=8fed7443387d4d04a361e7f4d1edea64
+  },
+  {
+    id: "energisa-ms",
+    nome: "Energisa Mato Grosso do Sul",
+    uf: "MS",
+    // Pendente: rodar workflow com dataset_id=b7fad4cd388845a08a01643599ec747b
+  },
+  {
+    id: "energisa-to",
+    nome: "Energisa Tocantins",
+    uf: "TO",
+    // Pendente: rodar workflow com dataset_id=1bfec53ce077408581c6b2a82076d89a
+  },
+  {
+    id: "energisa-pb",
+    nome: "Energisa Paraíba",
+    uf: "PB",
+    // Pendente: rodar workflow com dataset_id=700e0bfcb04349fea9d1d0af43c2a354
+  },
+  {
+    id: "energisa-se",
+    nome: "Energisa Sergipe",
+    uf: "SE",
+    // Pendente: rodar workflow com dataset_id=910e329827a04ffda153c235ac9c5bc1
+  },
+  {
+    id: "energisa-mg-rio",
+    nome: "Energisa Minas Rio",
+    uf: "MG / RJ",
+    // Pendente: rodar workflow com dataset_id=bc209c308cac42b9b03fb963ca9c5602
+  },
+  {
+    id: "energisa-sul",
+    nome: "Energisa Sul-Sudeste",
+    uf: "MG / SP / PR",
+    // Pendente: rodar workflow com dataset_id=00eedc147efc4020993a6c9cf9c6d3cc
+  },
+  {
+    id: "energisa-ro",
+    nome: "Energisa Rondônia",
+    uf: "RO",
+    // Pendente: rodar workflow com dataset_id=cb6bd431508544a49256c4a03cdf7cc7
+  },
+  {
+    id: "energisa-ac",
+    nome: "Energisa Acre",
+    uf: "AC",
+    // Pendente: rodar workflow com dataset_id=0d3f9d648eb54c758b592b794faf2ccc
+  },
 ];
+
+/** Só as fontes com dados processados (urls definidas). */
+export const BDGD_FONTES_DISPONIVEIS = BDGD_FONTES.filter((f) => f.urls !== undefined);
 
 // ---------------------------------------------------------------------------
 // Inicialização no MapLibre
