@@ -143,7 +143,12 @@ export const BDGD_FONTES: BdgdFonte[] = [
     id: "cpfl-piratininga",
     nome: "CPFL Piratininga",
     uf: "SP",
-    // Pendente: rodar workflow com dataset_id=45081d05c49d4e428200311ba9d09acf
+    // Processado: BDGD CPFL Piratininga 2024 (ref. 31/12/2024)
+    // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-cpfl-piratininga-2024
+    urls: {
+      ssdmt: `${BDGD_CDN}/cpfl-piratininga/rede-mt.pmtiles`,
+      untrmt: `${BDGD_CDN}/cpfl-piratininga/trafos.geojson`,
+    },
   },
   {
     id: "enel-sp",
