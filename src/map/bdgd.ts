@@ -154,7 +154,12 @@ export const BDGD_FONTES: BdgdFonte[] = [
     id: "enel-sp",
     nome: "Enel Distribuição SP",
     uf: "SP",
-    // Pendente: rodar workflow com dataset_id=afa54a48397745a2b2fbc550880aa2d7
+    // Processado: BDGD Enel SP 2024 (ref. 31/12/2024)
+    // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-enel-sp-2024
+    urls: {
+      ssdmt: `${BDGD_CDN}/enel-sp/rede-mt.pmtiles`,
+      untrmt: `${BDGD_CDN}/enel-sp/trafos.geojson`,
+    },
   },
   // ── MG ────────────────────────────────────────────────────────────────────
   {
