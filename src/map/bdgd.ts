@@ -225,7 +225,12 @@ export const BDGD_FONTES: BdgdFonte[] = [
     id: "energisa-mt",
     nome: "Energisa Mato Grosso",
     uf: "MT",
-    // Pendente: rodar workflow com dataset_id=8fed7443387d4d04a361e7f4d1edea64
+    // Processado: BDGD Energisa MT 2024 (ref. 31/12/2024)
+    // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-energisa-mt-2024
+    urls: {
+      ssdmt: `${BDGD_CDN}/energisa-mt/rede-mt.pmtiles`,
+      untrmt: `${BDGD_CDN}/energisa-mt/trafos.geojson`,
+    },
   },
   {
     id: "energisa-ms",
