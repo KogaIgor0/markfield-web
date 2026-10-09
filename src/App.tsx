@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapCanvas, type Modo, type EstiloBase, type MapAlvo } from "./map/MapCanvas";
 import { BarraFerramentas } from "./ui/BarraFerramentas";
+import { SplashScreen } from "./ui/SplashScreen";
 import { PainelPonto } from "./ui/PainelPonto";
 import { PainelTrecho } from "./ui/PainelTrecho";
 import { importarKml, importarMkf, importarPacote, type RelatorioImport } from "./io/pacote";
@@ -104,6 +105,7 @@ export function App() {
   const [estado, setEstado] = useState<Estado>(VAZIO);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [splash, setSplash] = useState(true);
   const [arrastando, setArrastando] = useState(false);
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [selecionadoTrechoId, setSelecionadoTrechoId] = useState<string | null>(null);
@@ -870,22 +872,7 @@ export function App() {
           />
         )}
 
-        {!projeto && !carregando && (
-          <div className="vazio">
-            <div className="vazio-card">
-              <div className="vazio-icone">◆</div>
-              <h1>Abra o trabalho de campo</h1>
-              <p>
-                Arraste aqui o export do app (o <strong>“exportar tudo”</strong>, um <code>.zip</code>),
-                um <code>.kml</code> solto, ou um projeto <code>.mkf</code> que você já salvou. Depois
-                é só editar — mover, corrigir coordenada, adicionar e remover pontos — e salvar.
-              </p>
-              <button className="btn btn-primario" onClick={() => inputRef.current?.click()}>
-                Escolher arquivo
-              </button>
-            </div>
-          </div>
-        )}
+        {splash && <SplashScreen onDone={() => setSplash(false)} />}
 
         {emAdd && (
           <div className="modo-bar">
