@@ -218,6 +218,10 @@ export const BDGD_FONTES: BdgdFonte[] = [
     nome: "Equatorial Piauí",
     uf: "PI",
     // Pendente: rodar workflow com dataset_id=642e8c25d57d4a3893c0d069c4363911
+    urls: {
+      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/equatorial-pi/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.markfield-app.workers.dev/equatorial-pi/trafos.geojson",
+    },
   },
   {
     id: "equatorial-al",
