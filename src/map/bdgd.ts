@@ -191,6 +191,10 @@ export const BDGD_FONTES: BdgdFonte[] = [
     nome: "Neoenergia Coelba",
     uf: "BA",
     // Pendente: rodar workflow com dataset_id=ac3bf2f2b06447ec80493372ca4c9845
+    urls: {
+      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/coelba/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.markfield-app.workers.dev/coelba/trafos.geojson",
+    },
   },
   // ── Equatorial ────────────────────────────────────────────────────────────
   {
