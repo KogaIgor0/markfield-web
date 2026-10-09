@@ -216,6 +216,10 @@ export const BDGD_FONTES: BdgdFonte[] = [
     nome: "Equatorial Alagoas",
     uf: "AL",
     // Pendente: rodar workflow com dataset_id=78d8ae0fe3cc46888dc37f2c87bc3f00
+    urls: {
+      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/equatorial-al/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.markfield-app.workers.dev/equatorial-al/trafos.geojson",
+    },
   },
   {
     id: "equatorial-go",
