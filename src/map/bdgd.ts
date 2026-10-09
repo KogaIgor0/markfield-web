@@ -290,6 +290,10 @@ export const BDGD_FONTES: BdgdFonte[] = [
     nome: "Energisa Tocantins",
     uf: "TO",
     // Pendente: rodar workflow com dataset_id=1bfec53ce077408581c6b2a82076d89a
+    urls: {
+      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/energisa-to/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.markfield-app.workers.dev/energisa-to/trafos.geojson",
+    },
   },
   {
     id: "energisa-pb",
