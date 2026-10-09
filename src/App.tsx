@@ -128,7 +128,7 @@ export function App() {
   const [mostrarPrancha, setMostrarPrancha] = useState(false);
   const [mostrarCamadas, setMostrarCamadas] = useState(false);
   const [camadasBdgdVisiveis, setCamadasBdgdVisiveis] = useState<Set<string>>(BDGD_CAMADAS_PADRAO);
-  const [bdgdFonteId] = useState("elektro");
+  const [bdgdFonteId, setBdgdFonteId] = useState("elektro");
   const [carregandoBdgd, setCarregandoBdgd] = useState(false);
   const [bdgdCarregarTrigger, setBdgdCarregarTrigger] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -841,6 +841,7 @@ export function App() {
             carregando={carregandoBdgd}
             onToggle={onToggleCamada}
             onCarregar={onCarregarBdgd}
+            onChangeFonte={setBdgdFonteId}
             onFechar={() => setMostrarCamadas(false)}
           />
         )}
