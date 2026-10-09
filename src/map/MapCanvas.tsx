@@ -20,23 +20,27 @@ import {
  * altera o modelo é o motor de edição no App. Aqui só desenhamos e capturamos.
  */
 
+/** Tipos de estilo de base exportados para o App. */
+export type EstiloBase = "satellite" | "streets" | "hybrid";
+
 /**
- * Base de satélite (D-09). A fonte é escolhida em `config.ts` (BASE_MAPA).
- *
- * - **Esri** (padrão): imagem nítida; capamos em `maxzoom: 18` e deixamos o
- *   MapLibre esticar além disso, para não aparecer o tile "Map data not yet
- *   available" nos zooms sem cobertura. Se ainda aparecer no zoom máximo,
- *   basta baixar esse número (17, 16…).
- * - **MapTiler**: cobertura global via TileJSON, tiles de 512 px.
+ * Alvo para voar no mapa — ponto (center + zoom) ou bbox.
+ * Passado como prop `voarPara` no MapCanvas.
  */
+export type MapAlvo =
+  | { center: [number, number]; zoom?: number }
+  | { bbox: [number, number, number, number] };
+
+// ---------------------------------------------------------------------------
+// Fontes de tiles
+// ---------------------------------------------------------------------------
+
 const FONTE_ESRI: maplibregl.RasterSourceSpecification = {
   type: "raster",
   tiles: [
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   ],
   tileSize: 256,
-  // Capa no zoom com cobertura real (config): acima disso o MapLibre amplia o
-  // último tile bom em vez de pedir o tile cinza "Map data not yet available".
   maxzoom: ESRI_MAXZOOM,
   attribution: "Tiles © Esri — World Imagery",
 };
@@ -48,13 +52,53 @@ const FONTE_MAPTILER: maplibregl.RasterSourceSpecification = {
   attribution: "© MapTiler © Esri, Maxar, Earthstar Geographics",
 };
 
-const ESTILO_SATELITE: maplibregl.StyleSpecification = {
+const FONTE_OSM: maplibregl.RasterSourceSpecification = {
+  type: "raster",
+  tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+  tileSize: 256,
+  attribution: "© OpenStreetMap contributors",
+};
+
+// Overlay Esri com labels/fronteiras — transparente, para modo híbrido
+const FONTE_ESRI_LABELS: maplibregl.RasterSourceSpecification = {
+  type: "raster",
+  tiles: [
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+  ],
+  tileSize: 256,
+  attribution: "Labels © Esri",
+};
+
+/**
+ * Estilo base multi-camada: todas as 3 bases (satélite, ruas, híbrido)
+ * são carregadas na inicialização. Alternar o estilo é apenas mudar
+ * a visibilidade das camadas — sem recriar o mapa ou chamar setStyle().
+ */
+const ESTILO_BASE: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
-    satelite: BASE_MAPA === "maptiler" ? FONTE_MAPTILER : FONTE_ESRI,
+    "base-sat-src": BASE_MAPA === "maptiler" ? FONTE_MAPTILER : FONTE_ESRI,
+    "base-rua-src": FONTE_OSM,
+    "base-lbl-src": FONTE_ESRI_LABELS,
   },
-  layers: [{ id: "satelite", type: "raster", source: "satelite" }],
+  layers: [
+    { id: "base-sat", type: "raster", source: "base-sat-src", layout: { visibility: "visible" } },
+    { id: "base-rua", type: "raster", source: "base-rua-src", layout: { visibility: "none" } },
+    { id: "base-lbl", type: "raster", source: "base-lbl-src", layout: { visibility: "none" } },
+  ],
 };
+
+function aplicarEstiloBase(map: maplibregl.Map, estilo: EstiloBase) {
+  type Vis = "visible" | "none";
+  const vis: Record<string, Vis> = {
+    "base-sat": estilo !== "streets" ? "visible" : "none",
+    "base-rua": estilo === "streets"   ? "visible" : "none",
+    "base-lbl": estilo === "hybrid"    ? "visible" : "none",
+  };
+  for (const [id, v] of Object.entries(vis)) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", v);
+  }
+}
 
 const CENTRO_INICIAL: [number, number] = [-47.9, -15.8];
 const ZOOM_INICIAL = 4;
@@ -141,6 +185,10 @@ interface MapCanvasProps {
   bdgdFonteId?: string | null;
   /** Incrementar para disparar o carregamento dos dados BDGD. */
   bdgdCarregarTrigger?: number;
+  /** Estilo da base cartográfica ("satellite" | "streets" | "hybrid"). */
+  estiloBase?: EstiloBase;
+  /** Voa para um ponto/bbox no mapa. Trocar o objeto dispara o flyTo. */
+  voarPara?: MapAlvo | null;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -195,6 +243,8 @@ export function MapCanvas(props: MapCanvasProps) {
     camadasBdgdVisiveis,
     bdgdFonteId,
     bdgdCarregarTrigger,
+    estiloBase,
+    voarPara,
   } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -213,7 +263,7 @@ export function MapCanvas(props: MapCanvasProps) {
     if (!containerRef.current || mapRef.current) return;
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: ESTILO_SATELITE,
+      style: ESTILO_BASE,
       center: CENTRO_INICIAL,
       zoom: ZOOM_INICIAL,
       maxZoom: 20, // não deixa esticar a imagem além do razoável
@@ -225,6 +275,8 @@ export function MapCanvas(props: MapCanvasProps) {
     map.on("load", () => {
       prontoRef.current = true;
       inicializarCamadasBdgd(map);
+      // Aplica estilo inicial (pode ter sido alterado antes do load)
+      aplicarEstiloBase(map, propsRef.current.estiloBase ?? "satellite");
     });
 
     const emModoAdicionar = () => typeof propsRef.current.modo === "object";
@@ -561,6 +613,28 @@ export function MapCanvas(props: MapCanvasProps) {
     aplicarVisibilidadeBdgd(map, camadasBdgdVisiveis);
   }, [camadasBdgdVisiveis]);
 
+  // Estilo de mapa base
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !prontoRef.current) return;
+    aplicarEstiloBase(map, estiloBase ?? "satellite");
+  }, [estiloBase]);
+
+  // Voar para ponto/bbox (cada novo objeto de referência dispara um flyTo)
+  useEffect(() => {
+    if (!voarPara) return;
+    const map = mapRef.current;
+    if (!map) return;
+    if ("center" in voarPara) {
+      map.flyTo({ center: voarPara.center, zoom: voarPara.zoom ?? 14, duration: 1200 });
+    } else {
+      map.fitBounds(
+        [[voarPara.bbox[0], voarPara.bbox[1]], [voarPara.bbox[2], voarPara.bbox[3]]],
+        { padding: 60, maxZoom: 16, duration: 1200 }
+      );
+    }
+  }, [voarPara]);
+
   // BDGD — carregamento dos dados (dispara quando bdgdCarregarTrigger incrementa).
   useEffect(() => {
     if (!bdgdCarregarTrigger) return;
@@ -800,4 +874,5 @@ function enquadrar(map: maplibregl.Map, projeto: Projeto) {
   if (n === 0) return;
   map.fitBounds(bounds, { padding: 64, maxZoom: 18, duration: 800 });
 }
+
 
