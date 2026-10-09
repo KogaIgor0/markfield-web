@@ -14,72 +14,110 @@ interface Sugestao {
   label: string;
   sub: string;
   alvo: MapAlvo;
+  tipo: "local" | "geo";
 }
 
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 
-async function geocodificar(q: string): Promise<Sugestao[]> {
-  const url = `${NOMINATIM}?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=br`;
-  const res = await fetch(url, {
-    headers: { "Accept-Language": "pt-BR,pt;q=0.9" },
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.map((item: { display_name: string; boundingbox: string[]; lat: string; lon: string }) => ({
-    label: item.display_name.split(",").slice(0, 2).join(", "),
-    sub: item.display_name.split(",").slice(2, 4).join(", ").trim(),
-    alvo: {
-      center: [parseFloat(item.lon), parseFloat(item.lat)] as [number, number],
-      zoom: 14,
-    } satisfies MapAlvo,
-  }));
+// Campos CTMT usados pelos diferentes formatos BDGD/ArcGIS
+const CAMPOS_CTMT = ["CTMT", "COD_CTMT", "COD_ID_CTMT", "CTMT_ID", "ID_CTMT"];
+const CAMPOS_CODID = ["COD_ID", "ID", "OBJECTID_1"];
+
+/** Detecta se a query parece um código BDGD (alfanumérico, sem espaços). */
+function pareceCodigo(q: string): boolean {
+  return /^[A-Z0-9_-]{3,20}$/.test(q);
 }
 
-function buscarNaTrafos(
-  trafosData: FeatureCollection,
-  query: string
-): Sugestao[] {
+async function geocodificar(q: string): Promise<Sugestao[]> {
+  try {
+    const url = `${NOMINATIM}?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=br`;
+    const res = await fetch(url, {
+      headers: { "Accept-Language": "pt-BR,pt;q=0.9" },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data as Array<{
+      display_name: string;
+      lat: string;
+      lon: string;
+    }>).map((item) => ({
+      label: item.display_name.split(",").slice(0, 2).join(", "),
+      sub: item.display_name.split(",").slice(2, 4).join(", ").trim(),
+      tipo: "geo" as const,
+      alvo: {
+        center: [parseFloat(item.lon), parseFloat(item.lat)] as [number, number],
+        zoom: 14,
+      },
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function buscarNaTrafos(trafosData: FeatureCollection, query: string): Sugestao[] {
   const q = query.trim().toUpperCase();
   if (!q) return [];
 
   const resultados: Sugestao[] = [];
 
-  // Busca por CTMT (agrupa todos os trafos do circuito → bbox)
-  const ctmtFeatures = trafosData.features.filter(
-    (f) =>
-      f.properties &&
-      (f.properties["COD_ID_CTMT"] === q ||
-        f.properties["CTMT"] === q ||
-        f.properties["COD_CTMT"] === q ||
-        f.properties["CTMT_ID"] === q)
-  );
-  if (ctmtFeatures.length > 0) {
-    const lons = ctmtFeatures.map((f) => (f.geometry as GeoJSON.Point).coordinates[0]);
-    const lats = ctmtFeatures.map((f) => (f.geometry as GeoJSON.Point).coordinates[1]);
-    const bbox: [number, number, number, number] = [
-      Math.min(...lons),
-      Math.min(...lats),
-      Math.max(...lons),
-      Math.max(...lats),
-    ];
-    resultados.push({
-      label: `CTMT ${q}`,
-      sub: `${ctmtFeatures.length} transformador${ctmtFeatures.length !== 1 ? "es" : ""}`,
-      alvo: { bbox },
+  // 1. Busca por CTMT (circuito) → bbox de todos os trafos do circuito
+  let campoCtmt: string | null = null;
+  for (const campo of CAMPOS_CTMT) {
+    if (trafosData.features.some((f) => f.properties?.[campo] != null)) {
+      campoCtmt = campo;
+      break;
+    }
+  }
+  if (campoCtmt) {
+    const feats = trafosData.features.filter((f) => {
+      const v = f.properties?.[campoCtmt!];
+      return v != null && String(v).toUpperCase() === q;
     });
+    if (feats.length > 0) {
+      const pts = feats.filter((f) => f.geometry?.type === "Point");
+      if (pts.length > 0) {
+        const lons = pts.map((f) => (f.geometry as GeoJSON.Point).coordinates[0]);
+        const lats = pts.map((f) => (f.geometry as GeoJSON.Point).coordinates[1]);
+        resultados.push({
+          label: `Circuito ${q}`,
+          sub: `${feats.length} trafo${feats.length !== 1 ? "s" : ""}`,
+          tipo: "local",
+          alvo: {
+            bbox: [
+              Math.min(...lons),
+              Math.min(...lats),
+              Math.max(...lons),
+              Math.max(...lats),
+            ] as [number, number, number, number],
+          },
+        });
+      }
+    }
   }
 
-  // Busca por COD_ID (trafo individual)
-  const codIdFeature = trafosData.features.find(
-    (f) => f.properties && f.properties["COD_ID"] === q
-  );
-  if (codIdFeature && codIdFeature.geometry.type === "Point") {
-    const [lon, lat] = codIdFeature.geometry.coordinates;
-    resultados.push({
-      label: `Trafo ${q}`,
-      sub: codIdFeature.properties?.["POT_NOM"] ? `${codIdFeature.properties["POT_NOM"]} kVA` : "Transformador",
-      alvo: { center: [lon, lat], zoom: 18 },
+  // 2. Busca por COD_ID (trafo individual)
+  let campoCodId: string | null = null;
+  for (const campo of CAMPOS_CODID) {
+    if (trafosData.features.some((f) => f.properties?.[campo] != null)) {
+      campoCodId = campo;
+      break;
+    }
+  }
+  if (campoCodId) {
+    const feat = trafosData.features.find((f) => {
+      const v = f.properties?.[campoCodId!];
+      return v != null && String(v).toUpperCase() === q;
     });
+    if (feat && feat.geometry?.type === "Point") {
+      const [lon, lat] = (feat.geometry as GeoJSON.Point).coordinates;
+      const pot = feat.properties?.["POT_NOM"] ?? feat.properties?.["POT_NOM_KVA"] ?? "";
+      resultados.push({
+        label: `Trafo ${q}`,
+        sub: pot ? `${pot} kVA` : "Transformador individual",
+        tipo: "local",
+        alvo: { center: [lon, lat], zoom: 18 },
+      });
+    }
   }
 
   return resultados;
@@ -94,18 +132,20 @@ export function BarraFerramentas({
   const [texto, setTexto] = useState("");
   const [sugestoes, setSugestoes] = useState<Sugestao[]>([]);
   const [carregando, setCarregando] = useState(false);
+  const [semResultados, setSemResultados] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pesquisar = useCallback(
     (q: string) => {
       setTexto(q);
+      setSemResultados(false);
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (!q.trim()) {
         setSugestoes([]);
         return;
       }
       debounceRef.current = setTimeout(async () => {
-        // Primeiro: buscar nos trafos locais
+        // Primeiro: buscar nos trafos locais (só se carregados)
         if (trafosData) {
           const local = buscarNaTrafos(trafosData, q);
           if (local.length > 0) {
@@ -113,10 +153,19 @@ export function BarraFerramentas({
             return;
           }
         }
-        // Fallback: Nominatim
+
+        // Se parece um código BDGD mas não tem dados, mostrar dica
+        if (pareceCodigo(q.trim().toUpperCase()) && !trafosData) {
+          setSugestoes([]);
+          setSemResultados(true);
+          return;
+        }
+
+        // Fallback: Nominatim (geocoder geográfico)
         setCarregando(true);
         try {
           const geo = await geocodificar(q);
+          if (geo.length === 0) setSemResultados(true);
           setSugestoes(geo);
         } finally {
           setCarregando(false);
@@ -128,8 +177,9 @@ export function BarraFerramentas({
 
   function selecionar(s: Sugestao) {
     onVoarPara(s.alvo);
-    setTexto("bbox" in s.alvo ? `CTMT ${s.label}` : s.label);
+    setTexto(s.label);
     setSugestoes([]);
+    setSemResultados(false);
   }
 
   const estilos: { id: EstiloBase; label: string; title: string }[] = [
@@ -137,6 +187,8 @@ export function BarraFerramentas({
     { id: "hybrid",    label: "🌍", title: "Híbrido" },
     { id: "streets",   label: "🗺",  title: "Ruas" },
   ];
+
+  const dropdownAberto = sugestoes.length > 0 || (semResultados && texto.trim().length > 0);
 
   return (
     <div className="barra-ferramentas">
@@ -156,29 +208,43 @@ export function BarraFerramentas({
 
       {/* Barra de busca */}
       <div className="bf-busca">
+        <span className="bf-lupa">🔍</span>
         <input
           className="bf-busca-input"
           type="text"
-          placeholder="Buscar local ou CTMT…"
+          placeholder="Local ou código CTMT…"
           value={texto}
           onChange={(ev) => pesquisar(ev.target.value)}
           onKeyDown={(ev) => {
-            if (ev.key === "Escape") { setTexto(""); setSugestoes([]); }
+            if (ev.key === "Escape") { setTexto(""); setSugestoes([]); setSemResultados(false); }
             if (ev.key === "Enter" && sugestoes.length > 0) selecionar(sugestoes[0]);
           }}
+          onBlur={() => setTimeout(() => { setSugestoes([]); setSemResultados(false); }, 150)}
           autoComplete="off"
           spellCheck={false}
         />
-        {carregando && <span className="bf-spinner">⏳</span>}
+        {carregando && <span className="bf-spinner" aria-hidden>⟳</span>}
 
-        {sugestoes.length > 0 && (
+        {dropdownAberto && (
           <ul className="bf-dropdown">
             {sugestoes.map((s, i) => (
               <li key={i} className="bf-item" onMouseDown={() => selecionar(s)}>
-                <span className="bf-item-label">{s.label}</span>
-                {s.sub && <span className="bf-item-sub">{s.sub}</span>}
+                <span className={`bf-item-tipo ${s.tipo}`}>
+                  {s.tipo === "local" ? "📍" : "🔎"}
+                </span>
+                <span className="bf-item-body">
+                  <span className="bf-item-label">{s.label}</span>
+                  {s.sub && <span className="bf-item-sub">{s.sub}</span>}
+                </span>
               </li>
             ))}
+            {semResultados && sugestoes.length === 0 && (
+              <li className="bf-item bf-sem-resultado">
+                {pareceCodigo(texto.trim().toUpperCase()) && !trafosData
+                  ? "Carregue uma distribuidora para buscar por CTMT"
+                  : "Nenhum resultado encontrado"}
+              </li>
+            )}
           </ul>
         )}
       </div>
