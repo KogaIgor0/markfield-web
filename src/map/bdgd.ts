@@ -248,6 +248,10 @@ export const BDGD_FONTES: BdgdFonte[] = [
     nome: "CEEE Equatorial",
     uf: "RS",
     // Pendente: rodar workflow com dataset_id=15b77072ab3b46bb8581cca726cdf08a
+    urls: {
+      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/ceee/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.markfield-app.workers.dev/ceee/trafos.geojson",
+    },
   },
   {
     id: "cea",
