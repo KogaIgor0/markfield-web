@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MapCanvas, type Modo } from "./map/MapCanvas";
+import { MapCanvas, type Modo, type EstiloBase, type MapAlvo } from "./map/MapCanvas";
+import { BarraFerramentas } from "./ui/BarraFerramentas";
 import { PainelPonto } from "./ui/PainelPonto";
 import { PainelTrecho } from "./ui/PainelTrecho";
 import { importarKml, importarMkf, importarPacote, type RelatorioImport } from "./io/pacote";
@@ -38,7 +39,8 @@ import { resumoMateriais } from "./domain/materiais";
 import { PainelMateriais } from "./ui/PainelMateriais";
 import { PainelCamadas } from "./ui/PainelCamadas";
 import { PranchaView } from "./ui/PranchaView";
-import { BDGD_CAMADAS_PADRAO, type BdgdLayerId } from "./map/bdgd";
+import { BDGD_CAMADAS_PADRAO, BDGD_FONTES, type BdgdLayerId } from "./map/bdgd";
+import type { FeatureCollection } from "geojson";
 import { comporEstrutura, separarEstrutura } from "./domain/estruturas-catalogo";
 import {
   ajustarVao,
@@ -131,6 +133,9 @@ export function App() {
   const [bdgdFonteId, setBdgdFonteId] = useState("elektro");
   const [carregandoBdgd, setCarregandoBdgd] = useState(false);
   const [bdgdCarregarTrigger, setBdgdCarregarTrigger] = useState(0);
+  const [estiloBase, setEstiloBase] = useState<EstiloBase>("satellite");
+  const [voarPara, setVoarPara] = useState<MapAlvo | null>(null);
+  const [trafosData, setTrafosData] = useState<FeatureCollection | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
@@ -287,7 +292,17 @@ export function App() {
     setBdgdCarregarTrigger((t) => t + 1);
     // Libera o spinner após 3 s (o carregamento é async no MapCanvas).
     setTimeout(() => setCarregandoBdgd(false), 3000);
-  }, []);
+    // Carrega os trafos GeoJSON para busca por atributo
+    const fonte = BDGD_FONTES.find((f) => f.id === bdgdFonteId);
+    if (fonte?.urls?.untrmt) {
+      fetch(fonte.urls.untrmt)
+        .then((r) => r.json())
+        .then((data: FeatureCollection) => setTrafosData(data))
+        .catch(() => setTrafosData(null));
+    } else {
+      setTrafosData(null);
+    }
+  }, [bdgdFonteId]);
 
   const atualizar = useCallback((novo: Projeto) => {
     setEstado((e) => ({ ...e, projeto: novo }));
@@ -832,6 +847,15 @@ export function App() {
           camadasBdgdVisiveis={camadasBdgdVisiveis}
           bdgdFonteId={bdgdFonteId}
           bdgdCarregarTrigger={bdgdCarregarTrigger}
+          estiloBase={estiloBase}
+          voarPara={voarPara}
+        />
+
+        <BarraFerramentas
+          estiloBase={estiloBase}
+          onEstiloChange={setEstiloBase}
+          trafosData={trafosData}
+          onVoarPara={(alvo) => setVoarPara({ ...alvo })}
         />
 
         {mostrarCamadas && (
