@@ -1386,3 +1386,135 @@ body {
   background: #94a3b8;
   cursor: not-allowed;
 }
+
+/* ============================================================
+   BARRA DE FERRAMENTAS (style switcher + busca)
+   ============================================================ */
+
+.barra-ferramentas {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  padding: 5px 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  pointer-events: all;
+  max-width: calc(100vw - 32px);
+}
+
+/* Grupo de botões de estilo */
+.bf-estilos {
+  display: flex;
+  gap: 2px;
+  border-right: 1px solid rgba(148, 163, 184, 0.2);
+  padding-right: 8px;
+  margin-right: 2px;
+}
+
+.bf-estilo-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.bf-estilo-btn:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: #e2e8f0;
+}
+
+.bf-estilo-btn.ativo {
+  background: rgba(37, 99, 235, 0.35);
+  border-color: rgba(37, 99, 235, 0.6);
+  color: #93c5fd;
+}
+
+/* Barra de busca */
+.bf-busca {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.bf-busca-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #e2e8f0;
+  font-size: 13px;
+  width: 220px;
+  padding: 4px 6px;
+  caret-color: #60a5fa;
+}
+
+.bf-busca-input::placeholder {
+  color: #64748b;
+}
+
+.bf-spinner {
+  font-size: 12px;
+  margin-left: 4px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.bf-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 260px;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 4px 0;
+  list-style: none;
+  margin: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 40;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.bf-item {
+  display: flex;
+  flex-direction: column;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.bf-item:hover {
+  background: rgba(37, 99, 235, 0.2);
+}
+
+.bf-item-label {
+  font-size: 13px;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bf-item-sub {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
