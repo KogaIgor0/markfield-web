@@ -238,6 +238,10 @@ export const BDGD_FONTES: BdgdFonte[] = [
     nome: "Equatorial Goiás",
     uf: "GO",
     // Pendente: rodar workflow com dataset_id=4c2fc0e35982454bbc54db53d1532b90
+    urls: {
+      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/equatorial-go/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.markfield-app.workers.dev/equatorial-go/trafos.geojson",
+    },
   },
   {
     id: "ceee",
