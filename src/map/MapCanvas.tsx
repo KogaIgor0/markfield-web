@@ -10,6 +10,7 @@ import {
   aplicarVisibilidadeBdgd,
   carregarDadosBdgd,
   BDGD_FONTES,
+  BDGD_LYR,
 } from "./bdgd";
 
 /**
@@ -253,6 +254,7 @@ export function MapCanvas(props: MapCanvasProps) {
   const marcadoresRef = useRef<maplibregl.Marker[]>([]);
   const numerosRef = useRef<maplibregl.Marker[]>([]);
   const prontoRef = useRef(false); // mapa carregado (monotônico; não confiar em isStyleLoaded, que oscila)
+  const popupBdgdRef = useRef<maplibregl.Popup | null>(null);
 
   // Espelho sempre-atual das props para os handlers registrados uma vez só.
   const propsRef = useRef(props);
@@ -370,6 +372,54 @@ export function MapCanvas(props: MapCanvasProps) {
         map.getCanvas().style.cursor = "";
       }
     });
+
+    // ── BDGD: popup de atributos ao passar sobre um transformador ──────────
+    map.on("mouseenter", BDGD_LYR.transformadores, (e) => {
+      map.getCanvas().style.cursor = "crosshair";
+      const f = e.features?.[0];
+      if (!f || f.geometry.type !== "Point") return;
+      const [lng, lat] = f.geometry.coordinates as [number, number];
+      const p = f.properties ?? {};
+
+      const fmt = (v: unknown) => (v != null && v !== "" ? String(v) : "—");
+      const pot  = fmt(p["POT_NOM"] ?? p["POT_NOM_KVA"]);
+      const ctmt = fmt(p["CTMT"] ?? p["COD_CTMT"]);
+      const tid  = fmt(p["COD_ID"]);
+      const pri  = fmt(p["TEN_PRI"]);
+      const sec  = fmt(p["TEN_SEC"]);
+      const tip  = fmt(p["TIP_TRAFO"] ?? p["TIP_TR_D"]);
+
+      const html = `
+        <div class="pop pop-bdgd">
+          <div class="pop-h">🔴 Transformador</div>
+          <table class="pop-t">
+            ${tid  !== "—" ? `<tr><td>COD_ID</td><td>${esc(tid)}</td></tr>` : ""}
+            ${ctmt !== "—" ? `<tr><td>Circuito</td><td>${esc(ctmt)}</td></tr>` : ""}
+            ${pot  !== "—" ? `<tr><td>Potência</td><td>${esc(pot)} kVA</td></tr>` : ""}
+            ${pri  !== "—" ? `<tr><td>Ten. primária</td><td>${esc(pri)} kV</td></tr>` : ""}
+            ${sec  !== "—" ? `<tr><td>Ten. secundária</td><td>${esc(sec)} V</td></tr>` : ""}
+            ${tip  !== "—" ? `<tr><td>Tipo</td><td>${esc(tip)}</td></tr>` : ""}
+          </table>
+        </div>`;
+
+      if (popupBdgdRef.current) popupBdgdRef.current.remove();
+      popupBdgdRef.current = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        maxWidth: "260px",
+        offset: 8,
+      })
+        .setLngLat([lng, lat])
+        .setHTML(html)
+        .addTo(map);
+    });
+
+    map.on("mouseleave", BDGD_LYR.transformadores, () => {
+      map.getCanvas().style.cursor = "";
+      popupBdgdRef.current?.remove();
+      popupBdgdRef.current = null;
+    });
+    // ──────────────────────────────────────────────────────────────────────
 
     // Foto → popup com a imagem.
     map.on("click", LYR.fotos, (e) => {
