@@ -407,7 +407,8 @@ export function MapCanvas(props: MapCanvasProps) {
         closeButton: false,
         closeOnClick: false,
         maxWidth: "260px",
-        offset: 8,
+        offset: 10,
+        className: "bdgd-popup",
       })
         .setLngLat([lng, lat])
         .setHTML(html)
