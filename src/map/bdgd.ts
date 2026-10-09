@@ -178,7 +178,12 @@ export const BDGD_FONTES: BdgdFonte[] = [
     id: "copel",
     nome: "Copel Distribuição",
     uf: "PR",
-    // Pendente: rodar workflow com dataset_id=d31f897573b64963ba31a820aabca897
+    // Processado: BDGD Copel 2024 (ref. 31/12/2024)
+    // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-copel-2024
+    urls: {
+      ssdmt: `${BDGD_CDN}/copel/rede-mt.pmtiles`,
+      untrmt: `${BDGD_CDN}/copel/trafos.geojson`,
+    },
   },
   // ── BA ────────────────────────────────────────────────────────────────────
   {
