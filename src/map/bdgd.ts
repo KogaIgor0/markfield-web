@@ -350,6 +350,10 @@ export const BDGD_FONTES: BdgdFonte[] = [
     nome: "Energisa Acre",
     uf: "AC",
     // Pendente: rodar workflow com dataset_id=0d3f9d648eb54c758b592b794faf2ccc
+    urls: {
+      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/energisa-ac/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.markfield-app.workers.dev/energisa-ac/trafos.geojson",
+    },
   },
 ];
 
