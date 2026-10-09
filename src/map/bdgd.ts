@@ -198,6 +198,10 @@ export const BDGD_FONTES: BdgdFonte[] = [
     nome: "Equatorial Pará",
     uf: "PA",
     // Pendente: rodar workflow com dataset_id=60a26bb11754487db39fa6bb91e5dce2
+    urls: {
+      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/equatorial-pa/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.markfield-app.workers.dev/equatorial-pa/trafos.geojson",
+    },
   },
   {
     id: "equatorial-ma",
