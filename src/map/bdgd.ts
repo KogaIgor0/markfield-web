@@ -278,6 +278,10 @@ export const BDGD_FONTES: BdgdFonte[] = [
     nome: "Energisa Sergipe",
     uf: "SE",
     // Pendente: rodar workflow com dataset_id=910e329827a04ffda153c235ac9c5bc1
+    urls: {
+      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/energisa-se/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.markfield-app.workers.dev/energisa-se/trafos.geojson",
+    },
   },
   {
     id: "energisa-mg-rio",
