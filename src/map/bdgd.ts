@@ -238,6 +238,10 @@ export const BDGD_FONTES: BdgdFonte[] = [
     nome: "CEA Equatorial",
     uf: "AP",
     // Pendente: rodar workflow com dataset_id=123cf701fce4495bab5a673435fb4cbc
+    urls: {
+      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/cea/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.markfield-app.workers.dev/cea/trafos.geojson",
+    },
   },
   // ── Energisa ──────────────────────────────────────────────────────────────
   {
