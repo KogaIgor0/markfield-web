@@ -340,6 +340,10 @@ export const BDGD_FONTES: BdgdFonte[] = [
     nome: "Energisa Rondônia",
     uf: "RO",
     // Pendente: rodar workflow com dataset_id=cb6bd431508544a49256c4a03cdf7cc7
+    urls: {
+      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/energisa-ro/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.markfield-app.workers.dev/energisa-ro/trafos.geojson",
+    },
   },
   {
     id: "energisa-ac",
