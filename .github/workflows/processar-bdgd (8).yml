@@ -170,7 +170,7 @@ jobs:
           rm -f out/ssdmt_tmp.geojson
           df -h .
 
-      - name: Publicar no GitHub Releases
+      - name: Publicar arquivos principais no Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag }}
@@ -181,5 +181,31 @@ jobs:
             Camadas: ${{ inputs.camadas }}
             Run: ${{ github.run_id }}
             Para usar no Markfield: copie as URLs abaixo e cole em src/map/bdgd.ts
-          files: out/*
+          files: |
+            out/*.pmtiles
+            out/*-trafos.geojson
+            out/*-postes.geojson
           make_latest: false
+          fail_on_unmatched_files: false
+
+      - name: Upload linhas por CTMT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LINHAS=$(ls out/linhas-*.geojson 2>/dev/null | wc -l)
+          if [ "$LINHAS" -eq 0 ]; then
+            echo "Nenhum arquivo linhas-*.geojson para upload."
+            exit 0
+          fi
+          echo "Fazendo upload de $LINHAS arquivos linhas-*.geojson em lotes de 50..."
+          COUNT=0
+          for f in out/linhas-*.geojson; do
+            [ -f "$f" ] || continue
+            gh release upload "${{ inputs.tag }}" "$f" --clobber
+            COUNT=$((COUNT + 1))
+            if [ $((COUNT % 50)) -eq 0 ]; then
+              echo "[$COUNT/$LINHAS] Pausa 30s para evitar rate limit..."
+              sleep 30
+            fi
+          done
+          echo "Upload concluido: $COUNT arquivos linhas-*.geojson."
