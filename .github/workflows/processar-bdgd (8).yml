@@ -71,12 +71,16 @@ jobs:
             echo "=== $CAMADA ==="
             case "$CAMADA" in
               SSDMT)
+                TMP="out/ssdmt_tmp.geojson"
                 OUT="out/${{ inputs.prefixo }}-rede-mt.pmtiles"
-                ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES /vsistdout/ "$GDB" SSDMT 2>/dev/null \
-                | tippecanoe --output="$OUT" --minimum-zoom=11 --maximum-zoom=16 \
+                echo "Convertendo SSDMT para GeoJSON intermediario..."
+                ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES "$TMP" "$GDB" SSDMT 2>/dev/null
+                ls -lh "$TMP"
+                echo "Gerando PMTiles..."
+                tippecanoe --output="$OUT" --minimum-zoom=11 --maximum-zoom=16 \
                     --simplification=10 --drop-densest-as-needed \
                     --extend-zooms-if-still-dropping \
-                    --force --read-parallel -l rede_mt /dev/stdin
+                    --force --read-parallel -l rede_mt "$TMP"
                 ls -lh "$OUT"
                 ;;
               SSDBT)
@@ -112,12 +116,58 @@ jobs:
             esac
           done
           echo ""
-          echo "Arquivos gerados:"
+          echo "Arquivos gerados ate agora:"
           ls -lh out/
+
+      - name: Gerar linhas por CTMT
+        run: |
+          if [ ! -f "out/ssdmt_tmp.geojson" ]; then
+            echo "ssdmt_tmp.geojson nao encontrado, pulando split por CTMT."
+            exit 0
+          fi
+          echo "Dividindo SSDMT por CTMT..."
+          python3 - << 'PYEOF'
+          import json
+          from collections import defaultdict
+
+          with open("out/ssdmt_tmp.geojson") as f:
+              fc = json.load(f)
+
+          total = len(fc.get("features", []))
+          print(f"Total de segmentos SSDMT: {total}")
+
+          by_ctmt = defaultdict(list)
+          sem_ctmt = 0
+          for feat in fc.get("features", []):
+              props = feat.get("properties") or {}
+              ctmt = props.get("CTMT") or props.get("COD_CTMT") or ""
+              if ctmt:
+                  feat["properties"] = {
+                      "COD_ID": props.get("COD_ID", ""),
+                      "CTMT": ctmt,
+                      "COMP_3": props.get("COMP_3", None)
+                  }
+                  by_ctmt[ctmt].append(feat)
+              else:
+                  sem_ctmt += 1
+
+          print(f"Segmentos sem CTMT: {sem_ctmt}")
+          print(f"CTMTs encontrados: {len(by_ctmt)}")
+
+          for ctmt, feats in by_ctmt.items():
+              out_fc = {"type": "FeatureCollection", "features": feats}
+              with open(f"out/linhas-{ctmt}.geojson", "w") as f:
+                  json.dump(out_fc, f, separators=(",", ":"))
+
+          print(f"Arquivos linhas-*.geojson gerados: {len(by_ctmt)}")
+          PYEOF
+          rm -f out/ssdmt_tmp.geojson
+          echo "Total de arquivos linhas-*.geojson: $(ls out/linhas-*.geojson 2>/dev/null | wc -l)"
 
       - name: Liberar espaco
         run: |
           rm -rf bdgd.gdb.zip "$GDB"
+          rm -f out/ssdmt_tmp.geojson
           df -h .
 
       - name: Publicar no GitHub Releases
