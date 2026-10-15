@@ -164,6 +164,39 @@ jobs:
           rm -f out/ssdmt_tmp.geojson
           echo "Total de arquivos linhas-*.geojson: $(ls out/linhas-*.geojson 2>/dev/null | wc -l)"
 
+      - name: Gerar index.json
+        run: |
+          cd out
+          DIST=$(echo "${{ inputs.prefixo }}" | sed 's/_[0-9]*$//')
+          python3 - "$DIST" << 'PYEOF'
+          import json, os, re, sys
+          from collections import defaultdict
+
+          dist_id = sys.argv[1]
+          ctmts = [f.replace("linhas-","").replace(".geojson","")
+                   for f in os.listdir(".") if f.startswith("linhas-")]
+
+          if not ctmts:
+              print("Nenhum arquivo linhas-*.geojson encontrado, pulando index.json.")
+              sys.exit(0)
+
+          index = defaultdict(list)
+          for ctmt in sorted(ctmts):
+              if "_" in ctmt:
+                  sub = ctmt.split("_")[0]
+              else:
+                  m = re.match(r"^[A-Z]+", ctmt)
+                  sub = m.group() if m else ctmt
+              index[sub].append(ctmt)
+
+          with open("index.json", "w") as f:
+              json.dump({"distribuidora": dist_id, "alimentadores": dict(index)}, f)
+
+          total = sum(len(v) for v in index.values())
+          print(f"index.json: {total} CTMTs em {len(index)} subestacoes")
+          PYEOF
+          ls -lh index.json 2>/dev/null || true
+
       - name: Liberar espaco
         run: |
           rm -rf bdgd.gdb.zip "$GDB"
@@ -185,6 +218,7 @@ jobs:
             out/*.pmtiles
             out/*-trafos.geojson
             out/*-postes.geojson
+            out/index.json
           make_latest: false
           fail_on_unmatched_files: false
 
