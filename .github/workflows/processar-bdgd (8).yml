@@ -197,6 +197,47 @@ jobs:
           PYEOF
           ls -lh index.json 2>/dev/null || true
 
+      - name: Gerar trafos por CTMT
+        run: |
+          TRAFOS="out/${{ inputs.prefixo }}-trafos.geojson"
+          if [ ! -f "$TRAFOS" ]; then
+            echo "trafos.geojson nao encontrado, pulando split por CTMT."
+            exit 0
+          fi
+          echo "Dividindo trafos por CTMT..."
+          python3 - "$TRAFOS" << 'PYEOF'
+          import json, sys
+          from collections import defaultdict
+
+          trafos_path = sys.argv[1]
+          with open(trafos_path) as f:
+              fc = json.load(f)
+
+          total = len(fc.get("features", []))
+          print(f"Total de transformadores: {total}")
+
+          by_ctmt = defaultdict(list)
+          sem_ctmt = 0
+          for feat in fc.get("features", []):
+              props = feat.get("properties") or {}
+              ctmt = props.get("CTMT") or props.get("COD_CTMT") or ""
+              if ctmt:
+                  by_ctmt[ctmt].append(feat)
+              else:
+                  sem_ctmt += 1
+
+          print(f"Transformadores sem CTMT: {sem_ctmt}")
+          print(f"CTMTs encontrados: {len(by_ctmt)}")
+
+          for ctmt, feats in by_ctmt.items():
+              out_fc = {"type": "FeatureCollection", "features": feats}
+              with open(f"out/trafos-{ctmt}.geojson", "w") as f:
+                  json.dump(out_fc, f, separators=(",", ":"))
+
+          print(f"Arquivos trafos-*.geojson gerados: {len(by_ctmt)}")
+          PYEOF
+          echo "Total de arquivos trafos-*.geojson: $(ls out/trafos-*.geojson 2>/dev/null | wc -l)"
+
       - name: Liberar espaco
         run: |
           rm -rf bdgd.gdb.zip "$GDB"
@@ -222,24 +263,24 @@ jobs:
           make_latest: false
           fail_on_unmatched_files: false
 
-      - name: Upload linhas por CTMT
+      - name: Upload linhas e trafos por CTMT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          LINHAS=$(ls out/linhas-*.geojson 2>/dev/null | wc -l)
-          if [ "$LINHAS" -eq 0 ]; then
-            echo "Nenhum arquivo linhas-*.geojson para upload."
+          TOTAL=$(ls out/linhas-*.geojson out/trafos-*.geojson 2>/dev/null | wc -l)
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "Nenhum arquivo linhas-*/trafos-*.geojson para upload."
             exit 0
           fi
-          echo "Fazendo upload de $LINHAS arquivos linhas-*.geojson em lotes de 50..."
+          echo "Fazendo upload de $TOTAL arquivos em lotes de 50..."
           COUNT=0
-          for f in out/linhas-*.geojson; do
+          for f in out/linhas-*.geojson out/trafos-*.geojson; do
             [ -f "$f" ] || continue
             gh release upload "${{ inputs.tag }}" "$f" --clobber
             COUNT=$((COUNT + 1))
             if [ $((COUNT % 50)) -eq 0 ]; then
-              echo "[$COUNT/$LINHAS] Pausa 30s para evitar rate limit..."
+              echo "[$COUNT/$TOTAL] Pausa 30s para evitar rate limit..."
               sleep 30
             fi
           done
-          echo "Upload concluido: $COUNT arquivos linhas-*.geojson."
+          echo "Upload concluido: $COUNT arquivos."
