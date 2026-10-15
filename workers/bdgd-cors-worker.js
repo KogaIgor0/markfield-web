@@ -1,16 +1,22 @@
 /**
- * Cloudflare Worker v2 — CORS proxy para assets BDGD do GitHub Releases.
+ * Cloudflare Worker v3 — CORS proxy para assets BDGD do GitHub Releases.
  *
  * Roteamento dinâmico multi-distribuidora:
  *   /{dist}/{file}  →  releases/download/bdgd-{dist}-2024/{file}
+ *                       (trafos-* → bdgd-{dist}-2024-trafos/{file})
  *   /{file}         →  backward compat (elektro, mapeamento legado)
  *   /               →  lista distribuidoras disponíveis
  *
  * Deploy: cole este código no Cloudflare Workers dashboard e salve.
  */
 
-const GITHUB_TMPL = (dist, file) =>
-  `https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-${dist}-2024/${file}`;
+const GITHUB_TMPL = (dist, file) => {
+  // trafos por CTMT ficam num release separado para contornar limite de 1000 assets
+  const tag = file.startsWith("trafos-")
+    ? `bdgd-${dist}-2024-trafos`
+    : `bdgd-${dist}-2024`;
+  return `https://github.com/KogaIgor0/markfield-web/releases/download/${tag}/${file}`;
+};
 
 // Allowlist — adicione novas distribuidoras aqui
 const DISTRIBUIDORAS = new Set(["elektro"]);
@@ -42,7 +48,7 @@ export default {
 
     if (parts.length === 0) {
       return new Response(
-        `BDGD CORS Worker v2\nDistribuidoras: ${[...DISTRIBUIDORAS].join(", ")}\nUso: /{distribuidora}/{arquivo}`,
+        `BDGD CORS Worker v3\nDistribuidoras: ${[...DISTRIBUIDORAS].join(", ")}\nUso: /{distribuidora}/{arquivo}`,
         { status: 200, headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } }
       );
     }
@@ -92,4 +98,3 @@ export default {
     return new Response(response.body, { status: response.status, headers: out });
   },
 };
-
