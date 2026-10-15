@@ -263,18 +263,18 @@ jobs:
           make_latest: false
           fail_on_unmatched_files: false
 
-      - name: Upload linhas e trafos por CTMT
+      - name: Upload linhas por CTMT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TOTAL=$(ls out/linhas-*.geojson out/trafos-*.geojson 2>/dev/null | wc -l)
+          TOTAL=$(ls out/linhas-*.geojson 2>/dev/null | wc -l)
           if [ "$TOTAL" -eq 0 ]; then
-            echo "Nenhum arquivo linhas-*/trafos-*.geojson para upload."
+            echo "Nenhum arquivo linhas-*.geojson para upload."
             exit 0
           fi
-          echo "Fazendo upload de $TOTAL arquivos em lotes de 50..."
+          echo "Fazendo upload de $TOTAL arquivos linhas-* em lotes de 50..."
           COUNT=0
-          for f in out/linhas-*.geojson out/trafos-*.geojson; do
+          for f in out/linhas-*.geojson; do
             [ -f "$f" ] || continue
             gh release upload "${{ inputs.tag }}" "$f" --clobber
             COUNT=$((COUNT + 1))
@@ -283,4 +283,38 @@ jobs:
               sleep 30
             fi
           done
-          echo "Upload concluido: $COUNT arquivos."
+          echo "Upload linhas concluido: $COUNT arquivos."
+
+      - name: Publicar release trafos por CTMT
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}-trafos
+          name: "BDGD ${{ inputs.prefixo }} — trafos por CTMT"
+          body: |
+            Transformadores por CTMT (release auxiliar).
+            Release principal: ${{ inputs.tag }}
+            Run: ${{ github.run_id }}
+          make_latest: false
+          fail_on_unmatched_files: false
+
+      - name: Upload trafos por CTMT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TOTAL=$(ls out/trafos-*.geojson 2>/dev/null | wc -l)
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "Nenhum arquivo trafos-*.geojson para upload."
+            exit 0
+          fi
+          echo "Fazendo upload de $TOTAL arquivos trafos-* em lotes de 50..."
+          COUNT=0
+          for f in out/trafos-*.geojson; do
+            [ -f "$f" ] || continue
+            gh release upload "${{ inputs.tag }}-trafos" "$f" --clobber
+            COUNT=$((COUNT + 1))
+            if [ $((COUNT % 50)) -eq 0 ]; then
+              echo "[$COUNT/$TOTAL] Pausa 30s para evitar rate limit..."
+              sleep 30
+            fi
+          done
+          echo "Upload trafos concluido: $COUNT arquivos."
