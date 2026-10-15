@@ -1,28 +1,24 @@
 /**
- * Cloudflare Worker — CORS proxy para assets BDGD do GitHub Releases.
+ * Cloudflare Worker v2 — CORS proxy para assets BDGD do GitHub Releases.
  *
- * Problema: GitHub Releases retorna um redirect 302 → objects.githubusercontent.com
- * sem header Access-Control-Allow-Origin na resposta 302 inicial, bloqueando
- * fetch() cross-origin (ex.: StackBlitz, qualquer app no browser).
+ * Roteamento dinâmico multi-distribuidora:
+ *   /{dist}/{file}  →  releases/download/bdgd-{dist}-2024/{file}
+ *   /{file}         →  backward compat (elektro, mapeamento legado)
+ *   /               →  lista distribuidoras disponíveis
  *
- * Solução: este Worker busca o arquivo do lado do servidor (sem restrição CORS),
- * segue o redirect para o CDN do GitHub e devolve a resposta com CORS headers.
- * Também repassa Range headers, necessários para o PMTiles (range requests).
- *
- * Deploy:
- *   1. Acesse https://workers.cloudflare.com → "Create a Worker"
- *   2. Substitua o código gerado por este arquivo
- *   3. Clique "Save and Deploy"
- *   4. Copie a URL gerada (ex.: https://bdgd-cors.SEU_USUARIO.workers.dev)
- *   5. Atualize WORKER_BASE_URL em src/map/bdgd.ts
+ * Deploy: cole este código no Cloudflare Workers dashboard e salve.
  */
 
-const GITHUB_BASE =
-  "https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-elektro-2024/";
+const GITHUB_TMPL = (dist, file) =>
+  `https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-${dist}-2024/${file}`;
 
-const ASSETS = {
-  "rede-mt.pmtiles": `${GITHUB_BASE}elektro_2024-rede-mt.pmtiles`,
-  "trafos.geojson": `${GITHUB_BASE}elektro_2024-trafos.geojson`,
+// Allowlist — adicione novas distribuidoras aqui
+const DISTRIBUIDORAS = new Set(["elektro"]);
+
+// Backward compat: paths legados sem prefixo de distribuidora
+const LEGACY = {
+  "rede-mt.pmtiles": GITHUB_TMPL("elektro", "elektro_2024-rede-mt.pmtiles"),
+  "trafos.geojson":  GITHUB_TMPL("elektro", "elektro_2024-trafos.geojson"),
 };
 
 const CORS = {
@@ -35,60 +31,65 @@ const CORS = {
 
 export default {
   async fetch(request) {
-    // Preflight
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
     }
 
-    const url = new URL(request.url);
-    // Strip leading slash: "/rede-mt.pmtiles" → "rede-mt.pmtiles"
-    const filename = url.pathname.replace(/^\//, "");
-    const target = ASSETS[filename];
+    const { pathname } = new URL(request.url);
+    const parts = pathname.replace(/^\//, "").split("/").filter(Boolean);
 
-    if (!target) {
-      return new Response(`Asset "${filename}" não encontrado.\nAssets disponíveis: ${Object.keys(ASSETS).join(", ")}`, {
-        status: 404,
-        headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" },
-      });
+    let target;
+
+    if (parts.length === 0) {
+      return new Response(
+        `BDGD CORS Worker v2\nDistribuidoras: ${[...DISTRIBUIDORAS].join(", ")}\nUso: /{distribuidora}/{arquivo}`,
+        { status: 200, headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } }
+      );
     }
 
-    // Repassa Range header (necessário para PMTiles streaming)
+    if (parts.length >= 2) {
+      // Novo formato: /{dist}/{file}
+      const dist = parts[0];
+      const file = parts.slice(1).join("/");
+      if (!DISTRIBUIDORAS.has(dist)) {
+        return new Response(
+          `Distribuidora "${dist}" não disponível.\nDisponíveis: ${[...DISTRIBUIDORAS].join(", ")}`,
+          { status: 404, headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } }
+        );
+      }
+      target = GITHUB_TMPL(dist, file);
+    } else {
+      // Formato legado: /{file}
+      const file = parts[0];
+      target = LEGACY[file];
+      if (!target) {
+        return new Response(
+          `"${file}" não encontrado. Use /{distribuidora}/{arquivo}.`,
+          { status: 404, headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } }
+        );
+      }
+    }
+
     const upstreamHeaders = {};
     const range = request.headers.get("Range");
     if (range) upstreamHeaders["Range"] = range;
 
     let response;
     try {
-      response = await fetch(target, {
-        method: request.method,
-        headers: upstreamHeaders,
-        redirect: "follow",
-      });
+      response = await fetch(target, { method: request.method, headers: upstreamHeaders, redirect: "follow" });
     } catch (err) {
       return new Response(`Erro ao buscar ${target}: ${err.message}`, {
-        status: 502,
-        headers: { ...CORS, "Content-Type": "text/plain" },
+        status: 502, headers: { ...CORS, "Content-Type": "text/plain" },
       });
     }
 
-    // Monta headers da resposta: CORS + headers relevantes do upstream
-    const responseHeaders = new Headers(CORS);
-    const FORWARD = [
-      "content-type",
-      "content-length",
-      "content-range",
-      "accept-ranges",
-      "etag",
-      "last-modified",
-      "cache-control",
-    ];
-    for (const [k, v] of response.headers) {
-      if (FORWARD.includes(k.toLowerCase())) responseHeaders.set(k, v);
+    const out = new Headers(CORS);
+    for (const h of ["content-type","content-length","content-range","accept-ranges","etag","last-modified","cache-control"]) {
+      const v = response.headers.get(h);
+      if (v) out.set(h, v);
     }
 
-    return new Response(response.body, {
-      status: response.status,
-      headers: responseHeaders,
-    });
+    return new Response(response.body, { status: response.status, headers: out });
   },
 };
+
