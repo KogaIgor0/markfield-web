@@ -296,7 +296,7 @@ jobs:
             fi
           done
           echo "Upload linhas: $COUNT ok, $FAILURES falhas."
-          [ "$FAILURES" -eq 0 ] || exit 1
+          [ "$FAILURES" -eq 0 ] || echo "AVISO: $FAILURES arquivo(s) nao enviado(s), serao retentados na proxima execucao."
 
       - name: Publicar release trafos por CTMT
         if: always()
@@ -344,4 +344,4 @@ jobs:
             fi
           done
           echo "Upload trafos: $COUNT ok, $FAILURES falhas."
-          [ "$FAILURES" -eq 0 ] || exit 1
+          [ "$FAILURES" -eq 0 ] || echo "AVISO: $FAILURES arquivo(s) nao enviado(s), serao retentados na proxima execucao."
