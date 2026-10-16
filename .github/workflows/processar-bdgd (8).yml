@@ -264,6 +264,7 @@ jobs:
           fail_on_unmatched_files: false
 
       - name: Upload linhas por CTMT
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -274,18 +275,31 @@ jobs:
           fi
           echo "Fazendo upload de $TOTAL arquivos linhas-* em lotes de 50..."
           COUNT=0
+          FAILURES=0
           for f in out/linhas-*.geojson; do
             [ -f "$f" ] || continue
-            gh release upload "${{ inputs.tag }}" "$f" --clobber
-            COUNT=$((COUNT + 1))
-            if [ $((COUNT % 50)) -eq 0 ]; then
-              echo "[$COUNT/$TOTAL] Pausa 30s para evitar rate limit..."
-              sleep 30
+            if gh release upload "${{ inputs.tag }}" "$f" --clobber 2>&1; then
+              COUNT=$((COUNT + 1))
+            else
+              echo "AVISO: falha em $f, tentando novamente..."
+              sleep 10
+              if gh release upload "${{ inputs.tag }}" "$f" --clobber 2>&1; then
+                COUNT=$((COUNT + 1))
+              else
+                echo "ERRO: $f nao enviado."
+                FAILURES=$((FAILURES + 1))
+              fi
+            fi
+            if [ $(( (COUNT + FAILURES) % 50)) -eq 0 ]; then
+              echo "[$((COUNT + FAILURES))/$TOTAL] Pausa 60s para evitar rate limit..."
+              sleep 60
             fi
           done
-          echo "Upload linhas concluido: $COUNT arquivos."
+          echo "Upload linhas: $COUNT ok, $FAILURES falhas."
+          [ "$FAILURES" -eq 0 ] || exit 1
 
       - name: Publicar release trafos por CTMT
+        if: always()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag }}-trafos
@@ -298,6 +312,7 @@ jobs:
           fail_on_unmatched_files: false
 
       - name: Upload trafos por CTMT
+        if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -308,13 +323,25 @@ jobs:
           fi
           echo "Fazendo upload de $TOTAL arquivos trafos-* em lotes de 50..."
           COUNT=0
+          FAILURES=0
           for f in out/trafos-*.geojson; do
             [ -f "$f" ] || continue
-            gh release upload "${{ inputs.tag }}-trafos" "$f" --clobber
-            COUNT=$((COUNT + 1))
-            if [ $((COUNT % 50)) -eq 0 ]; then
-              echo "[$COUNT/$TOTAL] Pausa 30s para evitar rate limit..."
-              sleep 30
+            if gh release upload "${{ inputs.tag }}-trafos" "$f" --clobber 2>&1; then
+              COUNT=$((COUNT + 1))
+            else
+              echo "AVISO: falha em $f, tentando novamente..."
+              sleep 10
+              if gh release upload "${{ inputs.tag }}-trafos" "$f" --clobber 2>&1; then
+                COUNT=$((COUNT + 1))
+              else
+                echo "ERRO: $f nao enviado."
+                FAILURES=$((FAILURES + 1))
+              fi
+            fi
+            if [ $(( (COUNT + FAILURES) % 50)) -eq 0 ]; then
+              echo "[$((COUNT + FAILURES))/$TOTAL] Pausa 60s para evitar rate limit..."
+              sleep 60
             fi
           done
-          echo "Upload trafos concluido: $COUNT arquivos."
+          echo "Upload trafos: $COUNT ok, $FAILURES falhas."
+          [ "$FAILURES" -eq 0 ] || exit 1
