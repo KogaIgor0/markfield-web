@@ -1,27 +1,29 @@
 /**
- * Cloudflare Worker v3 — CORS proxy para assets BDGD do GitHub Releases.
+ * Cloudflare Worker v4 — CORS proxy para assets BDGD do GitHub Releases.
  *
- * Roteamento dinâmico multi-distribuidora:
- *   /{dist}/{file}  →  releases/download/bdgd-{dist}-2024/{file}
+ * Estratégia: redireciona para o CDN do GitHub (objects.githubusercontent.com)
+ * em vez de proxiar o corpo. Isso evita timeouts no plano free e é mais rápido.
+ * O objects.githubusercontent.com já envia Access-Control-Allow-Origin: * para
+ * releases públicas, portanto CORS funciona sem proxiar.
+ *
+ * Roteamento:
+ *   /{dist}/{file}  →  redirect para releases/download/bdgd-{dist}-2024/{file}
  *                       (trafos-* → bdgd-{dist}-2024-trafos/{file})
  *   /{file}         →  backward compat (elektro, mapeamento legado)
  *   /               →  lista distribuidoras disponíveis
  *
- * Deploy: cole este código no Cloudflare Workers dashboard e salve.
+ * Deploy: npx wrangler deploy workers/bdgd-cors-worker.js --name bdgd-cors --compatibility-date 2024-01-01
  */
 
 const GITHUB_TMPL = (dist, file) => {
-  // trafos por CTMT ficam num release separado para contornar limite de 1000 assets
   const tag = file.startsWith("trafos-")
     ? `bdgd-${dist}-2024-trafos`
     : `bdgd-${dist}-2024`;
   return `https://github.com/KogaIgor0/markfield-web/releases/download/${tag}/${file}`;
 };
 
-// Allowlist — adicione novas distribuidoras aqui
 const DISTRIBUIDORAS = new Set(["elektro"]);
 
-// Backward compat: paths legados sem prefixo de distribuidora
 const LEGACY = {
   "rede-mt.pmtiles": GITHUB_TMPL("elektro", "elektro_2024-rede-mt.pmtiles"),
   "trafos.geojson":  GITHUB_TMPL("elektro", "elektro_2024-trafos.geojson"),
@@ -48,13 +50,12 @@ export default {
 
     if (parts.length === 0) {
       return new Response(
-        `BDGD CORS Worker v3\nDistribuidoras: ${[...DISTRIBUIDORAS].join(", ")}\nUso: /{distribuidora}/{arquivo}`,
+        `BDGD CORS Worker v4\nDistribuidoras: ${[...DISTRIBUIDORAS].join(", ")}\nUso: /{distribuidora}/{arquivo}`,
         { status: 200, headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } }
       );
     }
 
     if (parts.length >= 2) {
-      // Novo formato: /{dist}/{file}
       const dist = parts[0];
       const file = parts.slice(1).join("/");
       if (!DISTRIBUIDORAS.has(dist)) {
@@ -65,7 +66,6 @@ export default {
       }
       target = GITHUB_TMPL(dist, file);
     } else {
-      // Formato legado: /{file}
       const file = parts[0];
       target = LEGACY[file];
       if (!target) {
@@ -76,25 +76,50 @@ export default {
       }
     }
 
-    const upstreamHeaders = {};
-    const range = request.headers.get("Range");
-    if (range) upstreamHeaders["Range"] = range;
-
-    let response;
+    // Resolve o redirect do GitHub para obter a URL real do CDN
+    let cdnUrl;
     try {
-      response = await fetch(target, { method: request.method, headers: upstreamHeaders, redirect: "follow" });
+      const probe = await fetch(target, { method: "HEAD", redirect: "manual" });
+      const location = probe.headers.get("location");
+      if (location) {
+        cdnUrl = location;
+      } else if (probe.status >= 200 && probe.status < 300) {
+        // Já é a URL final (improvável para GitHub Releases, mas seguro)
+        cdnUrl = target;
+      } else {
+        return new Response(`GitHub retornou ${probe.status} para ${target}`, {
+          status: 502, headers: { ...CORS, "Content-Type": "text/plain" },
+        });
+      }
     } catch (err) {
-      return new Response(`Erro ao buscar ${target}: ${err.message}`, {
+      return new Response(`Erro ao resolver ${target}: ${err.message}`, {
         status: 502, headers: { ...CORS, "Content-Type": "text/plain" },
       });
     }
 
-    const out = new Headers(CORS);
-    for (const h of ["content-type","content-length","content-range","accept-ranges","etag","last-modified","cache-control"]) {
-      const v = response.headers.get(h);
-      if (v) out.set(h, v);
+    // PMTiles precisam de Range — proxia diretamente para suportar streaming parcial
+    const range = request.headers.get("Range");
+    if (range || target.endsWith(".pmtiles")) {
+      try {
+        const upstream = await fetch(cdnUrl, {
+          method: request.method,
+          headers: range ? { "Range": range } : {},
+        });
+        const out = new Headers(CORS);
+        for (const h of ["content-type","content-length","content-range","accept-ranges","etag","last-modified","cache-control"]) {
+          const v = upstream.headers.get(h);
+          if (v) out.set(h, v);
+        }
+        return new Response(upstream.body, { status: upstream.status, headers: out });
+      } catch (err) {
+        return new Response(`Erro ao buscar ${cdnUrl}: ${err.message}`, {
+          status: 502, headers: { ...CORS, "Content-Type": "text/plain" },
+        });
+      }
     }
 
-    return new Response(response.body, { status: response.status, headers: out });
+    // Para GeoJSON e outros arquivos: redireciona para o CDN do GitHub.
+    // objects.githubusercontent.com já envia CORS para repos públicos.
+    return Response.redirect(cdnUrl, 302);
   },
 };
