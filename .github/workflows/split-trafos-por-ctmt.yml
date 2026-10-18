@@ -1,0 +1,154 @@
+name: Split Trafos por CTMT
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag do Release principal (ex: bdgd-cemig-2024)'
+        required: true
+      prefixo:
+        description: 'Prefixo dos arquivos (ex: cemig_2024)'
+        required: true
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Baixar trafos.geojson do release existente
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p out
+          echo "Baixando ${{ inputs.prefixo }}-trafos.geojson do release ${{ inputs.tag }}..."
+          gh release download "${{ inputs.tag }}" \
+            --pattern "${{ inputs.prefixo }}-trafos.geojson" \
+            --dir out \
+            --repo KogaIgor0/markfield-web
+          ls -lh out/
+
+      - name: Gerar trafos por CTMT e index.json
+        run: |
+          TRAFOS="out/${{ inputs.prefixo }}-trafos.geojson"
+          if [ ! -f "$TRAFOS" ]; then
+            echo "ERRO: $TRAFOS nao encontrado."
+            exit 1
+          fi
+          echo "Dividindo trafos por CTMT..."
+          python3 - "$TRAFOS" "${{ inputs.prefixo }}" << 'PYEOF'
+          import json, sys, re
+          from collections import defaultdict
+
+          trafos_path = sys.argv[1]
+          prefixo = sys.argv[2]
+          dist_id = re.sub(r'_[0-9]+$', '', prefixo)
+
+          print(f"Lendo {trafos_path}...")
+          with open(trafos_path) as f:
+              fc = json.load(f)
+
+          total = len(fc.get("features", []))
+          print(f"Total de transformadores: {total}")
+
+          by_ctmt = defaultdict(list)
+          sem_ctmt = 0
+          for feat in fc.get("features", []):
+              props = feat.get("properties") or {}
+              ctmt = props.get("CTMT") or props.get("COD_CTMT") or ""
+              if ctmt:
+                  by_ctmt[ctmt].append(feat)
+              else:
+                  sem_ctmt += 1
+
+          print(f"Transformadores sem CTMT: {sem_ctmt}")
+          print(f"CTMTs encontrados: {len(by_ctmt)}")
+
+          for ctmt, feats in by_ctmt.items():
+              out_fc = {"type": "FeatureCollection", "features": feats}
+              with open(f"out/trafos-{ctmt}.geojson", "w") as f:
+                  json.dump(out_fc, f, separators=(",", ":"))
+
+          print(f"Arquivos trafos-*.geojson gerados: {len(by_ctmt)}")
+
+          # Gerar index.json a partir dos CTMTs dos trafos
+          index = defaultdict(list)
+          for ctmt in sorted(by_ctmt.keys()):
+              if "_" in ctmt:
+                  sub = ctmt.split("_")[0]
+              else:
+                  m = re.match(r"^[A-Z]+", ctmt)
+                  sub = m.group() if m else ctmt
+              index[sub].append(ctmt)
+
+          with open("out/index.json", "w") as f:
+              json.dump({"distribuidora": dist_id, "alimentadores": dict(index)}, f)
+
+          total_ctmts = sum(len(v) for v in index.values())
+          print(f"index.json: {total_ctmts} CTMTs em {len(index)} subestacoes")
+          PYEOF
+          echo "Total de arquivos trafos-*.geojson: $(ls out/trafos-*.geojson 2>/dev/null | wc -l)"
+          ls -lh out/index.json 2>/dev/null || true
+
+      - name: Publicar release trafos por CTMT
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}-trafos
+          name: "BDGD ${{ inputs.prefixo }} — trafos por CTMT"
+          body: |
+            Transformadores por CTMT (release auxiliar).
+            Release principal: ${{ inputs.tag }}
+            Run: ${{ github.run_id }}
+          make_latest: false
+          fail_on_unmatched_files: false
+
+      - name: Upload trafos por CTMT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TOTAL=$(ls out/trafos-*.geojson 2>/dev/null | wc -l)
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "Nenhum arquivo trafos-*.geojson para upload."
+            exit 1
+          fi
+          echo "Fazendo upload de $TOTAL arquivos trafos-* em lotes de 50..."
+          COUNT=0
+          FAILURES=0
+          for f in out/trafos-*.geojson; do
+            [ -f "$f" ] || continue
+            if gh release upload "${{ inputs.tag }}-trafos" "$f" --clobber 2>&1; then
+              COUNT=$((COUNT + 1))
+            else
+              echo "AVISO: falha em $f, tentando novamente..."
+              sleep 10
+              if gh release upload "${{ inputs.tag }}-trafos" "$f" --clobber 2>&1; then
+                COUNT=$((COUNT + 1))
+              else
+                echo "ERRO: $f nao enviado."
+                FAILURES=$((FAILURES + 1))
+              fi
+            fi
+            if [ $(( (COUNT + FAILURES) % 50)) -eq 0 ]; then
+              echo "[$((COUNT + FAILURES))/$TOTAL] Pausa 60s para evitar rate limit..."
+              sleep 60
+            fi
+          done
+          echo "Upload trafos: $COUNT ok, $FAILURES falhas."
+          [ "$FAILURES" -eq 0 ] || echo "AVISO: $FAILURES arquivo(s) nao enviado(s)."
+
+      - name: Atualizar index.json no release principal
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f "out/index.json" ]; then
+            echo "Atualizando index.json no release ${{ inputs.tag }}..."
+            gh release upload "${{ inputs.tag }}" out/index.json --clobber
+            echo "index.json atualizado."
+          else
+            echo "index.json nao encontrado, pulando."
+          fi

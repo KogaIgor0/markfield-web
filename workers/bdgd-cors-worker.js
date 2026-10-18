@@ -22,7 +22,31 @@ const GITHUB_TMPL = (dist, file) => {
   return `https://github.com/KogaIgor0/markfield-web/releases/download/${tag}/${file}`;
 };
 
-const DISTRIBUIDORAS = new Set(["elektro"]);
+const DISTRIBUIDORAS = new Set([
+  "elektro",
+  "cemig",
+  "cpfl-paulista",
+  "cpfl-piratininga",
+  "enel-sp",
+  "copel",
+  "coelba",
+  "equatorial-pa",
+  "equatorial-ma",
+  "equatorial-pi",
+  "equatorial-al",
+  "equatorial-go",
+  "ceee",
+  "cea",
+  "energisa-mt",
+  "energisa-ms",
+  "energisa-to",
+  "energisa-pb",
+  "energisa-se",
+  "energisa-mg-rio",
+  "energisa-sul",
+  "energisa-ro",
+  "energisa-ac",
+]);
 
 const LEGACY = {
   "rede-mt.pmtiles": GITHUB_TMPL("elektro", "elektro_2024-rede-mt.pmtiles"),
