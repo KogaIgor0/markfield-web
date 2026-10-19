@@ -24,14 +24,51 @@ jobs:
       - name: Listar assets do release trafos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          TRAFOS_TAG="${{ inputs.tag }}-trafos"
-          echo "Fetching $TRAFOS_TAG"
-          gh release view "$TRAFOS_TAG" \
-            --repo KogaIgor0/markfield-web \
-            --json assets \
-            > assets_raw.json
-          python3 -c "import json; d=json.load(open('assets_raw.json')); print('assets:', len(d.get('assets',[])))"
+          python3 - << 'PYEOF'
+          import json, os, subprocess, sys
+
+          token = os.environ['GITHUB_TOKEN']
+          tag = os.environ['INPUT_TAG'] + '-trafos'
+          print('Fetching release:', tag)
+
+          def gh_get(url):
+              r = subprocess.run([
+                  'curl', '-sf',
+                  '-H', 'Authorization: Bearer ' + token,
+                  '-H', 'Accept: application/vnd.github.v3+json',
+                  url
+              ], capture_output=True, text=True)
+              if r.returncode != 0:
+                  print('curl error:', r.stderr)
+                  sys.exit(1)
+              d = json.loads(r.stdout)
+              if isinstance(d, dict) and 'message' in d:
+                  print('API error:', d['message'])
+                  sys.exit(1)
+              return d
+
+          rel = gh_get(f'https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/{tag}')
+          rid = rel['id']
+          print('Release ID:', rid)
+
+          assets = []
+          page = 1
+          while True:
+              page_assets = gh_get(
+                  f'https://api.github.com/repos/KogaIgor0/markfield-web/releases/{rid}/assets?per_page=100&page={page}'
+              )
+              print(f'Page {page}: {len(page_assets)} assets')
+              assets.extend(page_assets)
+              if len(page_assets) < 100:
+                  break
+              page += 1
+
+          print(f'Total: {len(assets)} assets')
+          json.dump({'assets': assets}, open('assets_raw.json', 'w'))
+          print('OK: assets_raw.json saved')
+          PYEOF
 
       - name: Gerar index.json
         env:
