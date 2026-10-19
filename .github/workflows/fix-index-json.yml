@@ -101,12 +101,37 @@ jobs:
 
       - name: Upload index.json
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPLOAD_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${{ inputs.tag }}"
-          echo "Uploading index.json to $TAG"
-          gh release upload "$TAG" index.json \
-            --clobber \
-            --repo KogaIgor0/markfield-web
+          echo "Uploading index.json to release: $TAG"
+
+          # Get release info
+          RELEASE_JSON=$(curl -sf \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/${TAG}")
+          RELEASE_ID=$(echo "$RELEASE_JSON" | jq -r '.id')
+          UPLOAD_URL=$(echo "$RELEASE_JSON" | jq -r '.upload_url' | sed 's/{?name,label}//')
+          echo "Release ID: $RELEASE_ID"
+          echo "Upload URL: $UPLOAD_URL"
+
+          # Delete existing index.json asset if present (clobber)
+          EXISTING_ID=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name=="index.json") | .id // empty')
+          if [ -n "$EXISTING_ID" ]; then
+            echo "Deleting existing index.json asset $EXISTING_ID"
+            curl -sf -X DELETE \
+              -H "Authorization: token ${UPLOAD_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/KogaIgor0/markfield-web/releases/assets/${EXISTING_ID}"
+          fi
+
+          # Upload new index.json
+          RESULT=$(curl -sf -X POST \
+            -H "Authorization: token ${UPLOAD_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            "${UPLOAD_URL}?name=index.json" \
+            --data-binary "@index.json")
+          echo "Uploaded: $(echo "$RESULT" | jq -r '.name + " id=" + (.id|tostring)')"
           echo "Done."
