@@ -23,57 +23,57 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TRAFOS_TAG="${{ inputs.tag }}-trafos"
+          DIST_ID="${{ inputs.dist_id }}"
           echo "Buscando assets do release $TRAFOS_TAG..."
-
-          # Use curl to list all assets (API paginates at 100; one page is enough)
           curl -s \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/$TRAFOS_TAG" \
-            | python3 -c "
-import json, sys, re
-from collections import defaultdict
+            > release_data.json
+          ASSET_COUNT=$(python3 -c "import json; d=json.load(open('release_data.json')); print(len(d.get('assets',[])))")
+          echo "Assets encontrados: $ASSET_COUNT"
+          python3 - "$DIST_ID" << 'PYEOF'
+          import json, sys, re
+          from collections import defaultdict
 
-dist_id = '${{ inputs.dist_id }}'
-clean_id = re.sub(r'_[0-9]+$', '', dist_id)
+          dist_id = sys.argv[1]
+          clean_id = re.sub(r'_[0-9]+$', '', dist_id)
 
-data = json.load(sys.stdin)
-assets = data.get('assets', [])
-print(f'Assets no release trafos: {len(assets)}')
+          with open('release_data.json') as f:
+              data = json.load(f)
 
-if not assets:
-    print('ERRO: nenhum asset encontrado no release trafos!')
-    sys.exit(1)
+          assets = data.get('assets', [])
+          if not assets:
+              print('ERRO: nenhum asset encontrado!')
+              sys.exit(1)
 
-ctmts = []
-for a in assets:
-    m = re.match(r'^trafos-(.+)\.geojson$', a['name'])
-    if m:
-        ctmts.append(m.group(1))
+          ctmts = []
+          for a in assets:
+              m = re.match(r'^trafos-(.+)\.geojson$', a['name'])
+              if m:
+                  ctmts.append(m.group(1))
 
-print(f'CTMTs extraidos: {len(ctmts)}')
+          print(f'CTMTs extraidos: {len(ctmts)}')
+          if not ctmts:
+              print('ERRO: nenhum CTMT encontrado!')
+              sys.exit(1)
 
-if not ctmts:
-    print('ERRO: nenhum CTMT encontrado!')
-    sys.exit(1)
+          index = defaultdict(list)
+          for ctmt in sorted(ctmts):
+              if '_' in ctmt:
+                  sub = ctmt.split('_')[0]
+              else:
+                  m2 = re.match(r'^[A-Z]+', ctmt)
+                  sub = m2.group() if m2 else ctmt
+              index[sub].append(ctmt)
 
-index = defaultdict(list)
-for ctmt in sorted(ctmts):
-    if '_' in ctmt:
-        sub = ctmt.split('_')[0]
-    else:
-        m2 = re.match(r'^[A-Z]+', ctmt)
-        sub = m2.group() if m2 else ctmt
-    index[sub].append(ctmt)
+          result = {'distribuidora': clean_id, 'alimentadores': dict(index)}
+          with open('index.json', 'w') as f:
+              json.dump(result, f)
 
-result = {'distribuidora': clean_id, 'alimentadores': dict(index)}
-with open('index.json', 'w') as f:
-    json.dump(result, f)
-
-total = sum(len(v) for v in index.values())
-print(f'index.json: {total} CTMTs em {len(index)} subestacoes')
-print(f'Distribuidora: {clean_id}')
-"
+          total = sum(len(v) for v in index.values())
+          print(f'index.json: {total} CTMTs em {len(index)} subestacoes, distribuidora={clean_id}')
+          PYEOF
 
       - name: Upload index.json para release principal
         env:
