@@ -20,18 +20,18 @@ jobs:
     steps:
       - name: Gerar index.json a partir dos assets do release trafos
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TRAFOS_TAG="${{ inputs.tag }}-trafos"
           DIST_ID="${{ inputs.dist_id }}"
-          echo "Buscando assets do release $TRAFOS_TAG..."
-          curl -s \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/$TRAFOS_TAG" \
-            > release_data.json
-          ASSET_COUNT=$(python3 -c "import json; d=json.load(open('release_data.json')); print(len(d.get('assets',[])))")
-          echo "Assets encontrados: $ASSET_COUNT"
+          echo "Tag trafos: $TRAFOS_TAG"
+          echo "Dist ID: $DIST_ID"
+          gh api "repos/KogaIgor0/markfield-web/releases/tags/$TRAFOS_TAG" > release_data.json 2>&1
+          echo "Exit code gh api: $?"
+          head -c 200 release_data.json
+          echo ""
+          ASSET_COUNT=$(python3 -c "import json; d=json.load(open('release_data.json')); print(len(d.get('assets',[])))" 2>&1)
+          echo "Assets: $ASSET_COUNT"
           python3 - "$DIST_ID" << 'PYEOF'
           import json, sys, re
           from collections import defaultdict
@@ -43,6 +43,7 @@ jobs:
               data = json.load(f)
 
           assets = data.get('assets', [])
+          print(f'Total assets: {len(assets)}', flush=True)
           if not assets:
               print('ERRO: nenhum asset encontrado!')
               sys.exit(1)
@@ -53,7 +54,7 @@ jobs:
               if m:
                   ctmts.append(m.group(1))
 
-          print(f'CTMTs extraidos: {len(ctmts)}')
+          print(f'CTMTs: {len(ctmts)}', flush=True)
           if not ctmts:
               print('ERRO: nenhum CTMT encontrado!')
               sys.exit(1)
@@ -72,15 +73,15 @@ jobs:
               json.dump(result, f)
 
           total = sum(len(v) for v in index.values())
-          print(f'index.json: {total} CTMTs em {len(index)} subestacoes, distribuidora={clean_id}')
+          print(f'OK: {total} CTMTs em {len(index)} subestacoes, dist={clean_id}')
           PYEOF
 
       - name: Upload index.json para release principal
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Fazendo upload do index.json para ${{ inputs.tag }}..."
+          echo "Upload index.json para ${{ inputs.tag }}..."
           gh release upload "${{ inputs.tag }}" index.json \
             --clobber \
             --repo KogaIgor0/markfield-web
-          echo "index.json atualizado com sucesso."
+          echo "Sucesso."
