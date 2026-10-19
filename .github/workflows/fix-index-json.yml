@@ -24,51 +24,37 @@ jobs:
       - name: Listar assets do release trafos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          python3 - << 'PYEOF'
-          import json, os, subprocess, sys
+          set -euo pipefail
+          TRAFOS_TAG="${{ inputs.tag }}-trafos"
+          echo "Fetching release: $TRAFOS_TAG"
 
-          token = os.environ['GITHUB_TOKEN']
-          tag = os.environ['INPUT_TAG'] + '-trafos'
-          print('Fetching release:', tag)
+          RELEASE=$(curl -sf \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/$TRAFOS_TAG")
 
-          def gh_get(url):
-              r = subprocess.run([
-                  'curl', '-sf',
-                  '-H', 'Authorization: Bearer ' + token,
-                  '-H', 'Accept: application/vnd.github.v3+json',
-                  url
-              ], capture_output=True, text=True)
-              if r.returncode != 0:
-                  print('curl error:', r.stderr)
-                  sys.exit(1)
-              d = json.loads(r.stdout)
-              if isinstance(d, dict) and 'message' in d:
-                  print('API error:', d['message'])
-                  sys.exit(1)
-              return d
+          RELEASE_ID=$(echo "$RELEASE" | jq -r '.id')
+          echo "Release ID: $RELEASE_ID"
 
-          rel = gh_get(f'https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/{tag}')
-          rid = rel['id']
-          print('Release ID:', rid)
+          ALL_ASSETS='[]'
+          PAGE=1
+          while true; do
+            PAGE_DATA=$(curl -sf \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/KogaIgor0/markfield-web/releases/$RELEASE_ID/assets?per_page=100&page=$PAGE")
+            COUNT=$(echo "$PAGE_DATA" | jq 'length')
+            echo "Page $PAGE: $COUNT assets"
+            ALL_ASSETS=$(jq -n --argjson a "$ALL_ASSETS" --argjson b "$PAGE_DATA" '$a + $b')
+            if [ "$COUNT" -lt 100 ]; then break; fi
+            PAGE=$((PAGE + 1))
+          done
 
-          assets = []
-          page = 1
-          while True:
-              page_assets = gh_get(
-                  f'https://api.github.com/repos/KogaIgor0/markfield-web/releases/{rid}/assets?per_page=100&page={page}'
-              )
-              print(f'Page {page}: {len(page_assets)} assets')
-              assets.extend(page_assets)
-              if len(page_assets) < 100:
-                  break
-              page += 1
-
-          print(f'Total: {len(assets)} assets')
-          json.dump({'assets': assets}, open('assets_raw.json', 'w'))
-          print('OK: assets_raw.json saved')
-          PYEOF
+          TOTAL=$(echo "$ALL_ASSETS" | jq 'length')
+          echo "Total: $TOTAL assets"
+          echo "$ALL_ASSETS" | jq '{assets: .}' > assets_raw.json
+          echo "OK: assets_raw.json saved"
 
       - name: Gerar index.json
         env:
@@ -121,59 +107,36 @@ jobs:
       - name: Upload index.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          python3 - << 'PYEOF'
-          import json, os, subprocess, sys
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          echo "Uploading index.json to $TAG"
 
-          token = os.environ['GITHUB_TOKEN']
-          tag = os.environ['INPUT_TAG']
-          print(f'Uploading index.json to {tag}')
+          RELEASE=$(curl -sf \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/$TAG")
 
-          def api_get(url):
-              r = subprocess.run([
-                  'curl', '-sf',
-                  '-H', 'Authorization: Bearer ' + token,
-                  '-H', 'Accept: application/vnd.github.v3+json',
-                  url
-              ], capture_output=True, text=True)
-              if r.returncode != 0:
-                  print('curl error:', r.stderr); sys.exit(1)
-              d = json.loads(r.stdout)
-              if isinstance(d, dict) and 'message' in d:
-                  print('API error:', d['message']); sys.exit(1)
-              return d
+          RELEASE_ID=$(echo "$RELEASE" | jq -r '.id')
+          UPLOAD_URL=$(echo "$RELEASE" | jq -r '.upload_url' | sed 's/{.*//')
+          echo "Release ID: $RELEASE_ID  Upload URL: $UPLOAD_URL"
 
-          # Get release info
-          rel = api_get(f'https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/{tag}')
-          release_id = rel['id']
-          upload_url = rel['upload_url'].split('{')[0]
-          print(f'Release ID: {release_id}')
-
-          # Delete existing index.json if present (clobber)
-          for asset in rel.get('assets', []):
-              if asset['name'] == 'index.json':
-                  print(f'Deleting existing index.json id={asset["id"]}')
-                  subprocess.run([
-                      'curl', '-sf', '-X', 'DELETE',
-                      '-H', 'Authorization: Bearer ' + token,
-                      '-H', 'Accept: application/vnd.github.v3+json',
-                      f'https://api.github.com/repos/KogaIgor0/markfield-web/releases/assets/{asset["id"]}'
-                  ])
+          # Clobber: delete existing index.json if present
+          EXISTING_ID=$(echo "$RELEASE" | jq -r '.assets[] | select(.name=="index.json") | .id' || true)
+          if [ -n "$EXISTING_ID" ]; then
+            echo "Deleting existing index.json (id=$EXISTING_ID)"
+            curl -sf -X DELETE \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/KogaIgor0/markfield-web/releases/assets/$EXISTING_ID"
+          fi
 
           # Upload
-          r = subprocess.run([
-              'curl', '-sf',
-              '-H', 'Authorization: Bearer ' + token,
-              '-H', 'Content-Type: application/json',
-              f'{upload_url}?name=index.json',
-              '--data-binary', '@index.json'
-          ], capture_output=True, text=True)
-          if r.returncode != 0:
-              print('Upload error:', r.stderr); sys.exit(1)
-          result = json.loads(r.stdout)
-          if 'id' in result:
-              print(f'OK: uploaded {result["name"]} ({result["size"]} bytes)')
-          else:
-              print('Upload result:', result); sys.exit(1)
-          PYEOF
+          RESULT=$(curl -sf \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            "$UPLOAD_URL?name=index.json" \
+            --data-binary @index.json)
+
+          echo "Uploaded: $(echo "$RESULT" | jq -r '.name') ($(echo "$RESULT" | jq -r '.size') bytes)"
+          echo "Done."
