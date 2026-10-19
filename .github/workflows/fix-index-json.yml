@@ -23,27 +23,22 @@ jobs:
 
       - name: Listar assets do release trafos
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TRAFOS_TAG="${{ inputs.tag }}-trafos"
-          echo "Fetching release: $TRAFOS_TAG"
+          echo "Tag: $TRAFOS_TAG"
 
-          RELEASE=$(curl -sf \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/$TRAFOS_TAG")
-
-          RELEASE_ID=$(echo "$RELEASE" | jq -r '.id')
+          RELEASE_ID=$(gh api \
+            "repos/KogaIgor0/markfield-web/releases/tags/$TRAFOS_TAG" \
+            --jq '.id')
           echo "Release ID: $RELEASE_ID"
 
           ALL_ASSETS='[]'
           PAGE=1
           while true; do
-            PAGE_DATA=$(curl -sf \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/KogaIgor0/markfield-web/releases/$RELEASE_ID/assets?per_page=100&page=$PAGE")
+            PAGE_DATA=$(gh api \
+              "repos/KogaIgor0/markfield-web/releases/$RELEASE_ID/assets?per_page=100&page=$PAGE")
             COUNT=$(echo "$PAGE_DATA" | jq 'length')
             echo "Page $PAGE: $COUNT assets"
             ALL_ASSETS=$(jq -n --argjson a "$ALL_ASSETS" --argjson b "$PAGE_DATA" '$a + $b')
@@ -106,37 +101,12 @@ jobs:
 
       - name: Upload index.json
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${{ inputs.tag }}"
           echo "Uploading index.json to $TAG"
-
-          RELEASE=$(curl -sf \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/$TAG")
-
-          RELEASE_ID=$(echo "$RELEASE" | jq -r '.id')
-          UPLOAD_URL=$(echo "$RELEASE" | jq -r '.upload_url' | sed 's/{.*//')
-          echo "Release ID: $RELEASE_ID  Upload URL: $UPLOAD_URL"
-
-          # Clobber: delete existing index.json if present
-          EXISTING_ID=$(echo "$RELEASE" | jq -r '.assets[] | select(.name=="index.json") | .id' || true)
-          if [ -n "$EXISTING_ID" ]; then
-            echo "Deleting existing index.json (id=$EXISTING_ID)"
-            curl -sf -X DELETE \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/KogaIgor0/markfield-web/releases/assets/$EXISTING_ID"
-          fi
-
-          # Upload
-          RESULT=$(curl -sf \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Content-Type: application/json" \
-            "$UPLOAD_URL?name=index.json" \
-            --data-binary @index.json)
-
-          echo "Uploaded: $(echo "$RESULT" | jq -r '.name') ($(echo "$RESULT" | jq -r '.size') bytes)"
+          gh release upload "$TAG" index.json \
+            --clobber \
+            --repo KogaIgor0/markfield-web
           echo "Done."
