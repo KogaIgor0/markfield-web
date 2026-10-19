@@ -21,33 +21,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build and upload index.json
+      - name: Listar assets do release trafos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_TAG: ${{ inputs.tag }}
-          INPUT_DIST_ID: ${{ inputs.dist_id }}
         run: |
-          TRAFOS_TAG="${INPUT_TAG}-trafos"
-          echo "Fetching assets from release $TRAFOS_TAG"
+          TRAFOS_TAG="${{ inputs.tag }}-trafos"
+          echo "Fetching $TRAFOS_TAG"
           gh release view "$TRAFOS_TAG" \
             --repo KogaIgor0/markfield-web \
             --json assets \
             > assets_raw.json
-          echo "Assets fetched, size=$(wc -c < assets_raw.json)"
-          python3 <<'SCRIPT'
+          python3 -c "import json; d=json.load(open('assets_raw.json')); print('assets:', len(d.get('assets',[])))"
+
+      - name: Gerar index.json
+        env:
+          INPUT_DIST_ID: ${{ inputs.dist_id }}
+        run: |
+          python3 - << 'PYEOF'
           import json, re, os, sys
           from collections import defaultdict
 
-          dist_id = os.environ['INPUT_DIST_ID']
+          dist_id = os.environ.get('INPUT_DIST_ID', '')
           clean_id = re.sub(r'_[0-9]+$', '', dist_id)
+          print(f'dist_id={dist_id} clean_id={clean_id}')
 
           with open('assets_raw.json') as f:
               data = json.load(f)
 
           assets = data.get('assets', [])
-          print(f'Total assets: {len(assets)}')
+          print(f'assets: {len(assets)}')
           if not assets:
-              print('ERROR: no assets found')
+              print('ERROR: no assets')
               sys.exit(1)
 
           ctmts = []
@@ -56,9 +60,9 @@ jobs:
               if m:
                   ctmts.append(m.group(1))
 
-          print(f'CTMTs found: {len(ctmts)}')
+          print(f'ctmts: {len(ctmts)}')
           if not ctmts:
-              print('ERROR: no CTMTs found')
+              print('ERROR: no ctmts')
               sys.exit(1)
 
           index = defaultdict(list)
@@ -73,12 +77,16 @@ jobs:
           result = {'distribuidora': clean_id, 'alimentadores': dict(index)}
           with open('index.json', 'w') as f:
               json.dump(result, f)
-
           total = sum(len(v) for v in index.values())
-          print(f'index.json written: {total} CTMTs in {len(index)} subestacoes, dist={clean_id}')
-          SCRIPT
-          echo "Uploading index.json to release $INPUT_TAG"
-          gh release upload "$INPUT_TAG" index.json \
+          print(f'OK: {total} ctmts in {len(index)} subs')
+          PYEOF
+
+      - name: Upload index.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Uploading to ${{ inputs.tag }}"
+          gh release upload "${{ inputs.tag }}" index.json \
             --clobber \
             --repo KogaIgor0/markfield-web
-          echo "Upload complete."
+          echo "Done."
