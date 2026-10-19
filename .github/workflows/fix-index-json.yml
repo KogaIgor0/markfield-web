@@ -121,9 +121,59 @@ jobs:
       - name: Upload index.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          echo "Uploading to ${{ inputs.tag }}"
-          gh release upload "${{ inputs.tag }}" index.json \
-            --clobber \
-            --repo KogaIgor0/markfield-web
-          echo "Done."
+          python3 - << 'PYEOF'
+          import json, os, subprocess, sys
+
+          token = os.environ['GITHUB_TOKEN']
+          tag = os.environ['INPUT_TAG']
+          print(f'Uploading index.json to {tag}')
+
+          def api_get(url):
+              r = subprocess.run([
+                  'curl', '-sf',
+                  '-H', 'Authorization: Bearer ' + token,
+                  '-H', 'Accept: application/vnd.github.v3+json',
+                  url
+              ], capture_output=True, text=True)
+              if r.returncode != 0:
+                  print('curl error:', r.stderr); sys.exit(1)
+              d = json.loads(r.stdout)
+              if isinstance(d, dict) and 'message' in d:
+                  print('API error:', d['message']); sys.exit(1)
+              return d
+
+          # Get release info
+          rel = api_get(f'https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/{tag}')
+          release_id = rel['id']
+          upload_url = rel['upload_url'].split('{')[0]
+          print(f'Release ID: {release_id}')
+
+          # Delete existing index.json if present (clobber)
+          for asset in rel.get('assets', []):
+              if asset['name'] == 'index.json':
+                  print(f'Deleting existing index.json id={asset["id"]}')
+                  subprocess.run([
+                      'curl', '-sf', '-X', 'DELETE',
+                      '-H', 'Authorization: Bearer ' + token,
+                      '-H', 'Accept: application/vnd.github.v3+json',
+                      f'https://api.github.com/repos/KogaIgor0/markfield-web/releases/assets/{asset["id"]}'
+                  ])
+
+          # Upload
+          r = subprocess.run([
+              'curl', '-sf',
+              '-H', 'Authorization: Bearer ' + token,
+              '-H', 'Content-Type: application/json',
+              f'{upload_url}?name=index.json',
+              '--data-binary', '@index.json'
+          ], capture_output=True, text=True)
+          if r.returncode != 0:
+              print('Upload error:', r.stderr); sys.exit(1)
+          result = json.loads(r.stdout)
+          if 'id' in result:
+              print(f'OK: uploaded {result["name"]} ({result["size"]} bytes)')
+          else:
+              print('Upload result:', result); sys.exit(1)
+          PYEOF
