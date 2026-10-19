@@ -33,22 +33,22 @@ jobs:
           RELEASE_ID=$(echo "$RELEASE_JSON" | jq -r '.id')
           echo "Release ID: $RELEASE_ID"
 
-          ALL_ASSETS='[]'
+          mkdir -p /tmp/pages
           PAGE=1
           while true; do
-            PAGE_DATA=$(curl -sf \
+            curl -sf \
               -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/KogaIgor0/markfield-web/releases/${RELEASE_ID}/assets?per_page=100&page=${PAGE}")
-            COUNT=$(echo "$PAGE_DATA" | jq 'length')
+              "https://api.github.com/repos/KogaIgor0/markfield-web/releases/${RELEASE_ID}/assets?per_page=100&page=${PAGE}" \
+              -o "/tmp/pages/page_${PAGE}.json"
+            COUNT=$(jq 'length' "/tmp/pages/page_${PAGE}.json")
             echo "Page $PAGE: $COUNT assets"
-            ALL_ASSETS=$(jq -n --argjson a "$ALL_ASSETS" --argjson b "$PAGE_DATA" '$a + $b')
             if [ "$COUNT" -lt 100 ]; then break; fi
             PAGE=$((PAGE + 1))
           done
 
-          TOTAL=$(echo "$ALL_ASSETS" | jq 'length')
+          jq -s 'add' /tmp/pages/page_*.json | jq '{assets: .}' > assets_raw.json
+          TOTAL=$(jq '.assets | length' assets_raw.json)
           echo "Total: $TOTAL assets"
-          echo "$ALL_ASSETS" | jq '{assets: .}' > assets_raw.json
           echo "OK: assets_raw.json saved"
 
       - name: Gerar index.json
@@ -107,7 +107,6 @@ jobs:
           TAG="${{ inputs.tag }}"
           echo "Uploading index.json to release: $TAG"
 
-          # Get release info
           RELEASE_JSON=$(curl -sf \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/${TAG}")
@@ -116,7 +115,6 @@ jobs:
           echo "Release ID: $RELEASE_ID"
           echo "Upload URL: $UPLOAD_URL"
 
-          # Delete existing index.json asset if present (clobber)
           EXISTING_ID=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name=="index.json") | .id // empty')
           if [ -n "$EXISTING_ID" ]; then
             echo "Deleting existing index.json asset $EXISTING_ID"
@@ -126,7 +124,6 @@ jobs:
               "https://api.github.com/repos/KogaIgor0/markfield-web/releases/assets/${EXISTING_ID}"
           fi
 
-          # Upload new index.json
           RESULT=$(curl -sf -X POST \
             -H "Authorization: token ${UPLOAD_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
