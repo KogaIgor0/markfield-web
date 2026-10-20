@@ -1,0 +1,135 @@
+name: Split Linhas por CTMT
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_id:
+        description: 'ArcGIS Online item ID (arcgis.com/home/item.html?id=...)'
+        required: true
+      prefixo:
+        description: 'Prefixo dos arquivos (ex: cemig_2024)'
+        required: true
+      tag:
+        description: 'Tag do Release principal (ex: bdgd-cemig-2024)'
+        required: true
+
+jobs:
+  split:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar dependencias
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends gdal-bin unzip python3
+          echo "GDAL $(ogr2ogr --version)"
+
+      - name: Baixar BDGD do ArcGIS Online
+        run: |
+          echo "Baixando item ${{ inputs.dataset_id }}..."
+          curl -L \
+            --retry 3 \
+            --retry-delay 30 \
+            --connect-timeout 60 \
+            --max-time 3600 \
+            -H "Referer: https://www.arcgis.com/" \
+            --fail \
+            -o bdgd.gdb.zip \
+            "https://www.arcgis.com/sharing/rest/content/items/${{ inputs.dataset_id }}/data"
+          ls -lh bdgd.gdb.zip
+
+      - name: Extrair GDB e converter SSDMT
+        run: |
+          unzip -q bdgd.gdb.zip
+          GDB=$(find . -maxdepth 2 -name "*.gdb" -type d | head -1)
+          echo "GDB: $GDB"
+          mkdir -p out
+          echo "Convertendo SSDMT para GeoJSON..."
+          ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES out/ssdmt_tmp.geojson "$GDB" SSDMT 2>/dev/null
+          ls -lh out/ssdmt_tmp.geojson
+          rm -rf bdgd.gdb.zip "$GDB"
+          df -h .
+
+      - name: Dividir por CTMT
+        run: |
+          echo "Dividindo SSDMT por CTMT..."
+          python3 - << 'PYEOF'
+          import json
+          from collections import defaultdict
+
+          with open("out/ssdmt_tmp.geojson") as f:
+              fc = json.load(f)
+
+          total = len(fc.get("features", []))
+          print(f"Total de segmentos SSDMT: {total}")
+
+          by_ctmt = defaultdict(list)
+          sem_ctmt = 0
+          for feat in fc.get("features", []):
+              props = feat.get("properties") or {}
+              ctmt = props.get("CTMT") or props.get("COD_CTMT") or ""
+              if ctmt:
+                  feat["properties"] = {
+                      "COD_ID": props.get("COD_ID", ""),
+                      "CTMT": ctmt,
+                      "COMP_3": props.get("COMP_3", None)
+                  }
+                  by_ctmt[ctmt].append(feat)
+              else:
+                  sem_ctmt += 1
+
+          print(f"Segmentos sem CTMT: {sem_ctmt}")
+          print(f"CTMTs encontrados: {len(by_ctmt)}")
+
+          for ctmt, feats in by_ctmt.items():
+              out_fc = {"type": "FeatureCollection", "features": feats}
+              with open(f"out/linhas-{ctmt}.geojson", "w") as f:
+                  json.dump(out_fc, f, separators=(",", ":"))
+
+          print(f"Arquivos linhas-*.geojson gerados: {len(by_ctmt)}")
+          PYEOF
+          rm -f out/ssdmt_tmp.geojson
+          echo "Total: $(ls out/linhas-*.geojson 2>/dev/null | wc -l) arquivos"
+          df -h .
+
+      - name: Upload linhas por CTMT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TOTAL=$(ls out/linhas-*.geojson 2>/dev/null | wc -l)
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "Nenhum arquivo linhas-*.geojson para upload."
+            exit 1
+          fi
+          echo "Fazendo upload de $TOTAL arquivos para release ${{ inputs.tag }}..."
+          COUNT=0
+          FAILURES=0
+          for f in out/linhas-*.geojson; do
+            [ -f "$f" ] || continue
+            if gh release upload "${{ inputs.tag }}" "$f" --clobber \
+              --repo KogaIgor0/markfield-web 2>&1; then
+              COUNT=$((COUNT + 1))
+            else
+              echo "AVISO: falha em $f, tentando novamente..."
+              sleep 15
+              if gh release upload "${{ inputs.tag }}" "$f" --clobber \
+                --repo KogaIgor0/markfield-web 2>&1; then
+                COUNT=$((COUNT + 1))
+              else
+                echo "ERRO: $f nao enviado."
+                FAILURES=$((FAILURES + 1))
+              fi
+            fi
+            if [ $(( (COUNT + FAILURES) % 50 )) -eq 0 ] && [ $((COUNT + FAILURES)) -gt 0 ]; then
+              echo "[$((COUNT + FAILURES))/$TOTAL] Pausa 60s para evitar rate limit..."
+              sleep 60
+            fi
+          done
+          echo "Upload linhas: $COUNT ok, $FAILURES falhas."
+          [ "$FAILURES" -eq 0 ]
