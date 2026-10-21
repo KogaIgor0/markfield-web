@@ -165,7 +165,8 @@ jobs:
             echo "Nenhum arquivo linhas-*.geojson para upload."
             exit 1
           fi
-          echo "Fazendo upload de $TOTAL arquivos para release ${{ inputs.tag }}..."
+          ALREADY=$(wc -l < out/uploaded.txt 2>/dev/null || echo 0)
+          echo "Fazendo upload de $TOTAL arquivos para release ${{ inputs.tag }} (ja enviados: $ALREADY)..."
 
           # Obter release_id e upload_url via gh api (com timeout defensivo)
           RELEASE_INFO=$(timeout 30 gh api \
@@ -188,7 +189,8 @@ jobs:
             local ENC_FNAME
             ENC_FNAME=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$FNAME")
             curl -s -o /tmp/upresp.json -w "%{http_code}" \
-              --max-time 60 \
+              --connect-timeout 15 \
+              --max-time 90 \
               --retry 0 \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               -H "Content-Type: application/geo+json" \
@@ -196,14 +198,54 @@ jobs:
               "${UPLOAD_URL}?name=${ENC_FNAME}" 2>/dev/null || echo "000"
           }
 
-          COUNT=0
+          # === TESTE DIAGNOSTICO: tentar upload do primeiro arquivo novo ===
+          FIRST_NEW=""
+          for f in out/linhas-*.geojson; do
+            [ -f "$f" ] || continue
+            FNAME=$(basename "$f")
+            if ! grep -qxF "$FNAME" out/uploaded.txt 2>/dev/null; then
+              FIRST_NEW="$f"
+              FIRST_NEW_FNAME="$FNAME"
+              break
+            fi
+          done
+
+          DIAG_MSG="DIAG v10 $(date -u +%Y-%m-%dT%H:%M:%SZ): TOTAL=$TOTAL ALREADY=$ALREADY"
+          if [ -z "$FIRST_NEW" ]; then
+            echo "Nenhum arquivo novo para upload (todos ja enviados)."
+            DIAG_MSG="$DIAG_MSG FIRST_NEW=none"
+            gh api --method PATCH \
+              "repos/KogaIgor0/markfield-web/releases/$RELEASE_ID" \
+              -f "body=$DIAG_MSG" 2>/dev/null || true
+            exit 0
+          fi
+
+          echo "=== TESTE DIAGNOSTICO: $FIRST_NEW_FNAME ==="
+          FSIZE=$(wc -c < "$FIRST_NEW")
+          echo "Tamanho: $FSIZE bytes"
+          TEST_HTTP=$(upload_file "$FIRST_NEW" "$FIRST_NEW_FNAME")
+          TEST_RESP=$(cat /tmp/upresp.json 2>/dev/null | head -c 200 || echo "")
+          echo "TEST HTTP=$TEST_HTTP RESP=$TEST_RESP"
+          DIAG_MSG="$DIAG_MSG FIRST_NEW=$FIRST_NEW_FNAME SIZE=$FSIZE TEST_HTTP=$TEST_HTTP RESP=${TEST_RESP:0:100}"
+          gh api --method PATCH \
+            "repos/KogaIgor0/markfield-web/releases/$RELEASE_ID" \
+            -f "body=$DIAG_MSG" 2>/dev/null || true
+
+          if [ "$TEST_HTTP" != "201" ]; then
+            echo "ERRO: Test upload falhou HTTP=$TEST_HTTP. Abortando."
+            exit 1
+          fi
+          echo "Test upload OK. Iniciando loop principal..."
+
+          # === LOOP PRINCIPAL ===
+          COUNT=1
           SKIPPED=0
           FAILURES=0
           for f in out/linhas-*.geojson; do
             [ -f "$f" ] || continue
             FNAME=$(basename "$f")
-            # Pular arquivos já enviados
-            if grep -qxF "$FNAME" out/uploaded.txt 2>/dev/null; then
+            # Pular arquivos já enviados E o arquivo de teste (ja foi enviado acima)
+            if grep -qxF "$FNAME" out/uploaded.txt 2>/dev/null || [ "$FNAME" = "$FIRST_NEW_FNAME" ]; then
               SKIPPED=$((SKIPPED + 1))
               continue
             fi
