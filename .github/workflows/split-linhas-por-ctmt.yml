@@ -177,13 +177,13 @@ jobs:
               SKIPPED=$((SKIPPED + 1))
               continue
             fi
-            if timeout 120 gh release upload "${{ inputs.tag }}" "$f" --clobber \
+            if timeout -k 10 120 gh release upload "${{ inputs.tag }}" "$f" --clobber \
               --repo KogaIgor0/markfield-web 2>&1; then
               COUNT=$((COUNT + 1))
             else
               echo "AVISO: falha em $f, tentando novamente em 30s..."
               sleep 30
-              if timeout 120 gh release upload "${{ inputs.tag }}" "$f" --clobber \
+              if timeout -k 10 120 gh release upload "${{ inputs.tag }}" "$f" --clobber \
                 --repo KogaIgor0/markfield-web 2>&1; then
                 COUNT=$((COUNT + 1))
               else
