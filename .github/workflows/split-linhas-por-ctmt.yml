@@ -166,6 +166,29 @@ jobs:
             exit 1
           fi
           echo "Fazendo upload de $TOTAL arquivos para release ${{ inputs.tag }}..."
+
+          # Obter release_id e upload_url via curl (sem gh, para evitar estado corrompido)
+          RELEASE_JSON=$(curl -s \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/${{ inputs.tag }}")
+          RELEASE_ID=$(echo "$RELEASE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+          UPLOAD_URL=$(echo "$RELEASE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['upload_url'].split('{')[0])")
+          echo "Release ID: $RELEASE_ID | Upload URL: $UPLOAD_URL"
+
+          upload_file() {
+            local FPATH="$1"
+            local FNAME="$2"
+            local ENC_FNAME
+            ENC_FNAME=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$FNAME")
+            curl -s -o /tmp/upresp.json -w "%{http_code}" \
+              --max-time 60 \
+              --retry 0 \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Content-Type: application/geo+json" \
+              --data-binary "@$FPATH" \
+              "${UPLOAD_URL}?name=${ENC_FNAME}" 2>/dev/null || echo "000"
+          }
+
           COUNT=0
           SKIPPED=0
           FAILURES=0
@@ -177,23 +200,26 @@ jobs:
               SKIPPED=$((SKIPPED + 1))
               continue
             fi
-            if timeout -k 10 120 gh release upload "${{ inputs.tag }}" "$f" --clobber \
-              --repo KogaIgor0/markfield-web 2>&1; then
+            HTTP=$(upload_file "$f" "$FNAME")
+            if [ "$HTTP" = "201" ]; then
               COUNT=$((COUNT + 1))
             else
-              echo "AVISO: falha em $f, tentando novamente em 30s..."
-              sleep 30
-              if timeout -k 10 120 gh release upload "${{ inputs.tag }}" "$f" --clobber \
-                --repo KogaIgor0/markfield-web 2>&1; then
+              echo "AVISO: $FNAME HTTP=$HTTP, aguardando 20s e retentando..."
+              sleep 20
+              HTTP=$(upload_file "$f" "$FNAME")
+              if [ "$HTTP" = "201" ]; then
                 COUNT=$((COUNT + 1))
               else
-                echo "ERRO: $f nao enviado."
+                echo "ERRO: $FNAME nao enviado (HTTP=$HTTP)"
                 FAILURES=$((FAILURES + 1))
               fi
             fi
             if [ $(( (COUNT + FAILURES) % 50 )) -eq 0 ] && [ $((COUNT + FAILURES)) -gt 0 ]; then
-              echo "[$((COUNT + FAILURES))] Pausa 90s para evitar rate limit..."
-              sleep 90
+              echo "[$((COUNT + FAILURES))] Pausa 60s para evitar rate limit..."
+              sleep 60
+            fi
+            if [ $((COUNT % 100)) -eq 0 ] && [ $COUNT -gt 0 ]; then
+              echo "Progresso: $COUNT novos, $SKIPPED pulados, $FAILURES falhas"
             fi
           done
           echo "Upload linhas: $COUNT novos, $SKIPPED pulados, $FAILURES falhas."
