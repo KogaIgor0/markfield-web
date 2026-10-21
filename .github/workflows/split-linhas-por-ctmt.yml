@@ -167,12 +167,19 @@ jobs:
           fi
           echo "Fazendo upload de $TOTAL arquivos para release ${{ inputs.tag }}..."
 
-          # Obter release_id e upload_url via curl (sem gh, para evitar estado corrompido)
-          RELEASE_JSON=$(curl -s \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/${{ inputs.tag }}")
-          RELEASE_ID=$(echo "$RELEASE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-          UPLOAD_URL=$(echo "$RELEASE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['upload_url'].split('{')[0])")
+          # Obter release_id e upload_url via gh api (com timeout defensivo)
+          RELEASE_INFO=$(timeout 30 gh api \
+            "repos/KogaIgor0/markfield-web/releases/tags/${{ inputs.tag }}" \
+            2>/dev/null || echo "{}")
+          RELEASE_ID=$(echo "$RELEASE_INFO" | python3 -c \
+            "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+          UPLOAD_URL=$(echo "$RELEASE_INFO" | python3 -c \
+            "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
+          if [ -z "$RELEASE_ID" ] || [ -z "$UPLOAD_URL" ]; then
+            echo "ERRO: nao foi possivel obter RELEASE_ID ou UPLOAD_URL."
+            echo "RELEASE_INFO: $RELEASE_INFO"
+            exit 1
+          fi
           echo "Release ID: $RELEASE_ID | Upload URL: $UPLOAD_URL"
 
           upload_file() {
