@@ -122,7 +122,7 @@ jobs:
           done < out/ctmts.txt
 
           rm -f out/ssdmt.gpkg out/ctmts.txt
-          TOTAL_FILES=$(ls out/linhas-*.geojson 2>/dev/null | wc -l)
+          TOTAL_FILES=$(find out -name "linhas-*.geojson" | wc -l)
           echo "Arquivos gerados: $TOTAL_FILES"
           df -h .
 
@@ -162,39 +162,64 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TOTAL=$(ls out/linhas-*.geojson 2>/dev/null | wc -l)
+          set +o pipefail
+
+          # Diagnostico: escreve na release body ao sair (para debug)
+          DIAG_RELEASE_ID="407125301"
+          DIAG_MSG="v13-start"
+          on_exit() {
+            local EC=$?
+            gh api --method PATCH \
+              "repos/KogaIgor0/markfield-web/releases/${DIAG_RELEASE_ID}" \
+              -f "body=DIAG-v13 exit=${EC}: ${DIAG_MSG}" 2>/dev/null || true
+          }
+          trap on_exit EXIT
+
+          TOTAL=$(find out -name "linhas-*.geojson" | wc -l)
+          DIAG_MSG="TOTAL=${TOTAL}"
+          echo "Total arquivos geojson: $TOTAL"
+
           if [ "$TOTAL" -eq 0 ]; then
             echo "Nenhum arquivo linhas-*.geojson para upload."
             exit 1
           fi
+
           ALREADY=$(wc -l < out/uploaded.txt 2>/dev/null || echo 0)
+          DIAG_MSG="TOTAL=${TOTAL} ALREADY=${ALREADY}"
           BASE_TAG="${{ inputs.tag }}"
           echo "Total: $TOTAL | Ja enviados: $ALREADY | Novos estimados: $((TOTAL - ALREADY))"
 
-          # Obter info da release principal
-          RELEASE_INFO=$(timeout 30 gh api \
+          RELEASE_JSON=$(timeout 30 gh api \
             "repos/KogaIgor0/markfield-web/releases/tags/${BASE_TAG}" \
             2>/dev/null || echo "{}")
-          RELEASE_ID=$(echo "$RELEASE_INFO" | python3 -c \
-            "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
-          UPLOAD_URL=$(echo "$RELEASE_INFO" | python3 -c \
-            "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
+          DIAG_MSG="TOTAL=${TOTAL} ALREADY=${ALREADY} JSON_LEN=${#RELEASE_JSON}"
+
+          RELEASE_ID=$(python3 -c \
+            "import sys,json; d=json.loads(sys.argv[1]); print(d.get('id',''))" \
+            "$RELEASE_JSON" 2>/dev/null || echo "")
+          UPLOAD_URL=$(python3 -c \
+            "import sys,json; d=json.loads(sys.argv[1]); u=d.get('upload_url',''); print(u.split('{')[0])" \
+            "$RELEASE_JSON" 2>/dev/null || echo "")
+          DIAG_MSG="TOTAL=${TOTAL} ALREADY=${ALREADY} RELEASE_ID=${RELEASE_ID}"
+
           if [ -z "$RELEASE_ID" ] || [ -z "$UPLOAD_URL" ]; then
             echo "ERRO: nao foi possivel obter release ${BASE_TAG}"
-            echo "RELEASE_INFO: $RELEASE_INFO"
+            echo "JSON (primeiros 200 chars): ${RELEASE_JSON:0:200}"
             exit 1
           fi
-          echo "Release: $RELEASE_ID | Upload URL: $UPLOAD_URL"
+          echo "Release: $RELEASE_ID | Upload URL: ${UPLOAD_URL:0:60}..."
 
-          # Release atual (pode mudar para overflow)
           CURRENT_UPLOAD_URL="$UPLOAD_URL"
           OVERFLOW_SUFFIX=""
+          DIAG_MSG="TOTAL=${TOTAL} ALREADY=${ALREADY} RELEASE_ID=${RELEASE_ID} iniciando_loop"
 
           upload_file() {
             local FPATH="$1"
             local FNAME="$2"
             local ENC_FNAME
-            ENC_FNAME=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$FNAME")
+            ENC_FNAME=$(python3 -c \
+              "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" \
+              "$FNAME" 2>/dev/null || echo "$FNAME")
             curl -s -o /tmp/upresp.json -w "%{http_code}" \
               --connect-timeout 15 \
               --max-time 90 \
@@ -221,13 +246,15 @@ jobs:
             if [ "$HTTP" = "201" ]; then
               COUNT=$((COUNT + 1))
             elif [ "$HTTP" = "422" ]; then
-              IS_DUP=$(python3 -c "import json; d=json.load(open('/tmp/upresp.json')); e=d.get('errors',[]); print('yes' if any(x.get('code')=='already_exists' for x in e) else 'no')" 2>/dev/null || echo "no")
+              RESP_BODY=$(cat /tmp/upresp.json 2>/dev/null || echo "{}")
+              IS_DUP=$(python3 -c \
+                "import sys,json; d=json.loads(sys.argv[1]); e=d.get('errors',[]); print('yes' if any(x.get('code')=='already_exists' for x in e) else 'no')" \
+                "$RESP_BODY" 2>/dev/null || echo "no")
               if [ "$IS_DUP" = "yes" ]; then
                 echo "INFO: $FNAME ja existe (already_exists), pulando"
                 SKIPPED=$((SKIPPED + 1))
               else
-                # Limite da release atingido — criar/usar release overflow
-                echo "INFO: Release cheia (422). Criando overflow..."
+                echo "INFO: Release $OVERFLOW_SUFFIX cheia (422), criando overflow..."
                 case "$OVERFLOW_SUFFIX" in
                   "")   OVERFLOW_SUFFIX="-b" ;;
                   "-b") OVERFLOW_SUFFIX="-c" ;;
@@ -237,27 +264,30 @@ jobs:
                 OVF_TAG="${BASE_TAG}${OVERFLOW_SUFFIX}"
                 echo "Overflow tag: $OVF_TAG"
 
-                # Verificar se release overflow ja existe
-                OVF_INFO=$(timeout 30 gh api \
+                OVF_JSON=$(timeout 30 gh api \
                   "repos/KogaIgor0/markfield-web/releases/tags/${OVF_TAG}" \
                   2>/dev/null || echo "{}")
-                OVF_ID=$(echo "$OVF_INFO" | python3 -c \
-                  "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
-                OVF_UURL=$(echo "$OVF_INFO" | python3 -c \
-                  "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
+                OVF_ID=$(python3 -c \
+                  "import sys,json; d=json.loads(sys.argv[1]); print(d.get('id',''))" \
+                  "$OVF_JSON" 2>/dev/null || echo "")
+                OVF_UURL=$(python3 -c \
+                  "import sys,json; d=json.loads(sys.argv[1]); u=d.get('upload_url',''); print(u.split('{')[0])" \
+                  "$OVF_JSON" 2>/dev/null || echo "")
 
                 if [ -z "$OVF_ID" ]; then
                   echo "Criando nova release: $OVF_TAG"
-                  OVF_INFO=$(timeout 60 gh api --method POST \
+                  OVF_CREATE=$(timeout 60 gh api --method POST \
                     "repos/KogaIgor0/markfield-web/releases" \
                     -f "tag_name=${OVF_TAG}" \
                     -f "name=${OVF_TAG}" \
                     -f "body=Overflow de ${BASE_TAG} (linhas CTMT, parte ${OVERFLOW_SUFFIX})" \
                     2>/dev/null || echo "{}")
-                  OVF_ID=$(echo "$OVF_INFO" | python3 -c \
-                    "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
-                  OVF_UURL=$(echo "$OVF_INFO" | python3 -c \
-                    "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
+                  OVF_ID=$(python3 -c \
+                    "import sys,json; d=json.loads(sys.argv[1]); print(d.get('id',''))" \
+                    "$OVF_CREATE" 2>/dev/null || echo "")
+                  OVF_UURL=$(python3 -c \
+                    "import sys,json; d=json.loads(sys.argv[1]); u=d.get('upload_url',''); print(u.split('{')[0])" \
+                    "$OVF_CREATE" 2>/dev/null || echo "")
                 fi
 
                 if [ -z "$OVF_ID" ] || [ -z "$OVF_UURL" ]; then
@@ -271,7 +301,6 @@ jobs:
                     COUNT=$((COUNT + 1))
                   else
                     echo "ERRO: $FNAME nao enviado apos overflow (HTTP=$HTTP)"
-                    cat /tmp/upresp.json 2>/dev/null | head -c 200 || true
                     FAILURES=$((FAILURES + 1))
                   fi
                 fi
@@ -289,6 +318,7 @@ jobs:
             fi
 
             if [ $((COUNT % 100)) -eq 0 ] && [ $COUNT -gt 0 ]; then
+              DIAG_MSG="TOTAL=${TOTAL} COUNT=${COUNT} SKIP=${SKIPPED} FAIL=${FAILURES} OVF=${OVERFLOW_SUFFIX}"
               echo "Progresso: $COUNT novos, $SKIPPED pulados, $FAILURES falhas | overflow: ${OVERFLOW_SUFFIX:-nenhum}"
             fi
             if [ $(( (COUNT + FAILURES) % 50 )) -eq 0 ] && [ $((COUNT + FAILURES)) -gt 0 ]; then
@@ -296,5 +326,9 @@ jobs:
               sleep 60
             fi
           done
+
+          DIAG_MSG="FINALIZADO COUNT=${COUNT} SKIP=${SKIPPED} FAIL=${FAILURES} OVF=${OVERFLOW_SUFFIX}"
           echo "Upload finalizado: $COUNT novos, $SKIPPED pulados, $FAILURES falhas."
-          [ "$FAILURES" -eq 0 ]
+          if [ "$FAILURES" -gt 0 ]; then
+            exit 1
+          fi
