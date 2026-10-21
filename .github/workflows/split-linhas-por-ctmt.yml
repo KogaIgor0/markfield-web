@@ -61,7 +61,6 @@ jobs:
 
       - name: Dividir por CTMT
         run: |
-          # Descobrir nome real da tabela no GPKG (pode ser SSDMT ou ssdmt dependendo do GDAL)
           TABLE=$(sqlite3 out/ssdmt.gpkg \
             "SELECT name FROM sqlite_master WHERE type='table' AND lower(name) LIKE '%ssdmt%' LIMIT 1;" \
             2>/dev/null)
@@ -79,7 +78,6 @@ jobs:
           fi
           echo "Tabela: $TABLE"
 
-          # Encontrar coluna CTMT (case-insensitive)
           CTMT_COL=$(sqlite3 out/ssdmt.gpkg \
             "SELECT name FROM pragma_table_info('$TABLE') WHERE lower(name) IN ('ctmt','cod_ctmt') ORDER BY CASE lower(name) WHEN 'ctmt' THEN 0 ELSE 1 END LIMIT 1;" \
             2>/dev/null)
@@ -90,11 +88,9 @@ jobs:
           fi
           echo "Coluna CTMT: $CTMT_COL"
 
-          # Criar indice para queries rapidas
           sqlite3 out/ssdmt.gpkg \
             "CREATE INDEX IF NOT EXISTS idx_ctmt ON \"$TABLE\"(\"$CTMT_COL\");" 2>/dev/null || true
 
-          # Obter lista de CTMTs unicos
           sqlite3 out/ssdmt.gpkg \
             "SELECT DISTINCT \"$CTMT_COL\" FROM \"$TABLE\" WHERE \"$CTMT_COL\" IS NOT NULL AND \"$CTMT_COL\" != '' ORDER BY \"$CTMT_COL\";" \
             > out/ctmts.txt 2>/dev/null
@@ -107,7 +103,6 @@ jobs:
             exit 1
           fi
 
-          # Exportar um GeoJSON por CTMT usando ogr2ogr -where (eficiente com indice)
           COUNT=0
           while IFS= read -r ctmt; do
             [ -z "$ctmt" ] && continue
@@ -132,31 +127,46 @@ jobs:
           echo "Arquivos gerados: $TOTAL_FILES"
           df -h .
 
-      - name: Listar arquivos ja enviados no release
+      - name: Listar arquivos ja enviados (todas as releases)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Verificando arquivos ja enviados para evitar re-upload..."
+          echo "Verificando arquivos ja enviados (release principal + overflows)..."
           mkdir -p out
           > out/uploaded.txt
-          RELEASE_ID=$(gh api "repos/KogaIgor0/markfield-web/releases/tags/${{ inputs.tag }}" \
-            -q '.id' 2>/dev/null || echo "")
-          if [ -n "$RELEASE_ID" ]; then
-            PAGE=1
+          BASE_TAG="${{ inputs.tag }}"
+
+          scan_release() {
+            local SCAN_TAG="$1"
+            local SCAN_ID
+            SCAN_ID=$(timeout 30 gh api \
+              "repos/KogaIgor0/markfield-web/releases/tags/${SCAN_TAG}" \
+              -q '.id' 2>/dev/null || echo "")
+            [ -z "$SCAN_ID" ] && return
+            echo "  Escaneando: $SCAN_TAG (ID: $SCAN_ID)"
+            local PAGE=1
             while true; do
-              BATCH=$(gh api "repos/KogaIgor0/markfield-web/releases/$RELEASE_ID/assets?per_page=100&page=$PAGE" \
+              local BATCH
+              BATCH=$(timeout 30 gh api \
+                "repos/KogaIgor0/markfield-web/releases/${SCAN_ID}/assets?per_page=100&page=${PAGE}" \
                 -q '.[].name' 2>/dev/null || true)
               [ -z "$BATCH" ] && break
               echo "$BATCH" >> out/uploaded.txt
-              COUNT=$(echo "$BATCH" | wc -l)
-              [ "$COUNT" -lt 100 ] && break
+              local CNT
+              CNT=$(echo "$BATCH" | wc -l)
+              [ "$CNT" -lt 100 ] && break
               PAGE=$((PAGE + 1))
             done
-          fi
-          ALREADY=$(wc -l < out/uploaded.txt)
-          echo "Arquivos ja enviados: $ALREADY"
+          }
 
-      - name: Upload linhas por CTMT
+          for SUFFIX in "" "-b" "-c" "-d" "-e"; do
+            scan_release "${BASE_TAG}${SUFFIX}"
+          done
+
+          ALREADY=$(wc -l < out/uploaded.txt)
+          echo "Total arquivos ja enviados: $ALREADY"
+
+      - name: Upload linhas por CTMT (com releases overflow automaticas)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -166,22 +176,77 @@ jobs:
             exit 1
           fi
           ALREADY=$(wc -l < out/uploaded.txt 2>/dev/null || echo 0)
-          echo "Fazendo upload de $TOTAL arquivos para release ${{ inputs.tag }} (ja enviados: $ALREADY)..."
+          BASE_TAG="${{ inputs.tag }}"
+          echo "Total arquivos: $TOTAL | Ja enviados: $ALREADY | Novos: $((TOTAL - ALREADY))"
 
-          # Obter release_id e upload_url via gh api (com timeout defensivo)
-          RELEASE_INFO=$(timeout 30 gh api \
-            "repos/KogaIgor0/markfield-web/releases/tags/${{ inputs.tag }}" \
-            2>/dev/null || echo "{}")
-          RELEASE_ID=$(echo "$RELEASE_INFO" | python3 -c \
-            "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
-          UPLOAD_URL=$(echo "$RELEASE_INFO" | python3 -c \
-            "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
-          if [ -z "$RELEASE_ID" ] || [ -z "$UPLOAD_URL" ]; then
-            echo "ERRO: nao foi possivel obter RELEASE_ID ou UPLOAD_URL."
-            echo "RELEASE_INFO: $RELEASE_INFO"
-            exit 1
-          fi
-          echo "Release ID: $RELEASE_ID | Upload URL: $UPLOAD_URL"
+          # Variaveis de estado da release atual
+          CURRENT_RELEASE_ID=""
+          CURRENT_UPLOAD_URL=""
+          CURRENT_TAG=""
+          OVERFLOW_SUFFIX=""
+
+          # Obter info da release principal
+          load_release_info() {
+            local TAG="$1"
+            local INFO
+            INFO=$(timeout 30 gh api \
+              "repos/KogaIgor0/markfield-web/releases/tags/${TAG}" \
+              2>/dev/null || echo "{}")
+            CURRENT_RELEASE_ID=$(echo "$INFO" | python3 -c \
+              "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+            CURRENT_UPLOAD_URL=$(echo "$INFO" | python3 -c \
+              "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
+            CURRENT_TAG="$TAG"
+          }
+
+          # Criar ou recuperar a proxima release overflow
+          switch_overflow() {
+            case "$OVERFLOW_SUFFIX" in
+              "")   OVERFLOW_SUFFIX="-b" ;;
+              "-b") OVERFLOW_SUFFIX="-c" ;;
+              "-c") OVERFLOW_SUFFIX="-d" ;;
+              "-d") OVERFLOW_SUFFIX="-e" ;;
+              *)    echo "ERRO: limite de releases overflow atingido"; exit 1 ;;
+            esac
+            local NEXT_TAG="${BASE_TAG}${OVERFLOW_SUFFIX}"
+            echo "=== Overflow: tentando release ${NEXT_TAG} ==="
+
+            # Verificar se ja existe
+            local INFO
+            INFO=$(timeout 30 gh api \
+              "repos/KogaIgor0/markfield-web/releases/tags/${NEXT_TAG}" \
+              2>/dev/null || echo "{}")
+            local EXISTING_ID
+            EXISTING_ID=$(echo "$INFO" | python3 -c \
+              "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+
+            if [ -n "$EXISTING_ID" ]; then
+              echo "Release overflow existente: ${NEXT_TAG} (ID: $EXISTING_ID)"
+              CURRENT_RELEASE_ID="$EXISTING_ID"
+              CURRENT_UPLOAD_URL=$(echo "$INFO" | python3 -c \
+                "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
+            else
+              echo "Criando release overflow: ${NEXT_TAG}"
+              INFO=$(timeout 60 gh api --method POST \
+                "repos/KogaIgor0/markfield-web/releases" \
+                -f "tag_name=${NEXT_TAG}" \
+                -f "name=${NEXT_TAG}" \
+                -f "body=Overflow de ${BASE_TAG} (linhas split por CTMT, parte ${OVERFLOW_SUFFIX})" \
+                2>/dev/null || echo "{}")
+              CURRENT_RELEASE_ID=$(echo "$INFO" | python3 -c \
+                "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+              CURRENT_UPLOAD_URL=$(echo "$INFO" | python3 -c \
+                "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
+              if [ -z "$CURRENT_RELEASE_ID" ] || [ -z "$CURRENT_UPLOAD_URL" ]; then
+                echo "ERRO: Nao foi possivel criar release overflow ${NEXT_TAG}"
+                echo "Resposta: $INFO"
+                exit 1
+              fi
+              echo "Release criada: ID=$CURRENT_RELEASE_ID"
+            fi
+            CURRENT_TAG="$NEXT_TAG"
+            echo "Upload agora em: $CURRENT_TAG"
+          }
 
           upload_file() {
             local FPATH="$1"
@@ -195,63 +260,62 @@ jobs:
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               -H "Content-Type: application/geo+json" \
               --data-binary "@$FPATH" \
-              "${UPLOAD_URL}?name=${ENC_FNAME}" 2>/dev/null || echo "000"
+              "${CURRENT_UPLOAD_URL}?name=${ENC_FNAME}" 2>/dev/null || echo "000"
           }
 
-          # === TESTE DIAGNOSTICO: tentar upload do primeiro arquivo novo ===
-          FIRST_NEW=""
-          for f in out/linhas-*.geojson; do
-            [ -f "$f" ] || continue
-            FNAME=$(basename "$f")
-            if ! grep -qxF "$FNAME" out/uploaded.txt 2>/dev/null; then
-              FIRST_NEW="$f"
-              FIRST_NEW_FNAME="$FNAME"
-              break
-            fi
-          done
+          is_422_already_exists() {
+            python3 -c "
+import sys, json
+try:
+    d = json.load(open('/tmp/upresp.json'))
+    errors = d.get('errors', [])
+    print('yes' if any(e.get('code') == 'already_exists' for e in errors) else 'no')
+except:
+    print('no')
+" 2>/dev/null
+          }
 
-          DIAG_MSG="DIAG v10 $(date -u +%Y-%m-%dT%H:%M:%SZ): TOTAL=$TOTAL ALREADY=$ALREADY"
-          if [ -z "$FIRST_NEW" ]; then
-            echo "Nenhum arquivo novo para upload (todos ja enviados)."
-            DIAG_MSG="$DIAG_MSG FIRST_NEW=none"
-            gh api --method PATCH \
-              "repos/KogaIgor0/markfield-web/releases/$RELEASE_ID" \
-              -f "body=$DIAG_MSG" 2>/dev/null || true
-            exit 0
-          fi
-
-          echo "=== TESTE DIAGNOSTICO: $FIRST_NEW_FNAME ==="
-          FSIZE=$(wc -c < "$FIRST_NEW")
-          echo "Tamanho: $FSIZE bytes"
-          TEST_HTTP=$(upload_file "$FIRST_NEW" "$FIRST_NEW_FNAME")
-          TEST_RESP=$(cat /tmp/upresp.json 2>/dev/null | head -c 200 || echo "")
-          echo "TEST HTTP=$TEST_HTTP RESP=$TEST_RESP"
-          DIAG_MSG="$DIAG_MSG FIRST_NEW=$FIRST_NEW_FNAME SIZE=$FSIZE TEST_HTTP=$TEST_HTTP RESP=${TEST_RESP:0:100}"
-          gh api --method PATCH \
-            "repos/KogaIgor0/markfield-web/releases/$RELEASE_ID" \
-            -f "body=$DIAG_MSG" 2>/dev/null || true
-
-          if [ "$TEST_HTTP" != "201" ]; then
-            echo "ERRO: Test upload falhou HTTP=$TEST_HTTP. Abortando."
+          # Iniciar com a release principal
+          load_release_info "${BASE_TAG}"
+          if [ -z "$CURRENT_RELEASE_ID" ] || [ -z "$CURRENT_UPLOAD_URL" ]; then
+            echo "ERRO: nao foi possivel obter info da release ${BASE_TAG}"
             exit 1
           fi
-          echo "Test upload OK. Iniciando loop principal..."
+          echo "Release inicial: $CURRENT_TAG (ID: $CURRENT_RELEASE_ID)"
 
-          # === LOOP PRINCIPAL ===
-          COUNT=1
+          COUNT=0
           SKIPPED=0
           FAILURES=0
           for f in out/linhas-*.geojson; do
             [ -f "$f" ] || continue
             FNAME=$(basename "$f")
-            # Pular arquivos já enviados E o arquivo de teste (ja foi enviado acima)
-            if grep -qxF "$FNAME" out/uploaded.txt 2>/dev/null || [ "$FNAME" = "$FIRST_NEW_FNAME" ]; then
+            if grep -qxF "$FNAME" out/uploaded.txt 2>/dev/null; then
               SKIPPED=$((SKIPPED + 1))
               continue
             fi
+
             HTTP=$(upload_file "$f" "$FNAME")
+
             if [ "$HTTP" = "201" ]; then
               COUNT=$((COUNT + 1))
+            elif [ "$HTTP" = "422" ]; then
+              DUP=$(is_422_already_exists)
+              if [ "$DUP" = "yes" ]; then
+                echo "INFO: $FNAME ja existe (already_exists), pulando"
+                SKIPPED=$((SKIPPED + 1))
+              else
+                echo "INFO: Release $CURRENT_TAG cheia (422 sem already_exists), criando overflow..."
+                switch_overflow
+                # Tentar novamente na nova release
+                HTTP=$(upload_file "$f" "$FNAME")
+                if [ "$HTTP" = "201" ]; then
+                  COUNT=$((COUNT + 1))
+                else
+                  echo "ERRO: $FNAME nao enviado apos overflow (HTTP=$HTTP)"
+                  cat /tmp/upresp.json 2>/dev/null | head -c 300 || true
+                  FAILURES=$((FAILURES + 1))
+                fi
+              fi
             else
               echo "AVISO: $FNAME HTTP=$HTTP, aguardando 20s e retentando..."
               sleep 20
@@ -263,13 +327,16 @@ jobs:
                 FAILURES=$((FAILURES + 1))
               fi
             fi
+
+            if [ $(( (COUNT + SKIPPED + FAILURES) % 200 )) -eq 0 ] && [ $((COUNT + SKIPPED + FAILURES)) -gt 0 ]; then
+              echo "[$((COUNT + SKIPPED + FAILURES))] Progresso: $COUNT novos, $SKIPPED pulados, $FAILURES falhas | Release atual: $CURRENT_TAG"
+              df -h .
+            fi
             if [ $(( (COUNT + FAILURES) % 50 )) -eq 0 ] && [ $((COUNT + FAILURES)) -gt 0 ]; then
-              echo "[$((COUNT + FAILURES))] Pausa 60s para evitar rate limit..."
+              echo "Pausa 60s rate limit..."
               sleep 60
             fi
-            if [ $((COUNT % 100)) -eq 0 ] && [ $COUNT -gt 0 ]; then
-              echo "Progresso: $COUNT novos, $SKIPPED pulados, $FAILURES falhas"
-            fi
           done
-          echo "Upload linhas: $COUNT novos, $SKIPPED pulados, $FAILURES falhas."
+          echo "Upload finalizado: $COUNT novos, $SKIPPED pulados, $FAILURES falhas."
+          echo "Releases usadas: ${BASE_TAG} e possivelmente overflows ate ${CURRENT_TAG}"
           [ "$FAILURES" -eq 0 ]
