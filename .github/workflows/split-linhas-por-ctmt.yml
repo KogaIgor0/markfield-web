@@ -98,8 +98,7 @@ jobs:
           echo "CTMTs encontrados: $TOTAL_CTMT"
 
           if [ "$TOTAL_CTMT" -eq 0 ]; then
-            echo "AVISO: Nenhum CTMT encontrado. Amostra da tabela:"
-            sqlite3 out/ssdmt.gpkg "SELECT * FROM \"$TABLE\" LIMIT 2;" 2>/dev/null || true
+            echo "AVISO: Nenhum CTMT encontrado."
             exit 1
           fi
 
@@ -136,37 +135,30 @@ jobs:
           > out/uploaded.txt
           BASE_TAG="${{ inputs.tag }}"
 
-          scan_release() {
-            local SCAN_TAG="$1"
-            local SCAN_ID
+          for SUFFIX in "" "-b" "-c" "-d" "-e"; do
+            SCAN_TAG="${BASE_TAG}${SUFFIX}"
             SCAN_ID=$(timeout 30 gh api \
               "repos/KogaIgor0/markfield-web/releases/tags/${SCAN_TAG}" \
               -q '.id' 2>/dev/null || echo "")
-            [ -z "$SCAN_ID" ] && return
+            if [ -z "$SCAN_ID" ]; then continue; fi
             echo "  Escaneando: $SCAN_TAG (ID: $SCAN_ID)"
-            local PAGE=1
+            PAGE=1
             while true; do
-              local BATCH
               BATCH=$(timeout 30 gh api \
                 "repos/KogaIgor0/markfield-web/releases/${SCAN_ID}/assets?per_page=100&page=${PAGE}" \
                 -q '.[].name' 2>/dev/null || true)
               [ -z "$BATCH" ] && break
               echo "$BATCH" >> out/uploaded.txt
-              local CNT
               CNT=$(echo "$BATCH" | wc -l)
               [ "$CNT" -lt 100 ] && break
               PAGE=$((PAGE + 1))
             done
-          }
-
-          for SUFFIX in "" "-b" "-c" "-d" "-e"; do
-            scan_release "${BASE_TAG}${SUFFIX}"
           done
 
           ALREADY=$(wc -l < out/uploaded.txt)
           echo "Total arquivos ja enviados: $ALREADY"
 
-      - name: Upload linhas por CTMT (com releases overflow automaticas)
+      - name: Upload linhas por CTMT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -177,76 +169,26 @@ jobs:
           fi
           ALREADY=$(wc -l < out/uploaded.txt 2>/dev/null || echo 0)
           BASE_TAG="${{ inputs.tag }}"
-          echo "Total arquivos: $TOTAL | Ja enviados: $ALREADY | Novos: $((TOTAL - ALREADY))"
-
-          # Variaveis de estado da release atual
-          CURRENT_RELEASE_ID=""
-          CURRENT_UPLOAD_URL=""
-          CURRENT_TAG=""
-          OVERFLOW_SUFFIX=""
+          echo "Total: $TOTAL | Ja enviados: $ALREADY | Novos estimados: $((TOTAL - ALREADY))"
 
           # Obter info da release principal
-          load_release_info() {
-            local TAG="$1"
-            local INFO
-            INFO=$(timeout 30 gh api \
-              "repos/KogaIgor0/markfield-web/releases/tags/${TAG}" \
-              2>/dev/null || echo "{}")
-            CURRENT_RELEASE_ID=$(echo "$INFO" | python3 -c \
-              "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
-            CURRENT_UPLOAD_URL=$(echo "$INFO" | python3 -c \
-              "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
-            CURRENT_TAG="$TAG"
-          }
+          RELEASE_INFO=$(timeout 30 gh api \
+            "repos/KogaIgor0/markfield-web/releases/tags/${BASE_TAG}" \
+            2>/dev/null || echo "{}")
+          RELEASE_ID=$(echo "$RELEASE_INFO" | python3 -c \
+            "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+          UPLOAD_URL=$(echo "$RELEASE_INFO" | python3 -c \
+            "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
+          if [ -z "$RELEASE_ID" ] || [ -z "$UPLOAD_URL" ]; then
+            echo "ERRO: nao foi possivel obter release ${BASE_TAG}"
+            echo "RELEASE_INFO: $RELEASE_INFO"
+            exit 1
+          fi
+          echo "Release: $RELEASE_ID | Upload URL: $UPLOAD_URL"
 
-          # Criar ou recuperar a proxima release overflow
-          switch_overflow() {
-            case "$OVERFLOW_SUFFIX" in
-              "")   OVERFLOW_SUFFIX="-b" ;;
-              "-b") OVERFLOW_SUFFIX="-c" ;;
-              "-c") OVERFLOW_SUFFIX="-d" ;;
-              "-d") OVERFLOW_SUFFIX="-e" ;;
-              *)    echo "ERRO: limite de releases overflow atingido"; exit 1 ;;
-            esac
-            local NEXT_TAG="${BASE_TAG}${OVERFLOW_SUFFIX}"
-            echo "=== Overflow: tentando release ${NEXT_TAG} ==="
-
-            # Verificar se ja existe
-            local INFO
-            INFO=$(timeout 30 gh api \
-              "repos/KogaIgor0/markfield-web/releases/tags/${NEXT_TAG}" \
-              2>/dev/null || echo "{}")
-            local EXISTING_ID
-            EXISTING_ID=$(echo "$INFO" | python3 -c \
-              "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
-
-            if [ -n "$EXISTING_ID" ]; then
-              echo "Release overflow existente: ${NEXT_TAG} (ID: $EXISTING_ID)"
-              CURRENT_RELEASE_ID="$EXISTING_ID"
-              CURRENT_UPLOAD_URL=$(echo "$INFO" | python3 -c \
-                "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
-            else
-              echo "Criando release overflow: ${NEXT_TAG}"
-              INFO=$(timeout 60 gh api --method POST \
-                "repos/KogaIgor0/markfield-web/releases" \
-                -f "tag_name=${NEXT_TAG}" \
-                -f "name=${NEXT_TAG}" \
-                -f "body=Overflow de ${BASE_TAG} (linhas split por CTMT, parte ${OVERFLOW_SUFFIX})" \
-                2>/dev/null || echo "{}")
-              CURRENT_RELEASE_ID=$(echo "$INFO" | python3 -c \
-                "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
-              CURRENT_UPLOAD_URL=$(echo "$INFO" | python3 -c \
-                "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
-              if [ -z "$CURRENT_RELEASE_ID" ] || [ -z "$CURRENT_UPLOAD_URL" ]; then
-                echo "ERRO: Nao foi possivel criar release overflow ${NEXT_TAG}"
-                echo "Resposta: $INFO"
-                exit 1
-              fi
-              echo "Release criada: ID=$CURRENT_RELEASE_ID"
-            fi
-            CURRENT_TAG="$NEXT_TAG"
-            echo "Upload agora em: $CURRENT_TAG"
-          }
+          # Release atual (pode mudar para overflow)
+          CURRENT_UPLOAD_URL="$UPLOAD_URL"
+          OVERFLOW_SUFFIX=""
 
           upload_file() {
             local FPATH="$1"
@@ -262,18 +204,6 @@ jobs:
               --data-binary "@$FPATH" \
               "${CURRENT_UPLOAD_URL}?name=${ENC_FNAME}" 2>/dev/null || echo "000"
           }
-
-          is_422_already_exists() {
-            python3 -c "import json; d=json.load(open('/tmp/upresp.json')); e=d.get('errors',[]); print('yes' if any(x.get('code')=='already_exists' for x in e) else 'no')" 2>/dev/null || echo "no"
-          }
-
-          # Iniciar com a release principal
-          load_release_info "${BASE_TAG}"
-          if [ -z "$CURRENT_RELEASE_ID" ] || [ -z "$CURRENT_UPLOAD_URL" ]; then
-            echo "ERRO: nao foi possivel obter info da release ${BASE_TAG}"
-            exit 1
-          fi
-          echo "Release inicial: $CURRENT_TAG (ID: $CURRENT_RELEASE_ID)"
 
           COUNT=0
           SKIPPED=0
@@ -291,21 +221,59 @@ jobs:
             if [ "$HTTP" = "201" ]; then
               COUNT=$((COUNT + 1))
             elif [ "$HTTP" = "422" ]; then
-              DUP=$(is_422_already_exists)
-              if [ "$DUP" = "yes" ]; then
+              IS_DUP=$(python3 -c "import json; d=json.load(open('/tmp/upresp.json')); e=d.get('errors',[]); print('yes' if any(x.get('code')=='already_exists' for x in e) else 'no')" 2>/dev/null || echo "no")
+              if [ "$IS_DUP" = "yes" ]; then
                 echo "INFO: $FNAME ja existe (already_exists), pulando"
                 SKIPPED=$((SKIPPED + 1))
               else
-                echo "INFO: Release $CURRENT_TAG cheia (422 sem already_exists), criando overflow..."
-                switch_overflow
-                # Tentar novamente na nova release
-                HTTP=$(upload_file "$f" "$FNAME")
-                if [ "$HTTP" = "201" ]; then
-                  COUNT=$((COUNT + 1))
-                else
-                  echo "ERRO: $FNAME nao enviado apos overflow (HTTP=$HTTP)"
-                  cat /tmp/upresp.json 2>/dev/null | head -c 300 || true
+                # Limite da release atingido — criar/usar release overflow
+                echo "INFO: Release cheia (422). Criando overflow..."
+                case "$OVERFLOW_SUFFIX" in
+                  "")   OVERFLOW_SUFFIX="-b" ;;
+                  "-b") OVERFLOW_SUFFIX="-c" ;;
+                  "-c") OVERFLOW_SUFFIX="-d" ;;
+                  *)    echo "ERRO: muitas releases overflow"; exit 1 ;;
+                esac
+                OVF_TAG="${BASE_TAG}${OVERFLOW_SUFFIX}"
+                echo "Overflow tag: $OVF_TAG"
+
+                # Verificar se release overflow ja existe
+                OVF_INFO=$(timeout 30 gh api \
+                  "repos/KogaIgor0/markfield-web/releases/tags/${OVF_TAG}" \
+                  2>/dev/null || echo "{}")
+                OVF_ID=$(echo "$OVF_INFO" | python3 -c \
+                  "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+                OVF_UURL=$(echo "$OVF_INFO" | python3 -c \
+                  "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
+
+                if [ -z "$OVF_ID" ]; then
+                  echo "Criando nova release: $OVF_TAG"
+                  OVF_INFO=$(timeout 60 gh api --method POST \
+                    "repos/KogaIgor0/markfield-web/releases" \
+                    -f "tag_name=${OVF_TAG}" \
+                    -f "name=${OVF_TAG}" \
+                    -f "body=Overflow de ${BASE_TAG} (linhas CTMT, parte ${OVERFLOW_SUFFIX})" \
+                    2>/dev/null || echo "{}")
+                  OVF_ID=$(echo "$OVF_INFO" | python3 -c \
+                    "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+                  OVF_UURL=$(echo "$OVF_INFO" | python3 -c \
+                    "import sys,json; d=json.load(sys.stdin); u=d.get('upload_url',''); print(u.split('{')[0])" 2>/dev/null)
+                fi
+
+                if [ -z "$OVF_ID" ] || [ -z "$OVF_UURL" ]; then
+                  echo "ERRO: nao foi possivel criar release $OVF_TAG"
                   FAILURES=$((FAILURES + 1))
+                else
+                  echo "Usando release overflow: $OVF_TAG (ID=$OVF_ID)"
+                  CURRENT_UPLOAD_URL="$OVF_UURL"
+                  HTTP=$(upload_file "$f" "$FNAME")
+                  if [ "$HTTP" = "201" ]; then
+                    COUNT=$((COUNT + 1))
+                  else
+                    echo "ERRO: $FNAME nao enviado apos overflow (HTTP=$HTTP)"
+                    cat /tmp/upresp.json 2>/dev/null | head -c 200 || true
+                    FAILURES=$((FAILURES + 1))
+                  fi
                 fi
               fi
             else
@@ -320,9 +288,8 @@ jobs:
               fi
             fi
 
-            if [ $(( (COUNT + SKIPPED + FAILURES) % 200 )) -eq 0 ] && [ $((COUNT + SKIPPED + FAILURES)) -gt 0 ]; then
-              echo "[$((COUNT + SKIPPED + FAILURES))] Progresso: $COUNT novos, $SKIPPED pulados, $FAILURES falhas | Release atual: $CURRENT_TAG"
-              df -h .
+            if [ $((COUNT % 100)) -eq 0 ] && [ $COUNT -gt 0 ]; then
+              echo "Progresso: $COUNT novos, $SKIPPED pulados, $FAILURES falhas | overflow: ${OVERFLOW_SUFFIX:-nenhum}"
             fi
             if [ $(( (COUNT + FAILURES) % 50 )) -eq 0 ] && [ $((COUNT + FAILURES)) -gt 0 ]; then
               echo "Pausa 60s rate limit..."
@@ -330,5 +297,4 @@ jobs:
             fi
           done
           echo "Upload finalizado: $COUNT novos, $SKIPPED pulados, $FAILURES falhas."
-          echo "Releases usadas: ${BASE_TAG} e possivelmente overflows ate ${CURRENT_TAG}"
           [ "$FAILURES" -eq 0 ]
