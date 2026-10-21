@@ -16,7 +16,7 @@ on:
 jobs:
   split:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 300
     permissions:
       contents: write
 
@@ -68,7 +68,6 @@ jobs:
           if [ -z "$TABLE" ]; then
             echo "Tabela SSDMT nao encontrada. Tabelas no GPKG:"
             sqlite3 out/ssdmt.gpkg ".tables" 2>/dev/null || true
-            # Tentar com a tabela que nao e gpkg_*
             TABLE=$(sqlite3 out/ssdmt.gpkg \
               "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'gpkg_%' AND name NOT LIKE 'rtree_%' AND name NOT LIKE 'sqlite_%' LIMIT 1;" \
               2>/dev/null)
@@ -133,6 +132,30 @@ jobs:
           echo "Arquivos gerados: $TOTAL_FILES"
           df -h .
 
+      - name: Listar arquivos ja enviados no release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Verificando arquivos ja enviados para evitar re-upload..."
+          mkdir -p out
+          > out/uploaded.txt
+          RELEASE_ID=$(gh api "repos/KogaIgor0/markfield-web/releases/tags/${{ inputs.tag }}" \
+            -q '.id' 2>/dev/null || echo "")
+          if [ -n "$RELEASE_ID" ]; then
+            PAGE=1
+            while true; do
+              BATCH=$(gh api "repos/KogaIgor0/markfield-web/releases/$RELEASE_ID/assets?per_page=100&page=$PAGE" \
+                -q '.[].name' 2>/dev/null || true)
+              [ -z "$BATCH" ] && break
+              echo "$BATCH" >> out/uploaded.txt
+              COUNT=$(echo "$BATCH" | wc -l)
+              [ "$COUNT" -lt 100 ] && break
+              PAGE=$((PAGE + 1))
+            done
+          fi
+          ALREADY=$(wc -l < out/uploaded.txt)
+          echo "Arquivos ja enviados: $ALREADY"
+
       - name: Upload linhas por CTMT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -144,9 +167,16 @@ jobs:
           fi
           echo "Fazendo upload de $TOTAL arquivos para release ${{ inputs.tag }}..."
           COUNT=0
+          SKIPPED=0
           FAILURES=0
           for f in out/linhas-*.geojson; do
             [ -f "$f" ] || continue
+            FNAME=$(basename "$f")
+            # Pular arquivos já enviados
+            if grep -qxF "$FNAME" out/uploaded.txt 2>/dev/null; then
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
             if gh release upload "${{ inputs.tag }}" "$f" --clobber \
               --repo KogaIgor0/markfield-web 2>&1; then
               COUNT=$((COUNT + 1))
@@ -162,9 +192,9 @@ jobs:
               fi
             fi
             if [ $(( (COUNT + FAILURES) % 50 )) -eq 0 ] && [ $((COUNT + FAILURES)) -gt 0 ]; then
-              echo "[$((COUNT + FAILURES))/$TOTAL] Pausa 90s para evitar rate limit..."
+              echo "[$((COUNT + FAILURES))] Pausa 90s para evitar rate limit..."
               sleep 90
             fi
           done
-          echo "Upload linhas: $COUNT ok, $FAILURES falhas."
+          echo "Upload linhas: $COUNT novos, $SKIPPED pulados, $FAILURES falhas."
           [ "$FAILURES" -eq 0 ]
