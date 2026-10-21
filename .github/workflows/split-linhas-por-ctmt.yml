@@ -164,14 +164,14 @@ jobs:
         run: |
           set +o pipefail
 
-          # Diagnostico: escreve na release body ao sair (para debug)
+          # Diagnostico via trap (escreve na release body ao sair)
           DIAG_RELEASE_ID="407125301"
-          DIAG_MSG="v13-start"
+          DIAG_MSG="v14-start"
           on_exit() {
             local EC=$?
             gh api --method PATCH \
               "repos/KogaIgor0/markfield-web/releases/${DIAG_RELEASE_ID}" \
-              -f "body=DIAG-v13 exit=${EC}: ${DIAG_MSG}" 2>/dev/null || true
+              -f "body=DIAG-v14 exit=${EC}: ${DIAG_MSG}" 2>/dev/null || true
           }
           trap on_exit EXIT
 
@@ -185,33 +185,31 @@ jobs:
           fi
 
           ALREADY=$(wc -l < out/uploaded.txt 2>/dev/null || echo 0)
-          DIAG_MSG="TOTAL=${TOTAL} ALREADY=${ALREADY}"
           BASE_TAG="${{ inputs.tag }}"
+          DIAG_MSG="TOTAL=${TOTAL} ALREADY=${ALREADY}"
           echo "Total: $TOTAL | Ja enviados: $ALREADY | Novos estimados: $((TOTAL - ALREADY))"
 
-          RELEASE_JSON=$(timeout 30 gh api \
+          # Usar gh api -q para extrair apenas os campos necessarios
+          # (evita problema de JSON gigante com 1000 assets sendo parseado)
+          RELEASE_ID=$(timeout 30 gh api \
             "repos/KogaIgor0/markfield-web/releases/tags/${BASE_TAG}" \
-            2>/dev/null || echo "{}")
-          DIAG_MSG="TOTAL=${TOTAL} ALREADY=${ALREADY} JSON_LEN=${#RELEASE_JSON}"
-
-          RELEASE_ID=$(python3 -c \
-            "import sys,json; d=json.loads(sys.argv[1]); print(d.get('id',''))" \
-            "$RELEASE_JSON" 2>/dev/null || echo "")
-          UPLOAD_URL=$(python3 -c \
-            "import sys,json; d=json.loads(sys.argv[1]); u=d.get('upload_url',''); print(u.split('{')[0])" \
-            "$RELEASE_JSON" 2>/dev/null || echo "")
+            -q '.id' 2>/dev/null || echo "")
+          UPLOAD_URL_RAW=$(timeout 30 gh api \
+            "repos/KogaIgor0/markfield-web/releases/tags/${BASE_TAG}" \
+            -q '.upload_url' 2>/dev/null || echo "")
+          UPLOAD_URL="${UPLOAD_URL_RAW%%\{*}"
           DIAG_MSG="TOTAL=${TOTAL} ALREADY=${ALREADY} RELEASE_ID=${RELEASE_ID}"
 
           if [ -z "$RELEASE_ID" ] || [ -z "$UPLOAD_URL" ]; then
             echo "ERRO: nao foi possivel obter release ${BASE_TAG}"
-            echo "JSON (primeiros 200 chars): ${RELEASE_JSON:0:200}"
+            echo "RELEASE_ID='${RELEASE_ID}' UPLOAD_URL='${UPLOAD_URL}'"
             exit 1
           fi
           echo "Release: $RELEASE_ID | Upload URL: ${UPLOAD_URL:0:60}..."
 
           CURRENT_UPLOAD_URL="$UPLOAD_URL"
           OVERFLOW_SUFFIX=""
-          DIAG_MSG="TOTAL=${TOTAL} ALREADY=${ALREADY} RELEASE_ID=${RELEASE_ID} iniciando_loop"
+          DIAG_MSG="TOTAL=${TOTAL} ALREADY=${ALREADY} RELEASE_ID=${RELEASE_ID} loop_inicio"
 
           upload_file() {
             local FPATH="$1"
@@ -247,14 +245,14 @@ jobs:
               COUNT=$((COUNT + 1))
             elif [ "$HTTP" = "422" ]; then
               RESP_BODY=$(cat /tmp/upresp.json 2>/dev/null || echo "{}")
-              IS_DUP=$(python3 -c \
-                "import sys,json; d=json.loads(sys.argv[1]); e=d.get('errors',[]); print('yes' if any(x.get('code')=='already_exists' for x in e) else 'no')" \
-                "$RESP_BODY" 2>/dev/null || echo "no")
+              IS_DUP=$(echo "$RESP_BODY" | python3 -c \
+                "import sys,json; d=json.load(sys.stdin); e=d.get('errors',[]); print('yes' if any(x.get('code')=='already_exists' for x in e) else 'no')" \
+                2>/dev/null || echo "no")
               if [ "$IS_DUP" = "yes" ]; then
                 echo "INFO: $FNAME ja existe (already_exists), pulando"
                 SKIPPED=$((SKIPPED + 1))
               else
-                echo "INFO: Release $OVERFLOW_SUFFIX cheia (422), criando overflow..."
+                echo "INFO: Release ${BASE_TAG}${OVERFLOW_SUFFIX} cheia (422), criando overflow..."
                 case "$OVERFLOW_SUFFIX" in
                   "")   OVERFLOW_SUFFIX="-b" ;;
                   "-b") OVERFLOW_SUFFIX="-c" ;;
@@ -263,31 +261,28 @@ jobs:
                 esac
                 OVF_TAG="${BASE_TAG}${OVERFLOW_SUFFIX}"
                 echo "Overflow tag: $OVF_TAG"
+                DIAG_MSG="TOTAL=${TOTAL} COUNT=${COUNT} SKIP=${SKIPPED} criando_overflow=${OVF_TAG}"
 
-                OVF_JSON=$(timeout 30 gh api \
+                OVF_ID=$(timeout 30 gh api \
                   "repos/KogaIgor0/markfield-web/releases/tags/${OVF_TAG}" \
-                  2>/dev/null || echo "{}")
-                OVF_ID=$(python3 -c \
-                  "import sys,json; d=json.loads(sys.argv[1]); print(d.get('id',''))" \
-                  "$OVF_JSON" 2>/dev/null || echo "")
-                OVF_UURL=$(python3 -c \
-                  "import sys,json; d=json.loads(sys.argv[1]); u=d.get('upload_url',''); print(u.split('{')[0])" \
-                  "$OVF_JSON" 2>/dev/null || echo "")
+                  -q '.id' 2>/dev/null || echo "")
+                OVF_UURL_RAW=$(timeout 30 gh api \
+                  "repos/KogaIgor0/markfield-web/releases/tags/${OVF_TAG}" \
+                  -q '.upload_url' 2>/dev/null || echo "")
+                OVF_UURL="${OVF_UURL_RAW%%\{*}"
 
                 if [ -z "$OVF_ID" ]; then
                   echo "Criando nova release: $OVF_TAG"
-                  OVF_CREATE=$(timeout 60 gh api --method POST \
+                  OVF_ID=$(timeout 60 gh api --method POST \
                     "repos/KogaIgor0/markfield-web/releases" \
                     -f "tag_name=${OVF_TAG}" \
                     -f "name=${OVF_TAG}" \
                     -f "body=Overflow de ${BASE_TAG} (linhas CTMT, parte ${OVERFLOW_SUFFIX})" \
-                    2>/dev/null || echo "{}")
-                  OVF_ID=$(python3 -c \
-                    "import sys,json; d=json.loads(sys.argv[1]); print(d.get('id',''))" \
-                    "$OVF_CREATE" 2>/dev/null || echo "")
-                  OVF_UURL=$(python3 -c \
-                    "import sys,json; d=json.loads(sys.argv[1]); u=d.get('upload_url',''); print(u.split('{')[0])" \
-                    "$OVF_CREATE" 2>/dev/null || echo "")
+                    -q '.id' 2>/dev/null || echo "")
+                  OVF_UURL_RAW=$(timeout 30 gh api \
+                    "repos/KogaIgor0/markfield-web/releases/tags/${OVF_TAG}" \
+                    -q '.upload_url' 2>/dev/null || echo "")
+                  OVF_UURL="${OVF_UURL_RAW%%\{*}"
                 fi
 
                 if [ -z "$OVF_ID" ] || [ -z "$OVF_UURL" ]; then
@@ -327,7 +322,7 @@ jobs:
             fi
           done
 
-          DIAG_MSG="FINALIZADO COUNT=${COUNT} SKIP=${SKIPPED} FAIL=${FAILURES} OVF=${OVERFLOW_SUFFIX}"
+          DIAG_MSG="FINALIZADO COUNT=${COUNT} SKIP=${SKIPPED} FAIL=${FAILURES} OVF=${OVERFLOW_SUFFIX:-nenhum}"
           echo "Upload finalizado: $COUNT novos, $SKIPPED pulados, $FAILURES falhas."
           if [ "$FAILURES" -gt 0 ]; then
             exit 1
