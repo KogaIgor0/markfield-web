@@ -166,12 +166,12 @@ jobs:
 
           # Diagnostico: escreve na release body ao sair
           DIAG_RELEASE_ID="407125301"
-          DIAG_MSG="v15-start"
+          DIAG_MSG="v16-start"
           on_exit() {
             local EC=$?
             gh api --method PATCH \
               "repos/KogaIgor0/markfield-web/releases/${DIAG_RELEASE_ID}" \
-              -f "body=DIAG-v15 exit=${EC}: ${DIAG_MSG}" 2>/dev/null || true
+              -f "body=DIAG-v16 exit=${EC}: ${DIAG_MSG}" 2>/dev/null || true
           }
           trap on_exit EXIT
 
@@ -191,7 +191,7 @@ jobs:
             local TAG="$1"
             timeout 30 gh api \
               "repos/KogaIgor0/markfield-web/releases/tags/${TAG}" \
-              -q '[.id | tostring, .upload_url | split("{")[0]] | join("\t")' \
+              -q '[(.id | tostring), (.upload_url | split("{")[0])] | join("\t")' \
               2>/dev/null || echo ""
           }
 
@@ -257,7 +257,7 @@ jobs:
                 -f "tag_name=${OVF_TAG}" \
                 -f "name=${OVF_TAG}" \
                 -f "body=Overflow de ${BASE_TAG} (linhas CTMT, parte ${OVERFLOW_SUFFIX})" \
-                -q '[.id | tostring, .upload_url | split("{")[0]] | join("\t")' \
+                -q '[(.id | tostring), (.upload_url | split("{")[0])] | join("\t")' \
                 2>/dev/null || echo "")
               OVF_ID=$(printf '%s' "$OVF_INFO" | cut -f1)
               OVF_UURL=$(printf '%s' "$OVF_INFO" | cut -f2)
