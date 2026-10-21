@@ -264,15 +264,7 @@ jobs:
           }
 
           is_422_already_exists() {
-            python3 -c "
-import sys, json
-try:
-    d = json.load(open('/tmp/upresp.json'))
-    errors = d.get('errors', [])
-    print('yes' if any(e.get('code') == 'already_exists' for e in errors) else 'no')
-except:
-    print('no')
-" 2>/dev/null
+            python3 -c "import json; d=json.load(open('/tmp/upresp.json')); e=d.get('errors',[]); print('yes' if any(x.get('code')=='already_exists' for x in e) else 'no')" 2>/dev/null || echo "no"
           }
 
           # Iniciar com a release principal
