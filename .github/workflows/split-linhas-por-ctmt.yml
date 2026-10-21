@@ -49,19 +49,11 @@ jobs:
           unzip -q bdgd.gdb.zip
           GDB=$(find . -maxdepth 2 -name "*.gdb" -type d | head -1)
           echo "GDB: $GDB"
-
-          # Encontrar nome exato da camada SSDMT (case-insensitive)
-          LAYER=$(ogrinfo "$GDB" 2>/dev/null | grep -i "ssdmt" | grep -oP '^\s*\d+: \K\S+' | head -1)
-          if [ -z "$LAYER" ]; then
-            echo "AVISO: Camada SSDMT nao encontrada. Camadas disponiveis:"
-            ogrinfo "$GDB" 2>/dev/null
-            exit 1
-          fi
-          echo "Camada SSDMT: $LAYER"
+          df -h .
 
           mkdir -p out
-          echo "Convertendo $LAYER para GeoPackage..."
-          ogr2ogr -t_srs EPSG:4326 -f GPKG out/ssdmt.gpkg "$GDB" "$LAYER"
+          echo "Convertendo SSDMT para GeoPackage (eficiente em memoria)..."
+          ogr2ogr -t_srs EPSG:4326 -f GPKG out/ssdmt.gpkg "$GDB" SSDMT 2>/dev/null
           ls -lh out/ssdmt.gpkg
 
           rm -rf bdgd.gdb.zip "$GDB"
@@ -69,24 +61,32 @@ jobs:
 
       - name: Dividir por CTMT
         run: |
-          # Descobrir nome real da tabela no GPKG (pode ser SSDMT ou ssdmt)
+          # Descobrir nome real da tabela no GPKG (pode ser SSDMT ou ssdmt dependendo do GDAL)
           TABLE=$(sqlite3 out/ssdmt.gpkg \
             "SELECT name FROM sqlite_master WHERE type='table' AND lower(name) LIKE '%ssdmt%' LIMIT 1;" \
             2>/dev/null)
           if [ -z "$TABLE" ]; then
-            echo "ERRO: Tabela SSDMT nao encontrada no GPKG. Tabelas disponiveis:"
-            sqlite3 out/ssdmt.gpkg ".tables" 2>/dev/null
+            echo "Tabela SSDMT nao encontrada. Tabelas no GPKG:"
+            sqlite3 out/ssdmt.gpkg ".tables" 2>/dev/null || true
+            # Tentar com a tabela que nao e gpkg_*
+            TABLE=$(sqlite3 out/ssdmt.gpkg \
+              "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'gpkg_%' AND name NOT LIKE 'rtree_%' AND name NOT LIKE 'sqlite_%' LIMIT 1;" \
+              2>/dev/null)
+            echo "Usando tabela: $TABLE"
+          fi
+          if [ -z "$TABLE" ]; then
+            echo "ERRO: Nenhuma tabela encontrada no GPKG."
             exit 1
           fi
-          echo "Tabela no GPKG: $TABLE"
+          echo "Tabela: $TABLE"
 
-          # Encontrar coluna CTMT (pode ser CTMT ou COD_CTMT, case-insensitive)
+          # Encontrar coluna CTMT (case-insensitive)
           CTMT_COL=$(sqlite3 out/ssdmt.gpkg \
             "SELECT name FROM pragma_table_info('$TABLE') WHERE lower(name) IN ('ctmt','cod_ctmt') ORDER BY CASE lower(name) WHEN 'ctmt' THEN 0 ELSE 1 END LIMIT 1;" \
             2>/dev/null)
           if [ -z "$CTMT_COL" ]; then
             echo "ERRO: Coluna CTMT/COD_CTMT nao encontrada. Colunas disponiveis:"
-            sqlite3 out/ssdmt.gpkg "PRAGMA table_info('$TABLE');" 2>/dev/null
+            sqlite3 out/ssdmt.gpkg "PRAGMA table_info('$TABLE');" 2>/dev/null | awk -F'|' '{print $2}' || true
             exit 1
           fi
           echo "Coluna CTMT: $CTMT_COL"
@@ -103,14 +103,12 @@ jobs:
           echo "CTMTs encontrados: $TOTAL_CTMT"
 
           if [ "$TOTAL_CTMT" -eq 0 ]; then
-            echo "AVISO: Nenhum CTMT encontrado na coluna $CTMT_COL"
-            echo "Primeiras linhas da tabela:"
-            sqlite3 out/ssdmt.gpkg "SELECT * FROM \"$TABLE\" LIMIT 3;" 2>/dev/null || true
+            echo "AVISO: Nenhum CTMT encontrado. Amostra da tabela:"
+            sqlite3 out/ssdmt.gpkg "SELECT * FROM \"$TABLE\" LIMIT 2;" 2>/dev/null || true
             exit 1
           fi
 
-          # Exportar um GeoJSON por CTMT
-          mkdir -p out
+          # Exportar um GeoJSON por CTMT usando ogr2ogr -where (eficiente com indice)
           COUNT=0
           while IFS= read -r ctmt; do
             [ -z "$ctmt" ] && continue
@@ -125,14 +123,14 @@ jobs:
               out/ssdmt.gpkg "$TABLE" 2>/dev/null
             COUNT=$((COUNT + 1))
             if [ $((COUNT % 100)) -eq 0 ]; then
-              echo "Progresso: $COUNT/$TOTAL_CTMT CTMTs processados"
+              echo "Progresso: $COUNT/$TOTAL_CTMT CTMTs"
               df -h .
             fi
           done < out/ctmts.txt
 
           rm -f out/ssdmt.gpkg out/ctmts.txt
           TOTAL_FILES=$(ls out/linhas-*.geojson 2>/dev/null | wc -l)
-          echo "Arquivos linhas-*.geojson gerados: $TOTAL_FILES"
+          echo "Arquivos gerados: $TOTAL_FILES"
           df -h .
 
       - name: Upload linhas por CTMT
