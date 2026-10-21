@@ -16,7 +16,7 @@ on:
 jobs:
   split:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     permissions:
       contents: write
 
@@ -27,7 +27,7 @@ jobs:
       - name: Instalar dependencias
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends gdal-bin unzip python3
+          sudo apt-get install -y --no-install-recommends gdal-bin sqlite3 unzip python3
           echo "GDAL $(ogr2ogr --version)"
 
       - name: Baixar BDGD do ArcGIS Online
@@ -44,58 +44,89 @@ jobs:
             "https://www.arcgis.com/sharing/rest/content/items/${{ inputs.dataset_id }}/data"
           ls -lh bdgd.gdb.zip
 
-      - name: Extrair GDB e converter SSDMT
+      - name: Extrair GDB e converter SSDMT para GeoPackage
         run: |
           unzip -q bdgd.gdb.zip
           GDB=$(find . -maxdepth 2 -name "*.gdb" -type d | head -1)
           echo "GDB: $GDB"
           mkdir -p out
-          echo "Convertendo SSDMT para GeoJSON..."
-          ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES out/ssdmt_tmp.geojson "$GDB" SSDMT 2>/dev/null
-          ls -lh out/ssdmt_tmp.geojson
+
+          # Verificar se camada SSDMT existe
+          LAYERS=$(ogrinfo "$GDB" 2>/dev/null | grep -i ssdmt | head -1 || echo "")
+          echo "Camada SSDMT: $LAYERS"
+
+          echo "Convertendo SSDMT para GeoPackage (eficiente em memoria)..."
+          ogr2ogr -t_srs EPSG:4326 -f GPKG out/ssdmt.gpkg "$GDB" SSDMT 2>/dev/null
+          ls -lh out/ssdmt.gpkg
+
+          # Criar indice em CTMT para queries rapidas
+          echo "Criando indice CTMT..."
+          sqlite3 out/ssdmt.gpkg \
+            "CREATE INDEX IF NOT EXISTS idx_ctmt ON ssdmt(CTMT); \
+             CREATE INDEX IF NOT EXISTS idx_cod_ctmt ON ssdmt(COD_CTMT);" 2>/dev/null || true
+
           rm -rf bdgd.gdb.zip "$GDB"
           df -h .
 
       - name: Dividir por CTMT
         run: |
-          echo "Dividindo SSDMT por CTMT..."
-          python3 - << 'PYEOF'
-          import json
-          from collections import defaultdict
+          echo "Identificando coluna CTMT..."
+          # Verificar qual coluna usar: CTMT ou COD_CTMT
+          HAS_CTMT=$(sqlite3 out/ssdmt.gpkg \
+            "SELECT COUNT(*) FROM pragma_table_info('ssdmt') WHERE name='CTMT';" 2>/dev/null || echo "0")
+          HAS_COD_CTMT=$(sqlite3 out/ssdmt.gpkg \
+            "SELECT COUNT(*) FROM pragma_table_info('ssdmt') WHERE name='COD_CTMT';" 2>/dev/null || echo "0")
 
-          with open("out/ssdmt_tmp.geojson") as f:
-              fc = json.load(f)
+          if [ "$HAS_CTMT" -gt "0" ]; then
+            CTMT_COL="CTMT"
+          elif [ "$HAS_COD_CTMT" -gt "0" ]; then
+            CTMT_COL="COD_CTMT"
+          else
+            echo "ERRO: Nenhuma coluna CTMT ou COD_CTMT encontrada."
+            sqlite3 out/ssdmt.gpkg "PRAGMA table_info(ssdmt);" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Usando coluna: $CTMT_COL"
 
-          total = len(fc.get("features", []))
-          print(f"Total de segmentos SSDMT: {total}")
+          # Obter lista de CTMTs unicos
+          sqlite3 out/ssdmt.gpkg \
+            "SELECT DISTINCT $CTMT_COL FROM ssdmt WHERE $CTMT_COL IS NOT NULL AND $CTMT_COL != '' ORDER BY $CTMT_COL;" \
+            > out/ctmts.txt 2>/dev/null
+          TOTAL_CTMT=$(wc -l < out/ctmts.txt)
+          echo "CTMTs encontrados: $TOTAL_CTMT"
 
-          by_ctmt = defaultdict(list)
-          sem_ctmt = 0
-          for feat in fc.get("features", []):
-              props = feat.get("properties") or {}
-              ctmt = props.get("CTMT") or props.get("COD_CTMT") or ""
-              if ctmt:
-                  feat["properties"] = {
-                      "COD_ID": props.get("COD_ID", ""),
-                      "CTMT": ctmt,
-                      "COMP_3": props.get("COMP_3", None)
-                  }
-                  by_ctmt[ctmt].append(feat)
-              else:
-                  sem_ctmt += 1
+          if [ "$TOTAL_CTMT" -eq 0 ]; then
+            echo "Nenhum CTMT encontrado. Listando colunas disponiveis:"
+            sqlite3 out/ssdmt.gpkg "PRAGMA table_info(ssdmt);" 2>/dev/null || true
+            exit 1
+          fi
 
-          print(f"Segmentos sem CTMT: {sem_ctmt}")
-          print(f"CTMTs encontrados: {len(by_ctmt)}")
+          # Exportar um arquivo GeoJSON por CTMT usando ogr2ogr com -where
+          echo "Exportando por CTMT..."
+          COUNT=0
+          while IFS= read -r ctmt; do
+            [ -z "$ctmt" ] && continue
+            # Sanitizar nome do arquivo (remover caracteres especiais)
+            safe_ctmt=$(echo "$ctmt" | tr -dc 'a-zA-Z0-9_-')
+            [ -z "$safe_ctmt" ] && safe_ctmt="CTMT_$COUNT"
+            ogr2ogr \
+              -t_srs EPSG:4326 \
+              -f GeoJSON \
+              -lco RFC7946=YES \
+              -select "COD_ID,${CTMT_COL} AS CTMT,COMP_3" \
+              -where "${CTMT_COL}='${ctmt}'" \
+              "out/linhas-${safe_ctmt}.geojson" \
+              out/ssdmt.gpkg ssdmt 2>/dev/null
+            COUNT=$((COUNT + 1))
+            if [ $((COUNT % 100)) -eq 0 ]; then
+              echo "Progresso: $COUNT/$TOTAL_CTMT CTMTs"
+              df -h .
+            fi
+          done < out/ctmts.txt
 
-          for ctmt, feats in by_ctmt.items():
-              out_fc = {"type": "FeatureCollection", "features": feats}
-              with open(f"out/linhas-{ctmt}.geojson", "w") as f:
-                  json.dump(out_fc, f, separators=(",", ":"))
-
-          print(f"Arquivos linhas-*.geojson gerados: {len(by_ctmt)}")
-          PYEOF
-          rm -f out/ssdmt_tmp.geojson
-          echo "Total: $(ls out/linhas-*.geojson 2>/dev/null | wc -l) arquivos"
+          rm -f out/ssdmt.gpkg out/ctmts.txt
+          TOTAL_FILES=$(ls out/linhas-*.geojson 2>/dev/null | wc -l)
+          echo "Arquivos linhas-*.geojson gerados: $TOTAL_FILES"
           df -h .
 
       - name: Upload linhas por CTMT
@@ -116,8 +147,8 @@ jobs:
               --repo KogaIgor0/markfield-web 2>&1; then
               COUNT=$((COUNT + 1))
             else
-              echo "AVISO: falha em $f, tentando novamente..."
-              sleep 15
+              echo "AVISO: falha em $f, tentando novamente em 30s..."
+              sleep 30
               if gh release upload "${{ inputs.tag }}" "$f" --clobber \
                 --repo KogaIgor0/markfield-web 2>&1; then
                 COUNT=$((COUNT + 1))
@@ -127,8 +158,8 @@ jobs:
               fi
             fi
             if [ $(( (COUNT + FAILURES) % 50 )) -eq 0 ] && [ $((COUNT + FAILURES)) -gt 0 ]; then
-              echo "[$((COUNT + FAILURES))/$TOTAL] Pausa 60s para evitar rate limit..."
-              sleep 60
+              echo "[$((COUNT + FAILURES))/$TOTAL] Pausa 90s para evitar rate limit..."
+              sleep 90
             fi
           done
           echo "Upload linhas: $COUNT ok, $FAILURES falhas."
