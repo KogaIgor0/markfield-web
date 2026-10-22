@@ -16,7 +16,7 @@ on:
 jobs:
   split:
     runs-on: ubuntu-24.04
-    timeout-minutes: 300
+    timeout-minutes: 360
     permissions:
       contents: write
 
@@ -29,6 +29,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends gdal-bin sqlite3 unzip python3
           echo "GDAL $(ogr2ogr --version)"
+          echo "CPUs: $(nproc)"
 
       - name: Baixar BDGD do ArcGIS Online
         run: |
@@ -59,7 +60,7 @@ jobs:
           rm -rf bdgd.gdb.zip "$GDB"
           df -h .
 
-      - name: Dividir por CTMT
+      - name: Dividir por CTMT (paralelo)
         run: |
           TABLE=$(sqlite3 out/ssdmt.gpkg \
             "SELECT name FROM sqlite_master WHERE type='table' AND lower(name) LIKE '%ssdmt%' LIMIT 1;" \
@@ -88,8 +89,10 @@ jobs:
           fi
           echo "Coluna CTMT: $CTMT_COL"
 
+          # Criar indice e habilitar WAL mode para leituras paralelas eficientes
           sqlite3 out/ssdmt.gpkg \
-            "CREATE INDEX IF NOT EXISTS idx_ctmt ON \"$TABLE\"(\"$CTMT_COL\");" 2>/dev/null || true
+            "PRAGMA journal_mode=WAL; CREATE INDEX IF NOT EXISTS idx_ctmt ON \"$TABLE\"(\"$CTMT_COL\");" \
+            2>/dev/null || true
 
           sqlite3 out/ssdmt.gpkg \
             "SELECT DISTINCT \"$CTMT_COL\" FROM \"$TABLE\" WHERE \"$CTMT_COL\" IS NOT NULL AND \"$CTMT_COL\" != '' ORDER BY \"$CTMT_COL\";" \
@@ -102,24 +105,31 @@ jobs:
             exit 1
           fi
 
-          COUNT=0
-          while IFS= read -r ctmt; do
-            [ -z "$ctmt" ] && continue
-            safe_ctmt=$(printf '%s' "$ctmt" | tr -dc 'a-zA-Z0-9_-')
-            [ -z "$safe_ctmt" ] && safe_ctmt="CTMT_${COUNT}"
-            ogr2ogr \
-              -t_srs EPSG:4326 \
-              -f GeoJSON \
-              -lco RFC7946=YES \
-              -where "\"${CTMT_COL}\"='${ctmt}'" \
-              "out/linhas-${safe_ctmt}.geojson" \
-              out/ssdmt.gpkg "$TABLE" 2>/dev/null
-            COUNT=$((COUNT + 1))
-            if [ $((COUNT % 100)) -eq 0 ]; then
-              echo "Progresso: $COUNT/$TOTAL_CTMT CTMTs"
-              df -h .
-            fi
-          done < out/ctmts.txt
+          # Helper script para split paralelo
+          cat > /tmp/do_split.sh << 'SPLITEOF'
+          #!/bin/bash
+          ctmt="$1"
+          CTMT_COL="$2"
+          TABLE="$3"
+          GPKG="$4"
+          OUT_DIR="$5"
+          safe_ctmt=$(printf '%s' "$ctmt" | tr -dc 'a-zA-Z0-9_-')
+          [ -z "$safe_ctmt" ] && safe_ctmt="CTMT_$(printf '%s' "$ctmt" | sha256sum | cut -c1-8)"
+          ogr2ogr \
+            -t_srs EPSG:4326 \
+            -f GeoJSON \
+            -lco RFC7946=YES \
+            -where "\"${CTMT_COL}\"='${ctmt}'" \
+            "${OUT_DIR}/linhas-${safe_ctmt}.geojson" \
+            "$GPKG" "$TABLE" 2>/dev/null
+          SPLITEOF
+          chmod +x /tmp/do_split.sh
+
+          # Split paralelo: usa todos os CPUs disponiveis
+          NPROC=$(nproc)
+          echo "Iniciando split paralelo com $NPROC workers..."
+          cat out/ctmts.txt | xargs -P "$NPROC" -I{} \
+            /tmp/do_split.sh {} "$CTMT_COL" "$TABLE" "out/ssdmt.gpkg" "out"
 
           rm -f out/ssdmt.gpkg out/ctmts.txt
           TOTAL_FILES=$(find out -name "linhas-*.geojson" | wc -l)
@@ -166,12 +176,12 @@ jobs:
 
           # Diagnostico: escreve na release body ao sair
           DIAG_RELEASE_ID="407125301"
-          DIAG_MSG="v16-start"
+          DIAG_MSG="v17-start"
           on_exit() {
             local EC=$?
             gh api --method PATCH \
               "repos/KogaIgor0/markfield-web/releases/${DIAG_RELEASE_ID}" \
-              -f "body=DIAG-v16 exit=${EC}: ${DIAG_MSG}" 2>/dev/null || true
+              -f "body=DIAG-v17 exit=${EC}: ${DIAG_MSG}" 2>/dev/null || true
           }
           trap on_exit EXIT
 
@@ -325,13 +335,14 @@ jobs:
               fi
             fi
 
-            if [ $((COUNT % 100)) -eq 0 ] && [ $COUNT -gt 0 ]; then
+            if [ $((COUNT % 50)) -eq 0 ] && [ $COUNT -gt 0 ]; then
               DIAG_MSG="TOTAL=${TOTAL} COUNT=${COUNT} SKIP=${SKIPPED} FAIL=${FAILURES} OVF=${OVERFLOW_SUFFIX:-nenhum}"
               echo "Progresso: $COUNT novos, $SKIPPED pulados, $FAILURES falhas | overflow: ${OVERFLOW_SUFFIX:-nenhum}"
             fi
-            if [ $(( (COUNT + FAILURES) % 50 )) -eq 0 ] && [ $((COUNT + FAILURES)) -gt 0 ]; then
-              echo "Pausa 60s rate limit..."
-              sleep 60
+            # Rate limit: pausa reduzida (30s a cada 100 uploads, era 60s a cada 50)
+            if [ $(( (COUNT + FAILURES) % 100 )) -eq 0 ] && [ $((COUNT + FAILURES)) -gt 0 ]; then
+              echo "Pausa 30s rate limit..."
+              sleep 30
             fi
           done
 
