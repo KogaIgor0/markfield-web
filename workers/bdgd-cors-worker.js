@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker v4 — CORS proxy para assets BDGD do GitHub Releases.
+ * Cloudflare Worker v5 — CORS proxy para assets BDGD do GitHub Releases.
  *
  * Estratégia: redireciona para o CDN do GitHub (objects.githubusercontent.com)
  * em vez de proxiar o corpo. Isso evita timeouts no plano free e é mais rápido.
@@ -9,17 +9,27 @@
  * Roteamento:
  *   /{dist}/{file}  →  redirect para releases/download/bdgd-{dist}-2024/{file}
  *                       (trafos-* → bdgd-{dist}-2024-trafos/{file})
+ *                       (linhas-* → tenta main, -b, -c em sequência)
  *   /{file}         →  backward compat (elektro, mapeamento legado)
  *   /               →  lista distribuidoras disponíveis
  *
  * Deploy: npx wrangler deploy workers/bdgd-cors-worker.js --name bdgd-cors --compatibility-date 2024-01-01
  */
 
-const GITHUB_TMPL = (dist, file) => {
-  const tag = file.startsWith("trafos-")
-    ? `bdgd-${dist}-2024-trafos`
-    : `bdgd-${dist}-2024`;
-  return `https://github.com/KogaIgor0/markfield-web/releases/download/${tag}/${file}`;
+/** Retorna lista de URLs candidatas em ordem de tentativa. */
+const GITHUB_CANDIDATES = (dist, file) => {
+  if (file.startsWith("trafos-")) {
+    return [`https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-${dist}-2024-trafos/${file}`];
+  }
+  if (file.startsWith("linhas-")) {
+    // Arquivos linhas-* podem estar espalhados em até 3 releases de overflow
+    return [
+      `https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-${dist}-2024/${file}`,
+      `https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-${dist}-2024-b/${file}`,
+      `https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-${dist}-2024-c/${file}`,
+    ];
+  }
+  return [`https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-${dist}-2024/${file}`];
 };
 
 const DISTRIBUIDORAS = new Set([
@@ -49,8 +59,8 @@ const DISTRIBUIDORAS = new Set([
 ]);
 
 const LEGACY = {
-  "rede-mt.pmtiles": GITHUB_TMPL("elektro", "elektro_2024-rede-mt.pmtiles"),
-  "trafos.geojson":  GITHUB_TMPL("elektro", "elektro_2024-trafos.geojson"),
+  "rede-mt.pmtiles": `https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-elektro-2024/elektro_2024-rede-mt.pmtiles`,
+  "trafos.geojson":  `https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-elektro-2024/elektro_2024-trafos.geojson`,
 };
 
 const CORS = {
@@ -61,6 +71,20 @@ const CORS = {
   "Access-Control-Max-Age": "86400",
 };
 
+/** Resolve uma URL do GitHub Releases para o CDN real (objects.githubusercontent.com).
+ *  Retorna { cdnUrl } se encontrado, ou null se 404. */
+async function resolveGitHub(url) {
+  try {
+    const probe = await fetch(url, { method: "HEAD", redirect: "manual" });
+    const location = probe.headers.get("location");
+    if (location) return location;
+    if (probe.status >= 200 && probe.status < 300) return url;
+    return null; // 404 ou outro erro
+  } catch {
+    return null;
+  }
+}
+
 export default {
   async fetch(request) {
     if (request.method === "OPTIONS") {
@@ -70,11 +94,11 @@ export default {
     const { pathname } = new URL(request.url);
     const parts = pathname.replace(/^\//, "").split("/").filter(Boolean);
 
-    let target;
+    let candidates;
 
     if (parts.length === 0) {
       return new Response(
-        `BDGD CORS Worker v4\nDistribuidoras: ${[...DISTRIBUIDORAS].join(", ")}\nUso: /{distribuidora}/{arquivo}`,
+        `BDGD CORS Worker v5\nDistribuidoras: ${[...DISTRIBUIDORAS].join(", ")}\nUso: /{distribuidora}/{arquivo}`,
         { status: 200, headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } }
       );
     }
@@ -88,42 +112,41 @@ export default {
           { status: 404, headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } }
         );
       }
-      target = GITHUB_TMPL(dist, file);
+      candidates = GITHUB_CANDIDATES(dist, file);
     } else {
       const file = parts[0];
-      target = LEGACY[file];
-      if (!target) {
+      const legacy = LEGACY[file];
+      if (!legacy) {
         return new Response(
           `"${file}" não encontrado. Use /{distribuidora}/{arquivo}.`,
           { status: 404, headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } }
         );
       }
+      candidates = [legacy];
     }
 
-    // Resolve o redirect do GitHub para obter a URL real do CDN
-    let cdnUrl;
-    try {
-      const probe = await fetch(target, { method: "HEAD", redirect: "manual" });
-      const location = probe.headers.get("location");
-      if (location) {
-        cdnUrl = location;
-      } else if (probe.status >= 200 && probe.status < 300) {
-        // Já é a URL final (improvável para GitHub Releases, mas seguro)
-        cdnUrl = target;
-      } else {
-        return new Response(`GitHub retornou ${probe.status} para ${target}`, {
-          status: 502, headers: { ...CORS, "Content-Type": "text/plain" },
-        });
+    // Resolve o redirect do GitHub — tenta cada candidato em sequência
+    let cdnUrl = null;
+    let resolvedTarget = null;
+    for (const url of candidates) {
+      const resolved = await resolveGitHub(url);
+      if (resolved) {
+        cdnUrl = resolved;
+        resolvedTarget = url;
+        break;
       }
-    } catch (err) {
-      return new Response(`Erro ao resolver ${target}: ${err.message}`, {
-        status: 502, headers: { ...CORS, "Content-Type": "text/plain" },
-      });
+    }
+
+    if (!cdnUrl) {
+      return new Response(
+        `Arquivo não encontrado nas releases disponíveis.`,
+        { status: 404, headers: { ...CORS, "Content-Type": "text/plain" } }
+      );
     }
 
     // PMTiles precisam de Range — proxia diretamente para suportar streaming parcial
     const range = request.headers.get("Range");
-    if (range || target.endsWith(".pmtiles")) {
+    if (range || (resolvedTarget && resolvedTarget.endsWith(".pmtiles"))) {
       try {
         const upstream = await fetch(cdnUrl, {
           method: request.method,
@@ -142,7 +165,7 @@ export default {
       }
     }
 
-    // Para GeoJSON e outros arquivos: redireciona para o CDN do GitHub.
+    // Para GeoJSON e outros: redireciona para o CDN do GitHub.
     // objects.githubusercontent.com já envia CORS para repos públicos.
     return Response.redirect(cdnUrl, 302);
   },
