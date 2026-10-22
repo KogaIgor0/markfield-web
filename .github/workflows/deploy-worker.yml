@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'workers/bdgd-cors-worker.js'
+      - 'wrangler.toml'
   workflow_dispatch:
 
 jobs:
@@ -20,4 +21,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          command: deploy workers/bdgd-cors-worker.js --name bdgd-cors --compatibility-date 2024-01-01
+
