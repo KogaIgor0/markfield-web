@@ -30,6 +30,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends gdal-bin sqlite3 unzip python3
           echo "GDAL $(ogr2ogr --version)"
           echo "CPUs: $(nproc)"
+          gh --version
 
       - name: Baixar BDGD do ArcGIS Online
         run: |
@@ -53,7 +54,6 @@ jobs:
           df -h .
 
           mkdir -p out
-          echo "Convertendo SSDMT para GeoPackage (eficiente em memoria)..."
           ogr2ogr -t_srs EPSG:4326 -f GPKG out/ssdmt.gpkg "$GDB" SSDMT 2>/dev/null
           ls -lh out/ssdmt.gpkg
 
@@ -66,30 +66,25 @@ jobs:
             "SELECT name FROM sqlite_master WHERE type='table' AND lower(name) LIKE '%ssdmt%' LIMIT 1;" \
             2>/dev/null)
           if [ -z "$TABLE" ]; then
-            echo "Tabela SSDMT nao encontrada. Tabelas no GPKG:"
             sqlite3 out/ssdmt.gpkg ".tables" 2>/dev/null || true
             TABLE=$(sqlite3 out/ssdmt.gpkg \
               "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'gpkg_%' AND name NOT LIKE 'rtree_%' AND name NOT LIKE 'sqlite_%' LIMIT 1;" \
               2>/dev/null)
             echo "Usando tabela: $TABLE"
           fi
-          if [ -z "$TABLE" ]; then
-            echo "ERRO: Nenhuma tabela encontrada no GPKG."
-            exit 1
-          fi
+          [ -z "$TABLE" ] && { echo "ERRO: nenhuma tabela no GPKG"; exit 1; }
           echo "Tabela: $TABLE"
 
           CTMT_COL=$(sqlite3 out/ssdmt.gpkg \
             "SELECT name FROM pragma_table_info('$TABLE') WHERE lower(name) IN ('ctmt','cod_ctmt') ORDER BY CASE lower(name) WHEN 'ctmt' THEN 0 ELSE 1 END LIMIT 1;" \
             2>/dev/null)
           if [ -z "$CTMT_COL" ]; then
-            echo "ERRO: Coluna CTMT/COD_CTMT nao encontrada. Colunas disponiveis:"
+            echo "ERRO: coluna CTMT nao encontrada"
             sqlite3 out/ssdmt.gpkg "PRAGMA table_info('$TABLE');" 2>/dev/null | awk -F'|' '{print $2}' || true
             exit 1
           fi
           echo "Coluna CTMT: $CTMT_COL"
 
-          # Criar indice e habilitar WAL mode para leituras paralelas eficientes
           sqlite3 out/ssdmt.gpkg \
             "PRAGMA journal_mode=WAL; CREATE INDEX IF NOT EXISTS idx_ctmt ON \"$TABLE\"(\"$CTMT_COL\");" \
             2>/dev/null || true
@@ -98,36 +93,22 @@ jobs:
             "SELECT DISTINCT \"$CTMT_COL\" FROM \"$TABLE\" WHERE \"$CTMT_COL\" IS NOT NULL AND \"$CTMT_COL\" != '' ORDER BY \"$CTMT_COL\";" \
             > out/ctmts.txt 2>/dev/null
           TOTAL_CTMT=$(wc -l < out/ctmts.txt)
-          echo "CTMTs encontrados: $TOTAL_CTMT"
+          echo "CTMTs: $TOTAL_CTMT"
+          [ "$TOTAL_CTMT" -eq 0 ] && { echo "AVISO: nenhum CTMT"; exit 1; }
 
-          if [ "$TOTAL_CTMT" -eq 0 ]; then
-            echo "AVISO: Nenhum CTMT encontrado."
-            exit 1
-          fi
-
-          # Helper script para split paralelo
           cat > /tmp/do_split.sh << 'SPLITEOF'
           #!/bin/bash
-          ctmt="$1"
-          CTMT_COL="$2"
-          TABLE="$3"
-          GPKG="$4"
-          OUT_DIR="$5"
+          ctmt="$1"; CTMT_COL="$2"; TABLE="$3"; GPKG="$4"; OUT_DIR="$5"
           safe_ctmt=$(printf '%s' "$ctmt" | tr -dc 'a-zA-Z0-9_-')
           [ -z "$safe_ctmt" ] && safe_ctmt="CTMT_$(printf '%s' "$ctmt" | sha256sum | cut -c1-8)"
-          ogr2ogr \
-            -t_srs EPSG:4326 \
-            -f GeoJSON \
-            -lco RFC7946=YES \
+          ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES \
             -where "\"${CTMT_COL}\"='${ctmt}'" \
-            "${OUT_DIR}/linhas-${safe_ctmt}.geojson" \
-            "$GPKG" "$TABLE" 2>/dev/null
+            "${OUT_DIR}/linhas-${safe_ctmt}.geojson" "$GPKG" "$TABLE" 2>/dev/null
           SPLITEOF
           chmod +x /tmp/do_split.sh
 
-          # Split paralelo: usa todos os CPUs disponiveis
           NPROC=$(nproc)
-          echo "Iniciando split paralelo com $NPROC workers..."
+          echo "Split paralelo com $NPROC workers..."
           cat out/ctmts.txt | xargs -P "$NPROC" -I{} \
             /tmp/do_split.sh {} "$CTMT_COL" "$TABLE" "out/ssdmt.gpkg" "out"
 
@@ -140,7 +121,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Verificando arquivos ja enviados (release principal + overflows)..."
           mkdir -p out
           > out/uploaded.txt
           BASE_TAG="${{ inputs.tag }}"
@@ -150,7 +130,7 @@ jobs:
             SCAN_ID=$(timeout 30 gh api \
               "repos/KogaIgor0/markfield-web/releases/tags/${SCAN_TAG}" \
               -q '.id' 2>/dev/null || echo "")
-            if [ -z "$SCAN_ID" ]; then continue; fi
+            [ -z "$SCAN_ID" ] && continue
             echo "  Escaneando: $SCAN_TAG (ID: $SCAN_ID)"
             PAGE=1
             while true; do
@@ -166,7 +146,7 @@ jobs:
           done
 
           ALREADY=$(wc -l < out/uploaded.txt)
-          echo "Total arquivos ja enviados: $ALREADY"
+          echo "Total ja enviados: $ALREADY"
 
       - name: Upload linhas por CTMT
         env:
@@ -175,172 +155,146 @@ jobs:
           set +o pipefail
 
           DIAG_RELEASE_ID="407125301"
-          DIAG_MSG="v18-start"
+          DIAG_MSG="v19-start"
           on_exit() {
             local EC=$?
             gh api --method PATCH \
               "repos/KogaIgor0/markfield-web/releases/${DIAG_RELEASE_ID}" \
-              -f "body=DIAG-v18 exit=${EC}: ${DIAG_MSG}" 2>/dev/null || true
+              -f "body=DIAG-v19 exit=${EC}: ${DIAG_MSG}" 2>/dev/null || true
           }
           trap on_exit EXIT
 
           BASE_TAG="${{ inputs.tag }}"
           REPO="KogaIgor0/markfield-web"
-          # Limite conservador: 990 assets por release (margem abaixo do limite de 1000)
           MAX_PER_RELEASE=990
 
           TOTAL=$(find out -name "linhas-*.geojson" | wc -l)
           DIAG_MSG="TOTAL=${TOTAL}"
-          echo "Total arquivos geojson: $TOTAL"
-          if [ "$TOTAL" -eq 0 ]; then echo "Nenhum arquivo para upload."; exit 1; fi
+          echo "Total geojsons: $TOTAL"
+          [ "$TOTAL" -eq 0 ] && { echo "Nenhum arquivo."; exit 1; }
 
           ALREADY=$(wc -l < out/uploaded.txt 2>/dev/null || echo 0)
+          echo "Ja enviados: $ALREADY"
           DIAG_MSG="TOTAL=${TOTAL} ALREADY=${ALREADY}"
-          echo "Total: $TOTAL | Ja enviados: $ALREADY"
 
-          # Filtrar arquivos que precisam upload, ordenados
-          > out/to_upload.txt
-          find out -name "linhas-*.geojson" | sort | while IFS= read -r f; do
+          # Construir lista de arquivos para upload
+          while IFS= read -r f; do
             FNAME=$(basename "$f")
             grep -qxF "$FNAME" out/uploaded.txt 2>/dev/null || echo "$f"
-          done > out/to_upload.txt
+          done < <(find out -name "linhas-*.geojson" | sort) > out/to_upload.txt
 
           TO_UPLOAD=$(wc -l < out/to_upload.txt)
-          echo "Arquivos para upload: $TO_UPLOAD"
+          echo "Para upload: $TO_UPLOAD"
           DIAG_MSG="TOTAL=${TOTAL} ALREADY=${ALREADY} TO_UPLOAD=${TO_UPLOAD}"
+          [ "$TO_UPLOAD" -eq 0 ] && { echo "Nenhum arquivo novo."; DIAG_MSG="TODOS_ENVIADOS"; exit 0; }
 
-          if [ "$TO_UPLOAD" -eq 0 ]; then
-            echo "Todos os arquivos ja enviados!"
-            DIAG_MSG="TODOS_ENVIADOS TOTAL=${TOTAL}"
-            exit 0
+          # Criar release se nao existir; verifica que o ID foi criado
+          create_release_if_missing() {
+            local TAG="$1" SUFFIX="$2"
+            local ID RC
+            ID=$(gh api "repos/$REPO/releases/tags/${TAG}" -q '.id' 2>/dev/null)
+            RC=$?
+            if [ $RC -eq 0 ] && echo "$ID" | grep -qE '^[0-9]+$'; then
+              echo "Release ${TAG} existe (ID=${ID})"
+              return 0
+            fi
+            echo "Criando release ${TAG}..."
+            ID=$(gh api --method POST "repos/$REPO/releases" \
+              -f "tag_name=${TAG}" \
+              -f "name=${TAG}" \
+              -f "body=Overflow de ${BASE_TAG} (parte ${SUFFIX})" \
+              -q '.id' 2>&1)
+            RC=$?
+            if [ $RC -ne 0 ] || ! echo "$ID" | grep -qE '^[0-9]+$'; then
+              echo "ERRO ao criar ${TAG} (rc=${RC}): ${ID}"
+              return 1
+            fi
+            echo "Release ${TAG} criada (ID=${ID})"
+            return 0
+          }
+
+          # Upload de um lote — verifica exit code sem pipe
+          upload_batch() {
+            local TAG="$1"; shift
+            local FILES=("$@")
+            local OUT RC
+            OUT=$(gh release upload --repo "$REPO" "$TAG" "${FILES[@]}" --clobber 2>&1)
+            RC=$?
+            if [ $RC -ne 0 ]; then
+              echo "  FALHA lote rc=${RC} | $(echo "$OUT" | head -3)"
+              return 1
+            fi
+            echo "  OK ${#FILES[@]} arquivos → ${TAG}"
+            return 0
+          }
+
+          # Criar overflow -b (sempre necessario: release principal esta cheia)
+          DIAG_MSG="TOTAL=${TOTAL} TO_UPLOAD=${TO_UPLOAD} criando_overflows"
+          OVF_B="${BASE_TAG}-b"
+          create_release_if_missing "$OVF_B" "-b" || { DIAG_MSG="ERRO_CRIAR_OVF_B"; exit 1; }
+
+          # Criar -c se TO_UPLOAD > MAX_PER_RELEASE
+          OVF_C="${BASE_TAG}-c"
+          if [ "$TO_UPLOAD" -gt "$MAX_PER_RELEASE" ]; then
+            create_release_if_missing "$OVF_C" "-c" || { DIAG_MSG="ERRO_CRIAR_OVF_C"; exit 1; }
           fi
 
-          # Determinar qual overflow usar: sempre comeca em -b
-          # (a release principal esta cheia)
-          SUFFIXES=("-b" "-c" "-d" "-e")
-
-          # Verificar quantos assets ja existem em cada overflow (para retomada)
-          declare -a OVF_EXISTING
-          for SUFFIX in "${SUFFIXES[@]}"; do
-            OVF_TAG="${BASE_TAG}${SUFFIX}"
-            N=0
-            OVF_ID=$(gh api "repos/$REPO/releases/tags/${OVF_TAG}" -q '.id' 2>/dev/null || echo "")
-            if [ -n "$OVF_ID" ]; then
-              # Contar assets existentes (paginado)
-              PAGE=1
-              while true; do
-                CNT=$(gh api \
-                  "repos/$REPO/releases/${OVF_ID}/assets?per_page=100&page=${PAGE}" \
-                  -q 'length' 2>/dev/null || echo "0")
-                N=$((N + CNT))
-                [ "$CNT" -lt 100 ] && break
-                PAGE=$((PAGE + 1))
-              done
-            fi
-            OVF_EXISTING+=("$N")
-            echo "  ${OVF_TAG}: ${N} assets existentes"
-          done
-
-          # Criar ou obter a primeira overflow que ainda tem espaco
-          OVF_IDX=0
-          while true; do
-            if [ "$OVF_IDX" -ge "${#SUFFIXES[@]}" ]; then
-              echo "ERRO: sem releases de overflow disponiveis"
-              DIAG_MSG="ERRO_SEM_OVERFLOW"
-              exit 1
-            fi
-            CURRENT_SUFFIX="${SUFFIXES[$OVF_IDX]}"
-            CURRENT_TAG="${BASE_TAG}${CURRENT_SUFFIX}"
-            CURRENT_SLOT_COUNT="${OVF_EXISTING[$OVF_IDX]}"
-            if [ "$CURRENT_SLOT_COUNT" -lt "$MAX_PER_RELEASE" ]; then
-              break
-            fi
-            echo "  ${CURRENT_TAG} esta cheia ($CURRENT_SLOT_COUNT assets), avancando..."
-            OVF_IDX=$((OVF_IDX + 1))
-          done
-
-          # Criar release atual se nao existir
-          ensure_release() {
-            local TAG="$1"
-            local SUFFIX="$2"
-            if ! gh api "repos/$REPO/releases/tags/${TAG}" -q '.id' 2>/dev/null | grep -q '[0-9]'; then
-              echo "Criando release: ${TAG}..."
-              gh api --method POST "repos/$REPO/releases" \
-                -f "tag_name=${TAG}" \
-                -f "name=${TAG}" \
-                -f "body=Overflow de ${BASE_TAG} (linhas CTMT, parte ${SUFFIX})" \
-                -q '.id' 2>/dev/null
-              echo "Release ${TAG} criada."
-            fi
-          }
-          ensure_release "$CURRENT_TAG" "$CURRENT_SUFFIX"
-          DIAG_MSG="TOTAL=${TOTAL} TO_UPLOAD=${TO_UPLOAD} ovf_inicial=${CURRENT_TAG}(${CURRENT_SLOT_COUNT})"
-          echo "=== Iniciando uploads em ${CURRENT_TAG} (${CURRENT_SLOT_COUNT} ja existentes) ==="
+          echo "=== Iniciando uploads: $TO_UPLOAD arquivos ==="
+          DIAG_MSG="TOTAL=${TOTAL} TO_UPLOAD=${TO_UPLOAD} loop_start"
 
           COUNT=0
           FAILURES=0
           BATCH=()
-          BATCH_SIZE=50  # arquivos por chamada gh release upload
+          CURRENT_TAG="$OVF_B"
+          CURRENT_COUNT=0   # quantos enviados ao CURRENT_TAG nesta execucao
 
           flush_batch() {
-            if [ "${#BATCH[@]}" -eq 0 ]; then return 0; fi
+            [ "${#BATCH[@]}" -eq 0 ] && return 0
             local BATCH_COPY=("${BATCH[@]}")
             BATCH=()
-            if gh release upload --repo "$REPO" "$CURRENT_TAG" \
-              "${BATCH_COPY[@]}" --clobber 2>&1 | tail -1; then
+            if upload_batch "$CURRENT_TAG" "${BATCH_COPY[@]}"; then
               COUNT=$((COUNT + ${#BATCH_COPY[@]}))
-              CURRENT_SLOT_COUNT=$((CURRENT_SLOT_COUNT + ${#BATCH_COPY[@]}))
+              CURRENT_COUNT=$((CURRENT_COUNT + ${#BATCH_COPY[@]}))
             else
-              # Tentar arquivo por arquivo para salvar o maximo possivel
-              echo "  Batch falhou, tentando individualmente..."
+              # Tentar arquivo por arquivo para recuperar o maximo
+              local SF RC OUT
               for SF in "${BATCH_COPY[@]}"; do
-                if gh release upload --repo "$REPO" "$CURRENT_TAG" "$SF" --clobber 2>/dev/null; then
+                OUT=$(gh release upload --repo "$REPO" "$CURRENT_TAG" "$SF" --clobber 2>&1)
+                RC=$?
+                if [ $RC -eq 0 ]; then
                   COUNT=$((COUNT + 1))
-                  CURRENT_SLOT_COUNT=$((CURRENT_SLOT_COUNT + 1))
+                  CURRENT_COUNT=$((CURRENT_COUNT + 1))
                 else
-                  echo "  ERRO: $(basename $SF)"
+                  echo "  ERRO $(basename $SF) rc=${RC}: $(echo "$OUT" | head -1)"
                   FAILURES=$((FAILURES + 1))
                 fi
               done
             fi
           }
 
-          switch_overflow() {
-            flush_batch
-            OVF_IDX=$((OVF_IDX + 1))
-            if [ "$OVF_IDX" -ge "${#SUFFIXES[@]}" ]; then
-              echo "ERRO: esgotamos as releases de overflow disponíveis"
-              DIAG_MSG="ESGOTOU_OVERFLOW COUNT=${COUNT} FAIL=${FAILURES}"
-              exit 1
-            fi
-            CURRENT_SUFFIX="${SUFFIXES[$OVF_IDX]}"
-            CURRENT_TAG="${BASE_TAG}${CURRENT_SUFFIX}"
-            CURRENT_SLOT_COUNT="${OVF_EXISTING[$OVF_IDX]}"
-            echo "=== Overflow: ${CURRENT_TAG} (${CURRENT_SLOT_COUNT} existentes) ==="
-            DIAG_MSG="TOTAL=${TOTAL} COUNT=${COUNT} FAIL=${FAILURES} ovf=${CURRENT_TAG}"
-            ensure_release "$CURRENT_TAG" "$CURRENT_SUFFIX"
-          }
-
           while IFS= read -r FPATH; do
-            # Verificar se a release atual esta cheia
-            if [ "$CURRENT_SLOT_COUNT" -ge "$MAX_PER_RELEASE" ]; then
-              switch_overflow
+            # Trocar para overflow -c quando -b estiver cheia
+            if [ "$CURRENT_COUNT" -ge "$MAX_PER_RELEASE" ] && [ "$CURRENT_TAG" = "$OVF_B" ]; then
+              flush_batch
+              echo "=== Trocando para ${OVF_C} ==="
+              DIAG_MSG="TOTAL=${TOTAL} COUNT=${COUNT} FAIL=${FAILURES} trocando_para_c"
+              CURRENT_TAG="$OVF_C"
+              CURRENT_COUNT=0
             fi
 
             BATCH+=("$FPATH")
 
-            if [ "${#BATCH[@]}" -ge "$BATCH_SIZE" ]; then
+            if [ "${#BATCH[@]}" -ge 50 ]; then
               flush_batch
-              if [ $((COUNT % 500)) -lt "$BATCH_SIZE" ] && [ $COUNT -gt 0 ]; then
-                DIAG_MSG="TOTAL=${TOTAL} COUNT=${COUNT} FAIL=${FAILURES} ovf=${CURRENT_TAG}(${CURRENT_SLOT_COUNT})"
-                echo "Progresso: $COUNT enviados, $FAILURES falhas | overflow: ${CURRENT_TAG}"
+              if [ $((COUNT % 500)) -lt 50 ] && [ $COUNT -gt 0 ]; then
+                DIAG_MSG="TOTAL=${TOTAL} COUNT=${COUNT} FAIL=${FAILURES} ovf=${CURRENT_TAG}"
+                echo "Progresso: $COUNT enviados, $FAILURES falhas | ${CURRENT_TAG}"
               fi
             fi
           done < out/to_upload.txt
 
-          # Flush do ultimo batch
           flush_batch
 
           DIAG_MSG="FINALIZADO COUNT=${COUNT} FAIL=${FAILURES} OVF=${CURRENT_TAG}"
-          echo "Upload finalizado: $COUNT enviados, $FAILURES falhas."
-          if [ "$FAILURES" -gt 0 ]; then exit 1; fi
+          echo "Finalizado: $COUNT enviados, $FAILURES falhas."
+          [ "$FAILURES" -gt 0 ] && exit 1
