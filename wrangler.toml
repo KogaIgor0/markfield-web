@@ -1,0 +1,4 @@
+name = "bdgd-cors"
+main = "workers/bdgd-cors-worker.js"
+compatibility_date = "2024-01-01"
+
