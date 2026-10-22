@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker v5 — CORS proxy para assets BDGD do GitHub Releases.
+ * Cloudflare Worker v5 -- CORS proxy para assets BDGD do GitHub Releases.
  *
  * Estratégia: redireciona para o CDN do GitHub (objects.githubusercontent.com)
  * em vez de proxiar o corpo. Isso evita timeouts no plano free e é mais rápido.
@@ -7,11 +7,11 @@
  * releases públicas, portanto CORS funciona sem proxiar.
  *
  * Roteamento:
- *   /{dist}/{file}  →  redirect para releases/download/bdgd-{dist}-2024/{file}
- *                       (trafos-* → bdgd-{dist}-2024-trafos/{file})
- *                       (linhas-* → tenta main, -b, -c em sequência)
- *   /{file}         →  backward compat (elektro, mapeamento legado)
- *   /               →  lista distribuidoras disponíveis
+ *   /{dist}/{file}  ->  redirect para releases/download/bdgd-{dist}-2024/{file}
+ *                       (trafos-* -> bdgd-{dist}-2024-trafos/{file})
+ *                       (linhas-* -> tenta main, -b, -c em sequência)
+ *   /{file}         ->  backward compat (elektro, mapeamento legado)
+ *   /               ->  lista distribuidoras disponíveis
  *
  * Deploy: npx wrangler deploy workers/bdgd-cors-worker.js --name bdgd-cors --compatibility-date 2024-01-01
  */
@@ -125,7 +125,7 @@ export default {
       candidates = [legacy];
     }
 
-    // Resolve o redirect do GitHub — tenta cada candidato em sequência
+    // Resolve o redirect do GitHub -- tenta cada candidato em sequência
     let cdnUrl = null;
     let resolvedTarget = null;
     for (const url of candidates) {
@@ -144,7 +144,7 @@ export default {
       );
     }
 
-    // PMTiles precisam de Range — proxia diretamente para suportar streaming parcial
+    // PMTiles precisam de Range -- proxia diretamente para suportar streaming parcial
     const range = request.headers.get("Range");
     if (range || (resolvedTarget && resolvedTarget.endsWith(".pmtiles"))) {
       try {
