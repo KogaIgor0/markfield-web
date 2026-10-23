@@ -17,7 +17,7 @@
  *   → Parâmetros em scratchpad/bdgd-distribuidoras.md
  *
  * CDN: Cloudflare Worker multi-distribuidora (workers/bdgd-cors-worker.js) em
- *   https://bdgd-cors.markfield-app.workers.dev
+ *   https://bdgd-cors.kogaigor0.workers.dev
  * Roteamento: /{conc}/{arquivo} → GitHub Releases bdgd-{conc}-2024
  * O Worker serve com CORS headers (range requests ok para PMTiles).
  *
@@ -42,7 +42,7 @@ maplibregl.addProtocol("pmtiles", _pmtilesProtocol.tilev4.bind(_pmtilesProtocol)
 // ---------------------------------------------------------------------------
 
 /** Cloudflare Worker que serve os assets BDGD com CORS. */
-const BDGD_CDN = "https://bdgd-cors.markfield-app.workers.dev";
+const BDGD_CDN = "https://bdgd-cors.kogaigor0.workers.dev";
 
 // ---------------------------------------------------------------------------
 // IDs internos
@@ -192,8 +192,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "BA",
     // Pendente: rodar workflow com dataset_id=ac3bf2f2b06447ec80493372ca4c9845
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/coelba/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/coelba/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/coelba/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/coelba/trafos.geojson",
     },
   },
   // ── Equatorial ────────────────────────────────────────────────────────────
@@ -203,8 +203,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "PA",
     // Pendente: rodar workflow com dataset_id=60a26bb11754487db39fa6bb91e5dce2
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/equatorial-pa/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/equatorial-pa/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/equatorial-pa/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/equatorial-pa/trafos.geojson",
     },
   },
   {
@@ -213,8 +213,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "MA",
     // Pendente: rodar workflow com dataset_id=ba59d4a881684374b53f51656b945b18
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/equatorial-ma/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/equatorial-ma/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/equatorial-ma/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/equatorial-ma/trafos.geojson",
     },
   },
   {
@@ -223,8 +223,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "PI",
     // Pendente: rodar workflow com dataset_id=642e8c25d57d4a3893c0d069c4363911
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/equatorial-pi/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/equatorial-pi/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/equatorial-pi/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/equatorial-pi/trafos.geojson",
     },
   },
   {
@@ -233,8 +233,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "AL",
     // Pendente: rodar workflow com dataset_id=78d8ae0fe3cc46888dc37f2c87bc3f00
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/equatorial-al/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/equatorial-al/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/equatorial-al/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/equatorial-al/trafos.geojson",
     },
   },
   {
@@ -243,8 +243,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "GO",
     // Pendente: rodar workflow com dataset_id=4c2fc0e35982454bbc54db53d1532b90
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/equatorial-go/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/equatorial-go/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/equatorial-go/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/equatorial-go/trafos.geojson",
     },
   },
   {
@@ -253,8 +253,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "RS",
     // Pendente: rodar workflow com dataset_id=15b77072ab3b46bb8581cca726cdf08a
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/ceee/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/ceee/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/ceee/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/ceee/trafos.geojson",
     },
   },
   {
@@ -263,8 +263,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "AP",
     // Pendente: rodar workflow com dataset_id=123cf701fce4495bab5a673435fb4cbc
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/cea/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/cea/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/cea/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/cea/trafos.geojson",
     },
   },
   // ── Energisa ──────────────────────────────────────────────────────────────
@@ -285,8 +285,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "MS",
     // Pendente: rodar workflow com dataset_id=b7fad4cd388845a08a01643599ec747b
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/energisa-ms/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/energisa-ms/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/energisa-ms/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/energisa-ms/trafos.geojson",
     },
   },
   {
@@ -295,8 +295,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "TO",
     // Pendente: rodar workflow com dataset_id=1bfec53ce077408581c6b2a82076d89a
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/energisa-to/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/energisa-to/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/energisa-to/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/energisa-to/trafos.geojson",
     },
   },
   {
@@ -305,8 +305,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "PB",
     // Pendente: rodar workflow com dataset_id=700e0bfcb04349fea9d1d0af43c2a354
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/energisa-pb/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/energisa-pb/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/energisa-pb/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/energisa-pb/trafos.geojson",
     },
   },
   {
@@ -315,8 +315,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "SE",
     // Pendente: rodar workflow com dataset_id=910e329827a04ffda153c235ac9c5bc1
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/energisa-se/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/energisa-se/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/energisa-se/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/energisa-se/trafos.geojson",
     },
   },
   {
@@ -325,8 +325,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "MG / RJ",
     // Pendente: rodar workflow com dataset_id=bc209c308cac42b9b03fb963ca9c5602
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/energisa-mg-rio/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/energisa-mg-rio/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/energisa-mg-rio/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/energisa-mg-rio/trafos.geojson",
     },
   },
   {
@@ -335,8 +335,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "MG / SP / PR",
     // Pendente: rodar workflow com dataset_id=00eedc147efc4020993a6c9cf9c6d3cc
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/energisa-sul/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/energisa-sul/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/energisa-sul/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/energisa-sul/trafos.geojson",
     },
   },
   {
@@ -345,8 +345,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "RO",
     // Pendente: rodar workflow com dataset_id=cb6bd431508544a49256c4a03cdf7cc7
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/energisa-ro/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/energisa-ro/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/energisa-ro/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/energisa-ro/trafos.geojson",
     },
   },
   {
@@ -355,8 +355,8 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "AC",
     // Pendente: rodar workflow com dataset_id=0d3f9d648eb54c758b592b794faf2ccc
     urls: {
-      ssdmt:  "https://bdgd-cors.markfield-app.workers.dev/energisa-ac/rede-mt.pmtiles",
-      untrmt: "https://bdgd-cors.markfield-app.workers.dev/energisa-ac/trafos.geojson",
+      ssdmt:  "https://bdgd-cors.kogaigor0.workers.dev/energisa-ac/rede-mt.pmtiles",
+      untrmt: "https://bdgd-cors.kogaigor0.workers.dev/energisa-ac/trafos.geojson",
     },
   },
 ];
