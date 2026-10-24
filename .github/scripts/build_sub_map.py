@@ -29,12 +29,15 @@ def gh_get(url):
         return json.loads(r.read())
 
 
+print(f'Buscando release: https://api.github.com/repos/{repo}/releases/tags/{trafos_tag}')
 try:
     release = gh_get(
         f'https://api.github.com/repos/{repo}/releases/tags/{trafos_tag}'
     )
+    print(f'Release encontrado: id={release.get("id")} tag={release.get("tag_name")}')
 except Exception as e:
     print(f'Release trafos nao encontrado: {e} — pulando')
+    print(f'Token presente: {"sim" if token else "NAO"}')
     sys.exit(0)
 
 assets = [
