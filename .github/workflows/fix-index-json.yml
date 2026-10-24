@@ -60,7 +60,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TRAFOS_TAG: ${{ inputs.tag }}-trafos
-        run: python3 .github/scripts/build_sub_map.py
+        run: |
+          echo "TRAFOS_TAG=$TRAFOS_TAG"
+          echo "Script exists: $(ls -la .github/scripts/build_sub_map.py)"
+          python3 .github/scripts/build_sub_map.py
 
       - name: Gerar index.json
         env:
