@@ -59,78 +59,72 @@ jobs:
       - name: Baixar trafos para agrupamento por SUB
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TRAFOS_TAG: ${{ inputs.tag }}-trafos
         run: |
-          TAG="${{ inputs.tag }}"
-          python3 - << PYEOF
-          import json, os, urllib.request, concurrent.futures
+          cat > /tmp/build_sub_map.py << 'PYEOF'
+import json, os, sys, urllib.request, concurrent.futures
 
-          token = os.environ.get('GH_TOKEN', '')
-          trafos_tag = '${TAG}-trafos'
-          repo = 'KogaIgor0/markfield-web'
-          headers = {'Authorization': f'token {token}', 'Accept': 'application/vnd.github+json'}
+token = os.environ.get('GH_TOKEN', '')
+trafos_tag = os.environ.get('TRAFOS_TAG', '')
+repo = 'KogaIgor0/markfield-web'
+headers = {'Authorization': f'token {token}', 'Accept': 'application/vnd.github+json'}
 
-          def gh_get(url):
-              req = urllib.request.Request(url, headers=headers)
-              with urllib.request.urlopen(req) as r:
-                  return json.loads(r.read())
+def gh_get(url):
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
 
-          # Busca release de trafos
-          try:
-              release = gh_get(f'https://api.github.com/repos/{repo}/releases/tags/{trafos_tag}')
-          except Exception as e:
-              print(f'Release trafos não encontrado: {e} — pulando')
-              exit(0)
+try:
+    release = gh_get(f'https://api.github.com/repos/{repo}/releases/tags/{trafos_tag}')
+except Exception as e:
+    print(f'Release trafos nao encontrado: {e} — pulando')
+    sys.exit(0)
 
-          assets = [a for a in release.get('assets', []) if a['name'].startswith('trafos-')]
-          print(f'Assets de trafos: {len(assets)}')
-          if not assets:
-              print('Nenhum asset de trafos encontrado — pulando')
-              exit(0)
+assets = [a for a in release.get('assets', []) if a['name'].startswith('trafos-')]
+print(f'Assets de trafos: {len(assets)}')
+if not assets:
+    print('Nenhum asset de trafos — pulando')
+    sys.exit(0)
 
-          ctmt_sub = {}
-          errors = 0
+ctmt_sub = {}
+errors = 0
 
-          def baixar_asset(asset):
-              asset_id = asset['id']
-              name = asset['name']
-              # Extrai CTMT do nome: trafos-{CTMT}.geojson
-              ctmt_key = name.replace('trafos-', '').replace('.geojson', '')
-              try:
-                  # Download via API com token (segue redirect automaticamente)
-                  req = urllib.request.Request(
-                      f'https://api.github.com/repos/{repo}/releases/assets/{asset_id}',
-                      headers={**headers, 'Accept': 'application/octet-stream'}
-                  )
-                  with urllib.request.urlopen(req) as r:
-                      data = json.loads(r.read())
-                  features = data.get('features', [])
-                  for feat in features:
-                      props = feat.get('properties', {})
-                      ctmt = str(props.get('CTMT', ctmt_key)).strip()
-                      sub = str(props.get('SUB', '')).strip()
-                      if ctmt and sub:
-                          return ctmt, sub
-              except Exception as e:
-                  return None, None
-              return None, None
+def baixar_asset(asset):
+    asset_id = asset['id']
+    name = asset['name']
+    try:
+        req = urllib.request.Request(
+            f'https://api.github.com/repos/{repo}/releases/assets/{asset_id}',
+            headers={**headers, 'Accept': 'application/octet-stream'}
+        )
+        with urllib.request.urlopen(req) as r:
+            data = json.loads(r.read())
+        for feat in data.get('features', []):
+            props = feat.get('properties', {})
+            ctmt = str(props.get('CTMT', '')).strip()
+            sub = str(props.get('SUB', '')).strip()
+            if ctmt and sub:
+                return ctmt, sub
+    except Exception as e:
+        pass
+    return None, None
 
-          with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
-              futures = {executor.submit(baixar_asset, a): a for a in assets}
-              for fut in concurrent.futures.as_completed(futures):
-                  ctmt, sub = fut.result()
-                  if ctmt and sub:
-                      ctmt_sub[ctmt] = sub
-                  else:
-                      errors += 1
+with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
+    for ctmt, sub in executor.map(baixar_asset, assets):
+        if ctmt and sub:
+            ctmt_sub[ctmt] = sub
+        else:
+            errors += 1
 
-          print(f'Mapeamento CTMT->SUB: {len(ctmt_sub)} entradas ({errors} erros)')
-          util = any(s and not s.lstrip('-').isdigit() for s in ctmt_sub.values())
-          print(f'SUB alfanumerico util: {util}')
-          if ctmt_sub:
-              print(f'Exemplo: {list(ctmt_sub.items())[:5]}')
-          with open('ctmt_sub_map.json', 'w') as f:
-              json.dump({'map': ctmt_sub, 'useful': util}, f)
-          PYEOF
+print(f'Mapeamento CTMT->SUB: {len(ctmt_sub)} entradas ({errors} erros/vazios)')
+util = any(s and not s.lstrip('-').isdigit() for s in ctmt_sub.values())
+print(f'SUB alfanumerico util: {util}')
+if ctmt_sub:
+    print(f'Exemplo: {list(ctmt_sub.items())[:5]}')
+with open('ctmt_sub_map.json', 'w') as f:
+    json.dump({'map': ctmt_sub, 'useful': util}, f)
+PYEOF
+          python3 /tmp/build_sub_map.py
 
       - name: Gerar index.json
         env:
