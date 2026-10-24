@@ -62,8 +62,24 @@ jobs:
           TRAFOS_TAG: ${{ inputs.tag }}-trafos
         run: |
           echo "TRAFOS_TAG=$TRAFOS_TAG"
-          echo "Script exists: $(ls -la .github/scripts/build_sub_map.py)"
-          python3 .github/scripts/build_sub_map.py
+          python3 .github/scripts/build_sub_map.py 2>&1 | tee /tmp/sub_map_log.txt
+          cat /tmp/sub_map_log.txt
+
+      - name: Verificar mapeamento SUB
+        run: |
+          if [ -f ctmt_sub_map.json ]; then
+            echo "ctmt_sub_map.json criado!"
+            python3 -c "
+import json
+d = json.load(open('ctmt_sub_map.json'))
+print('useful:', d.get('useful'))
+print('entradas:', len(d.get('map', {})))
+items = list(d.get('map', {}).items())[:5]
+print('exemplos:', items)
+"
+          else
+            echo "ctmt_sub_map.json NAO criado"
+          fi
 
       - name: Gerar index.json
         env:
