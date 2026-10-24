@@ -61,9 +61,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TRAFOS_TAG: ${{ inputs.tag }}-trafos
         run: |
-          echo "TRAFOS_TAG=$TRAFOS_TAG"
-          python3 .github/scripts/build_sub_map.py 2>&1 | tee /tmp/sub_map_log.txt
-          cat /tmp/sub_map_log.txt
+          echo "=== TRAFOS_TAG=${TRAFOS_TAG} ==="
+          python3 .github/scripts/build_sub_map.py
+
+      - name: Upload logs de debug
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-output
+          path: |
+            ctmt_sub_map.json
+          if-no-files-found: warn
 
       - name: Verificar mapeamento SUB
         run: |
