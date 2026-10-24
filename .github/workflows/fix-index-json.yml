@@ -56,6 +56,51 @@ jobs:
           echo "Total: $TOTAL assets"
           echo "OK: assets_raw.json saved"
 
+      - name: Baixar trafos para agrupamento por SUB
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          TRAFOS_TAG="${TAG}-trafos"
+          echo "Tentando baixar trafos do release: $TRAFOS_TAG"
+          RELEASE_JSON=$(curl -sf \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/${TRAFOS_TAG}" 2>/dev/null) || { echo "Release trafos não encontrado — pulando"; exit 0; }
+          # Baixa todos os trafos-*.geojson e extrai CTMT→SUB
+          mkdir -p /tmp/trafos
+          ASSETS=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | startswith("trafos-")) | .browser_download_url')
+          COUNT=0
+          for URL in $ASSETS; do
+            NAME=$(basename "$URL" | sed 's/?.*//')
+            curl -sfL "$URL" -o "/tmp/trafos/$NAME" && COUNT=$((COUNT+1)) || true
+          done
+          echo "Baixados: $COUNT arquivos de trafos"
+          # Extrai mapeamento CTMT → SUB de todos os arquivos
+          python3 - << 'PYEOF'
+          import json, os, glob
+          ctmt_sub = {}
+          for path in glob.glob('/tmp/trafos/trafos-*.geojson'):
+              try:
+                  with open(path) as f:
+                      d = json.load(f)
+                  for feat in d.get('features', []):
+                      props = feat.get('properties', {})
+                      ctmt = str(props.get('CTMT', '')).strip()
+                      sub  = str(props.get('SUB',  '')).strip()
+                      if ctmt and sub:
+                          ctmt_sub[ctmt] = sub
+              except Exception as e:
+                  print(f'Erro em {path}: {e}')
+          print(f'Mapeamento CTMT→SUB: {len(ctmt_sub)} entradas')
+          # Verifica se SUBs são alfanuméricos (úteis)
+          util = any(s and not s.lstrip('-').isdigit() for s in ctmt_sub.values())
+          print(f'SUB alfanumérico útil: {util}')
+          with open('ctmt_sub_map.json', 'w') as f:
+              json.dump({'map': ctmt_sub, 'useful': util}, f)
+          PYEOF
+
       - name: Gerar index.json
         env:
           INPUT_DIST_ID: ${{ inputs.dist_id }}
@@ -88,9 +133,22 @@ jobs:
               print('ERROR: no ctmts')
               sys.exit(1)
 
+          # Tenta usar mapeamento CTMT→SUB dos trafos (quando disponível e útil)
+          ctmt_sub = {}
+          use_sub = False
+          if os.path.exists('ctmt_sub_map.json'):
+              with open('ctmt_sub_map.json') as f:
+                  sub_data = json.load(f)
+              use_sub = sub_data.get('useful', False)
+              if use_sub:
+                  ctmt_sub = sub_data.get('map', {})
+                  print(f'Usando SUB dos trafos para agrupamento ({len(ctmt_sub)} mapeamentos)')
+
           index = defaultdict(list)
           for ctmt in sorted(ctmts):
-              if '_' in ctmt:
+              if use_sub and ctmt in ctmt_sub:
+                  sub = ctmt_sub[ctmt]
+              elif '_' in ctmt:
                   sub = ctmt.split('_')[0]
               else:
                   m2 = re.match(r'^[A-Z]+', ctmt)
