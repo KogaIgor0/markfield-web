@@ -1,66 +1,67 @@
 #!/usr/bin/env python3
 """
 Baixa trafos-*.geojson do release GitHub e extrai mapeamento CTMT -> SUB.
-Usado pelo workflow fix-index-json.yml para agrupar alimentadores por subestação
-quando os CTMTs são numéricos (ex: Coelba).
-
-Variáveis de ambiente:
-  GH_TOKEN    - token de autenticação do GitHub
-  TRAFOS_TAG  - tag do release de trafos (ex: bdgd-coelba-2024-trafos)
+Usa curl via subprocess para garantir que redirects sejam seguidos corretamente.
 """
 import json
 import os
 import sys
-import urllib.request
+import subprocess
 import concurrent.futures
 
 token = os.environ.get('GH_TOKEN', '')
 trafos_tag = os.environ.get('TRAFOS_TAG', '')
 repo = 'KogaIgor0/markfield-web'
-headers = {
-    'Authorization': f'token {token}',
-    'Accept': 'application/vnd.github+json',
-}
 
+print(f'TRAFOS_TAG={trafos_tag}')
+print(f'Token presente: {"sim" if token else "NAO"}')
 
-def gh_get(url):
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req) as r:
-        return json.loads(r.read())
+if not token:
+    print('Sem GH_TOKEN — pulando')
+    sys.exit(0)
 
+def curl_json(url):
+    result = subprocess.run(
+        ['curl', '-sf', '-H', f'Authorization: token {token}',
+         '-H', 'Accept: application/vnd.github+json', url],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        raise Exception(f'curl falhou: {result.stderr}')
+    return json.loads(result.stdout)
 
-print(f'Buscando release: https://api.github.com/repos/{repo}/releases/tags/{trafos_tag}')
+# Busca release de trafos
+print(f'Buscando release: {trafos_tag}')
 try:
-    release = gh_get(
+    release = curl_json(
         f'https://api.github.com/repos/{repo}/releases/tags/{trafos_tag}'
     )
     print(f'Release encontrado: id={release.get("id")} tag={release.get("tag_name")}')
 except Exception as e:
-    print(f'Release trafos nao encontrado: {e} — pulando')
-    print(f'Token presente: {"sim" if token else "NAO"}')
+    print(f'Erro ao buscar release: {e}')
     sys.exit(0)
 
-assets = [
-    a for a in release.get('assets', [])
-    if a['name'].startswith('trafos-')
-]
+assets = [a for a in release.get('assets', []) if a['name'].startswith('trafos-')]
 print(f'Assets de trafos: {len(assets)}')
 
 if not assets:
-    print('Nenhum asset de trafos — pulando')
+    print('Nenhum asset — pulando')
     sys.exit(0)
 
 
 def baixar_asset(asset):
     asset_id = asset['id']
-    dl_headers = {**headers, 'Accept': 'application/octet-stream'}
+    result = subprocess.run(
+        ['curl', '-sfL',
+         '-H', f'Authorization: token {token}',
+         '-H', 'Accept: application/octet-stream',
+         f'https://api.github.com/repos/{repo}/releases/assets/{asset_id}'],
+        capture_output=True
+    )
+    if result.returncode != 0:
+        return None, None
     try:
-        req = urllib.request.Request(
-            f'https://api.github.com/repos/{repo}/releases/assets/{asset_id}',
-            headers=dl_headers,
-        )
-        with urllib.request.urlopen(req) as r:
-            data = json.loads(r.read())
+        data = json.loads(result.stdout)
         for feat in data.get('features', []):
             props = feat.get('properties', {})
             ctmt = str(props.get('CTMT', '')).strip()
@@ -75,6 +76,7 @@ def baixar_asset(asset):
 ctmt_sub = {}
 errors = 0
 
+print(f'Baixando {len(assets)} arquivos em paralelo...')
 with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
     for ctmt, sub in executor.map(baixar_asset, assets):
         if ctmt and sub:
