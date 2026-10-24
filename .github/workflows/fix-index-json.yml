@@ -68,14 +68,25 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: token $GH_TOKEN" \
             "https://api.github.com/repos/KogaIgor0/markfield-web/releases/tags/${TRAFOS_TAG}" 2>/dev/null) || { echo "Release trafos não encontrado — pulando"; exit 0; }
-          # Baixa todos os trafos-*.geojson e extrai CTMT→SUB
+          # Baixa todos os trafos-*.geojson em paralelo via API autenticada
+          # (repo privado — browser_download_url requer cookie de sessão, não token)
           mkdir -p /tmp/trafos
-          ASSETS=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | startswith("trafos-")) | .browser_download_url')
-          COUNT=0
-          for URL in $ASSETS; do
-            NAME=$(basename "$URL" | sed 's/?.*//')
-            curl -sfL "$URL" -o "/tmp/trafos/$NAME" && COUNT=$((COUNT+1)) || true
-          done
+          echo "$RELEASE_JSON" | jq -r \
+            '.assets[] | select(.name | startswith("trafos-")) | [.id, .name] | @tsv' \
+            > /tmp/trafos_list.tsv
+          TOTAL=$(wc -l < /tmp/trafos_list.tsv)
+          echo "Assets a baixar: $TOTAL"
+          export DL_TOKEN="$GH_TOKEN"
+          # Paralelo: 30 downloads simultâneos
+          xargs -a /tmp/trafos_list.tsv -P 30 -L 1 bash -c '
+            ID="$1"; NAME="$2"
+            curl -sfL \
+              -H "Authorization: token $DL_TOKEN" \
+              -H "Accept: application/octet-stream" \
+              "https://api.github.com/repos/KogaIgor0/markfield-web/releases/assets/$ID" \
+              -o "/tmp/trafos/$NAME" || true
+          ' _
+          COUNT=$(ls /tmp/trafos/trafos-*.geojson 2>/dev/null | wc -l)
           echo "Baixados: $COUNT arquivos de trafos"
           # Extrai mapeamento CTMT → SUB de todos os arquivos
           python3 - << 'PYEOF'
