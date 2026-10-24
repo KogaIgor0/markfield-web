@@ -57,16 +57,18 @@ for ctmt in sorted(ctmts):
         sub = ctmt_sub[ctmt]
     elif '_' in ctmt:
         sub = ctmt.split('_')[0]
+    elif use_sub:
+        # CTMTs numéricos sem mapeamento e sem '_': agrupa em chave genérica
+        sub = '?'
+        sem_sub += 1
     else:
         m2 = re.match(r'^[A-Z]+', ctmt)
         sub = m2.group() if m2 else ctmt
-        if use_sub:
-            sem_sub += 1
 
     index[sub].append(ctmt)
 
 if sem_sub:
-    print(f'Aviso: {sem_sub} CTMTs sem mapeamento SUB — usou prefixo')
+    print(f'Aviso: {sem_sub} CTMTs sem mapeamento SUB — agrupados em "?"')
 
 result = {'distribuidora': clean_id, 'alimentadores': dict(index)}
 with open('index.json', 'w') as f:
