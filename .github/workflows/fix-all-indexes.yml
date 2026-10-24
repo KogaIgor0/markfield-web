@@ -1,0 +1,59 @@
+name: Fix All Indexes
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix-all:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Disparar fix-index-json para todas as distribuidoras
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="KogaIgor0/markfield-web"
+          WORKFLOW="fix-index-json.yml"
+
+          declare -A DISTS=(
+            [elektro]="elektro_2024"
+            [cemig]="cemig_2024"
+            [cpfl-paulista]="cpfl-paulista_2024"
+            [cpfl-piratininga]="cpfl-piratininga_2024"
+            [enel-sp]="enel-sp_2024"
+            [copel]="copel_2024"
+            [coelba]="coelba_2024"
+            [equatorial-pa]="equatorial-pa_2024"
+            [equatorial-ma]="equatorial-ma_2024"
+            [equatorial-pi]="equatorial-pi_2024"
+            [equatorial-al]="equatorial-al_2024"
+            [equatorial-go]="equatorial-go_2024"
+            [ceee]="ceee_2024"
+            [cea]="cea_2024"
+            [energisa-mt]="energisa-mt_2024"
+            [energisa-ms]="energisa-ms_2024"
+            [energisa-to]="energisa-to_2024"
+            [energisa-pb]="energisa-pb_2024"
+            [energisa-se]="energisa-se_2024"
+            [energisa-mg-rio]="energisa-mg-rio_2024"
+            [energisa-sul]="energisa-sul_2024"
+            [energisa-ro]="energisa-ro_2024"
+            [energisa-ac]="energisa-ac_2024"
+          )
+
+          for DIST in "${!DISTS[@]}"; do
+            DIST_ID="${DISTS[$DIST]}"
+            TAG="bdgd-${DIST}-2024"
+            echo "Rodando fix-index-json para $DIST (tag=$TAG, dist_id=$DIST_ID)..."
+            gh workflow run "$WORKFLOW" \
+              -R "$REPO" \
+              -f tag="$TAG" \
+              -f dist_id="$DIST_ID"
+            sleep 5
+          done
+          echo "Todas as 23 distribuidoras disparadas."
