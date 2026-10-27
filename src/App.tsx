@@ -40,7 +40,7 @@ import { resumoMateriais } from "./domain/materiais";
 import { PainelMateriais } from "./ui/PainelMateriais";
 import { PainelCamadas } from "./ui/PainelCamadas";
 import { PranchaView } from "./ui/PranchaView";
-import { BDGD_CAMADAS_PADRAO, BDGD_FONTES, type BdgdLayerId } from "./map/bdgd";
+import { BDGD_CAMADAS_PADRAO, BDGD_FONTES } from "./map/bdgd";
 import type { FeatureCollection } from "geojson";
 import { comporEstrutura, separarEstrutura } from "./domain/estruturas-catalogo";
 import {
@@ -280,7 +280,7 @@ export function App() {
     if (id) setSelecionadoId(null);
   }, []);
 
-  const onToggleCamada = useCallback((id: BdgdLayerId) => {
+  const onToggleCamada = useCallback((id: string) => {
     setCamadasBdgdVisiveis((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -599,14 +599,64 @@ export function App() {
   const emLigar = modo === "ligar";
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <span className="brand">
-          <span className="spark">◆</span> Markfield Web
-        </span>
-        <span className="phase-tag">Fase 2 · editor</span>
+    <div className="app-shell">
+      <header className="chrome-topbar">
+        {/* Brand */}
+        <div className="ct-brand">
+          <span className="ct-logo">◆</span>
+          <span className="ct-name">Markfield</span>
+        </div>
 
-        <div className="topbar-acoes">
+        {/* Projeto / distribuidora */}
+        <div className="ct-project">
+          <span className="ct-dist-badge">{bdgdFonteId.toUpperCase()}</span>
+          <span className="ct-proj-name">{rel?.nomeProjeto ?? "—"}</span>
+        </div>
+
+        {/* Arquivo */}
+        <div className="ct-group">
+          <button className="cr-btn" onClick={() => inputRef.current?.click()} disabled={carregando}>
+            {carregando ? "Abrindo…" : "Abrir"}
+          </button>
+          {projeto && (
+            <button className={`cr-btn${salvo ? "" : " unsaved"}`} onClick={() => void salvar()}>
+              {salvo ? "Salvar" : "● Salvar"}
+            </button>
+          )}
+          {projeto && (
+            <button className="cr-btn" onClick={() => mergeInputRef.current?.click()} disabled={carregando}>
+              Mesclar
+            </button>
+          )}
+          {projeto && (
+            <button className="cr-btn" onClick={exportarDxf}>
+              DXF
+            </button>
+          )}
+        </div>
+
+        {/* BDGD toggle */}
+        <div className="ct-group">
+          <button
+            className={`cr-btn${mostrarCamadas ? " active" : ""}`}
+            onClick={() => setMostrarCamadas((v) => !v)}
+          >
+            🗺 Rede BDGD
+          </button>
+        </div>
+
+        <div className="ct-flex-space" />
+
+        {/* Resumo do projeto */}
+        {rel && projeto && (
+          <div className="ct-resumo">
+            {projeto.pontos.length} postes · {rel.trechos + rel.linhasLivres} trechos
+            {!salvo && <span className="ct-unsaved-dot"> ●</span>}
+          </div>
+        )}
+
+        {/* inputs ocultos */}
+        <div className="topbar-acoes" style={{ display: "none" }}>
           {/* Mapa base: rede existente (BDGD) — sempre visível */}
           <div className="tb-grupo" role="group" aria-label="Mapa">
             <button
@@ -803,16 +853,138 @@ export function App() {
           />
         </div>
 
-        {rel && (
-          <span className="resumo">
-            <strong>{rel.nomeProjeto}</strong> · {projeto?.pontos.length} pontos · {rel.fotos} fotos
-            {rel.trechos + rel.linhasLivres > 0 && ` · ${rel.trechos + rel.linhasLivres} linhas`}
-            {!salvo && <span className="resumo-aviso"> · não salvo</span>}
-          </span>
-        )}
       </header>
 
-      <main
+      <div className="shell-body">
+
+        {/* Toolbar vertical */}
+        <nav className="chrome-toolbar-v">
+          {projeto && (
+            <>
+              <button
+                className={`tv-btn${emAdd ? " active" : ""}`}
+                onClick={() => {
+                  setLigarDeId(null);
+                  setMovendoId(null);
+                  setModo(emAdd ? "selecionar" : { adicionar: "postePropostoo" });
+                }}
+                title="Adicionar poste"
+              >
+                <span className="tv-icon">＋</span>
+                <span className="tv-label">Ponto</span>
+              </button>
+              <button
+                className={`tv-btn${emLigar ? " active" : ""}`}
+                onClick={() => {
+                  setLigarDeId(null);
+                  selecionarPonto(null);
+                  selecionarTrecho(null);
+                  setModo(emLigar ? "selecionar" : "ligar");
+                }}
+                title="Ligar postes"
+              >
+                <span className="tv-icon">⌁</span>
+                <span className="tv-label">Ligar</span>
+              </button>
+              <button
+                className={`tv-btn${modo === "inserir" ? " active" : ""}`}
+                onClick={() => {
+                  selecionarPonto(null);
+                  selecionarTrecho(null);
+                  setModo(modo === "inserir" ? "selecionar" : "inserir");
+                }}
+                title="Inserir ponto medido"
+              >
+                <span className="tv-icon">↓</span>
+                <span className="tv-label">Inserir</span>
+              </button>
+              <button
+                className="tv-btn"
+                onClick={dividir}
+                disabled={longos.length === 0}
+                title="Dividir vãos longos"
+              >
+                <span className="tv-icon">⊕</span>
+                <span className="tv-label">Dividir{longos.length ? ` ${longos.length}` : ""}</span>
+              </button>
+              <div className="tv-sep" />
+              <button
+                className={`tv-btn${emMedir ? " active" : ""}`}
+                onClick={() => {
+                  setMedicao([]);
+                  setLigarDeId(null);
+                  setMovendoId(null);
+                  selecionarPonto(null);
+                  selecionarTrecho(null);
+                  setModo(emMedir ? "selecionar" : "medir");
+                }}
+                title="Régua de medição"
+              >
+                <span className="tv-icon">📏</span>
+                <span className="tv-label">Medir</span>
+              </button>
+              <div className="tv-sep" />
+              <button
+                className={`tv-btn${!mostrarFotos ? " active" : ""}`}
+                onClick={() => setMostrarFotos((v) => !v)}
+                title={mostrarFotos ? "Ocultar fotos" : "Mostrar fotos"}
+              >
+                <span className="tv-icon">📷</span>
+                <span className="tv-label">Fotos</span>
+              </button>
+              <button
+                className={`tv-btn${mostrarNumeros ? " active" : ""}`}
+                onClick={() => setMostrarNumeros((v) => !v)}
+                title="Mostrar/ocultar números dos postes"
+              >
+                <span className="tv-icon">#</span>
+                <span className="tv-label">Nums</span>
+              </button>
+              <div className="tv-sep" />
+              <button
+                className={`tv-btn${modoRede ? " active-green" : ""}`}
+                onClick={() => setModoRede((v) => !v)}
+                title="Modo rede"
+              >
+                <span className="tv-icon">⚡</span>
+                <span className="tv-label">Rede</span>
+              </button>
+              <button
+                className={`tv-btn${mostrarMateriais ? " active" : ""}`}
+                onClick={() => {
+                  const abrir = !mostrarMateriais;
+                  setMostrarMateriais(abrir);
+                  if (abrir) {
+                    selecionarPonto(null);
+                    selecionarTrecho(null);
+                  }
+                }}
+                title="Quantitativo de materiais"
+              >
+                <span className="tv-icon">≡</span>
+                <span className="tv-label">Mats</span>
+              </button>
+              <button
+                className={`tv-btn${mostrarPrancha ? " active" : ""}`}
+                onClick={() => {
+                  const abrir = !mostrarPrancha;
+                  setMostrarPrancha(abrir);
+                  if (abrir) {
+                    selecionarPonto(null);
+                    selecionarTrecho(null);
+                    setMostrarMateriais(false);
+                  }
+                }}
+                title="Gerar prancha"
+              >
+                <span className="tv-icon">📄</span>
+                <span className="tv-label">Prancha</span>
+              </button>
+            </>
+          )}
+        </nav>
+
+        <main
         className={`workspace${arrastando ? " arrastando" : ""}`}
         onDragOver={(e) => {
           e.preventDefault();
@@ -1154,6 +1326,20 @@ export function App() {
           </div>
         )}
       </main>
+      </div>{/* shell-body */}
+
+      {/* Status bar */}
+      <footer className="chrome-status">
+        <span className="cs-dist">{bdgdFonteId.toUpperCase()}</span>
+        {projeto && (
+          <>
+            <span className="cs-sep" />
+            <span className="cs-item"><strong>{projeto.pontos.length}</strong> postes</span>
+            <span className="cs-item">· <strong>{projeto.trechos.length}</strong> trechos</span>
+          </>
+        )}
+        {!salvo && projeto && <span className="cs-unsaved">● não salvo</span>}
+      </footer>
 
       {mostrarPrancha && projeto && (
         <PranchaView

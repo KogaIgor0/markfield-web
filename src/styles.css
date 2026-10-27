@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
+
 :root {
   --paper: #f6f4ef;
   --surface: #ffffff;
@@ -1729,4 +1731,256 @@ body {
 @keyframes splash-bar-grow {
   from { width: 0%; }
   to   { width: 100%; }
+}
+
+/* ================================================================
+   DARK CHROME SHELL  (v2 redesign)
+   ================================================================ */
+
+:root {
+  --cr-bg:          #0C1A26;
+  --cr-bg2:         #172534;
+  --cr-border:      rgba(255,255,255,0.08);
+  --cr-border-2:    rgba(255,255,255,0.14);
+  --cr-fg:          #CBD5E0;
+  --cr-muted:       #718096;
+  --cr-accent:      #F59E0B;
+  --cr-bdgd:        #5BA4E8;
+  --cr-topbar-h:    48px;
+  --cr-toolbar-w:   52px;
+  --cr-status-h:    24px;
+  --cr-font:        'IBM Plex Sans', system-ui, sans-serif;
+  --cr-mono:        'IBM Plex Mono', 'Fira Code', monospace;
+}
+
+/* ── App shell grid ──────────────────────────────────────────── */
+.app-shell {
+  display: grid;
+  grid-template-rows: var(--cr-topbar-h) 1fr var(--cr-status-h);
+  height: 100dvh;
+  overflow: hidden;
+  font-family: var(--cr-font);
+  background: var(--cr-bg);
+  color: var(--cr-fg);
+}
+
+/* ── Top bar ─────────────────────────────────────────────────── */
+.chrome-topbar {
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  background: var(--cr-bg2);
+  border-bottom: 1px solid var(--cr-border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.ct-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+.ct-logo {
+  color: var(--cr-accent);
+  font-size: 14px;
+}
+.ct-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: #EDF2F7;
+  letter-spacing: 0.02em;
+}
+
+.ct-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--cr-border-2);
+  border-radius: 5px;
+  margin-right: 6px;
+  min-width: 0;
+  max-width: 220px;
+  flex-shrink: 1;
+}
+.ct-dist-badge {
+  font-family: var(--cr-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--cr-bdgd);
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+.ct-proj-name {
+  font-size: 12px;
+  color: #A0AEC0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ct-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.cr-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 5px;
+  font-family: var(--cr-font);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cr-fg);
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.10);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.cr-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.13);
+  border-color: rgba(255,255,255,0.20);
+}
+.cr-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.cr-btn.active {
+  background: rgba(91,164,232,0.20);
+  border-color: rgba(91,164,232,0.40);
+  color: var(--cr-bdgd);
+}
+.cr-btn.unsaved {
+  background: rgba(245,158,11,0.16);
+  border-color: rgba(245,158,11,0.35);
+  color: var(--cr-accent);
+}
+
+.ct-flex-space { flex: 1; }
+
+.ct-resumo {
+  font-size: 11px;
+  color: var(--cr-muted);
+  flex-shrink: 0;
+  padding-right: 4px;
+}
+.ct-unsaved-dot { color: var(--cr-accent); }
+
+/* ── Shell body: toolbar + workspace ────────────────────────── */
+.shell-body {
+  grid-row: 2;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Vertical toolbar ────────────────────────────────────────── */
+.chrome-toolbar-v {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0;
+  gap: 2px;
+  width: var(--cr-toolbar-w);
+  flex-shrink: 0;
+  background: var(--cr-bg);
+  border-right: 1px solid var(--cr-border);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.tv-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-height: 40px;
+  border-radius: 7px;
+  font-family: var(--cr-font);
+  font-size: 9px;
+  color: var(--cr-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  gap: 2px;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  padding: 4px 2px;
+}
+.tv-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.07);
+  color: var(--cr-fg);
+}
+.tv-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.tv-btn.active {
+  background: rgba(245,158,11,0.16);
+  border-color: rgba(245,158,11,0.35);
+  color: var(--cr-accent);
+}
+.tv-btn.active-green {
+  background: rgba(22,163,74,0.16);
+  border-color: rgba(22,163,74,0.35);
+  color: #4ade80;
+}
+.tv-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+.tv-label {
+  font-size: 9px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.tv-sep {
+  width: 28px;
+  height: 1px;
+  background: var(--cr-border);
+  margin: 2px 0;
+  flex-shrink: 0;
+}
+
+/* ── Status bar ──────────────────────────────────────────────── */
+.chrome-status {
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  height: var(--cr-status-h);
+  background: var(--cr-bg);
+  border-top: 1px solid var(--cr-border);
+  font-family: var(--cr-mono);
+  font-size: 10px;
+  color: var(--cr-muted);
+  flex-shrink: 0;
+}
+.cs-dist {
+  font-weight: 600;
+  color: var(--cr-bdgd);
+  letter-spacing: 0.05em;
+}
+.cs-sep {
+  width: 1px;
+  height: 10px;
+  background: var(--cr-border-2);
+}
+.cs-item { color: var(--cr-muted); }
+.cs-item strong { color: #A0AEC0; font-weight: 600; }
+.cs-unsaved { color: var(--cr-accent); margin-left: auto; }
+
+/* ── Workspace inherits shell-body flex ─────────────────────── */
+.shell-body > .workspace {
+  flex: 1;
+  min-width: 0;
 }
