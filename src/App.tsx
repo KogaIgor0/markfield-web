@@ -40,6 +40,7 @@ import { resumoMateriais } from "./domain/materiais";
 import { PainelMateriais } from "./ui/PainelMateriais";
 import { PainelCamadas } from "./ui/PainelCamadas";
 import { PranchaView } from "./ui/PranchaView";
+import { NovoProjetoModal } from "./ui/NovoProjetoModal";
 import { BDGD_CAMADAS_PADRAO, BDGD_FONTES } from "./map/bdgd";
 import type { FeatureCollection } from "geojson";
 import { comporEstrutura, separarEstrutura } from "./domain/estruturas-catalogo";
@@ -54,6 +55,7 @@ import {
   VAO_MAXIMO_M,
 } from "./domain/vaos";
 import type { LatLng, Projeto, TipoPonto } from "./domain/model";
+import { projetoVazio } from "./domain/model";
 
 /**
  * Shell do Markfield Web.
@@ -131,6 +133,7 @@ export function App() {
   const [mostrarMateriais, setMostrarMateriais] = useState(false);
   const [mostrarPrancha, setMostrarPrancha] = useState(false);
   const [mostrarCamadas, setMostrarCamadas] = useState(false);
+  const [novoProjetoAberto, setNovoProjetoAberto] = useState(false);
   const [camadasBdgdVisiveis, setCamadasBdgdVisiveis] = useState<Set<string>>(BDGD_CAMADAS_PADRAO);
   const [bdgdFonteId, setBdgdFonteId] = useState("elektro");
   const [carregandoBdgd, setCarregandoBdgd] = useState(false);
@@ -615,6 +618,9 @@ export function App() {
 
         {/* Arquivo */}
         <div className="ct-group">
+          <button className="cr-btn" onClick={() => setNovoProjetoAberto(true)}>
+            Novo
+          </button>
           <button className="cr-btn" onClick={() => inputRef.current?.click()} disabled={carregando}>
             {carregando ? "Abrindo…" : "Abrir"}
           </button>
@@ -1348,6 +1354,18 @@ export function App() {
           rotulosEstrutura={rotulosEstrutura}
           materiais={materiais}
           onFechar={() => setMostrarPrancha(false)}
+        />
+      )}
+
+      {novoProjetoAberto && (
+        <NovoProjetoModal
+          onCriar={(nome, distribuidoraId) => {
+            setEstado({ projeto: projetoVazio(nome), imagens: new Map(), blobs: new Map(), relatorio: null });
+            setBdgdFonteId(distribuidoraId);
+            setSalvo(false);
+            setNovoProjetoAberto(false);
+          }}
+          onCancelar={() => setNovoProjetoAberto(false)}
         />
       )}
     </div>
