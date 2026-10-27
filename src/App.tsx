@@ -613,7 +613,7 @@ export function App() {
         {/* Projeto / distribuidora */}
         <div className="ct-project">
           <span className="ct-dist-badge">{bdgdFonteId.toUpperCase()}</span>
-          <span className="ct-proj-name">{rel?.nomeProjeto ?? "—"}</span>
+          <span className="ct-proj-name">{projeto?.meta.nome ?? rel?.nomeProjeto ?? "—"}</span>
         </div>
 
         {/* Arquivo */}
