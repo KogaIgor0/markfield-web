@@ -470,10 +470,15 @@ export function MapCanvas(props: MapCanvasProps) {
     };
   }, []);
 
-  // Desenha o projeto quando muda.
+  // Desenha o projeto quando muda; limpa o mapa quando projeto é fechado.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !projeto) return;
+    if (!map) return;
+    if (!projeto) {
+      // Projeto fechado — remove todas as camadas mkf do mapa.
+      if (prontoRef.current) limpar(map);
+      return;
+    }
     const desenhar = () => {
       const fc = pontosGeoJson(
         projeto,

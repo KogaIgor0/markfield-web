@@ -149,6 +149,8 @@ export function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
+  /** Handle do arquivo .mkf aberto via showSaveFilePicker — permite salvar no mesmo arquivo. */
+  const fileHandleRef = useRef<FileSystemFileHandle | null>(null);
 
   const projeto = estado.projeto;
   const selecionado = projeto ? acharPonto(projeto, selecionadoId) : undefined;
@@ -332,6 +334,8 @@ export function App() {
           ? await importarPacote(await arquivo.arrayBuffer())
           : importarKml(await arquivo.text());
 
+      // Abre um arquivo diferente — descarta handle anterior.
+      fileHandleRef.current = null;
       // Cria as URLs de exibição a partir dos bytes; revoga as anteriores.
       for (const url of imagensAntigas.current.values()) URL.revokeObjectURL(url);
       const urls = new Map<string, string>();
@@ -447,6 +451,7 @@ export function App() {
     setCarregando(true);
     try {
       const resultado = await importarMkf(await entry.mkfBlob.arrayBuffer());
+      fileHandleRef.current = null; // novo projeto — handle anterior não se aplica
       for (const url of imagensAntigas.current.values()) URL.revokeObjectURL(url);
       const urls = new Map<string, string>();
       for (const [chave, bytes] of resultado.imagens) {
@@ -484,6 +489,7 @@ export function App() {
     if (!salvo && !window.confirm("Há alterações não salvas. Fechar mesmo assim?")) return;
     for (const url of imagensAntigas.current.values()) URL.revokeObjectURL(url);
     imagensAntigas.current = new Map();
+    fileHandleRef.current = null;
     setEstado(VAZIO);
     setDbId(null);
     setSalvo(true);
@@ -502,7 +508,33 @@ export function App() {
     if (!projeto) return;
     try {
       const blob = await exportarMkf(projeto, estado.blobs);
-      baixar(blob, nomeArquivoMkf(projeto));
+      const nome = nomeArquivoMkf(projeto);
+
+      // Tenta usar File System Access API para salvar no mesmo arquivo.
+      if ("showSaveFilePicker" in window) {
+        try {
+          if (!fileHandleRef.current) {
+            fileHandleRef.current = await (window as unknown as {
+              showSaveFilePicker: (opts: unknown) => Promise<FileSystemFileHandle>;
+            }).showSaveFilePicker({
+              suggestedName: nome,
+              types: [{ description: "MarkField", accept: { "application/zip": [".mkf"] } }],
+            });
+          }
+          const writable = await fileHandleRef.current.createWritable();
+          await writable.write(blob);
+          await writable.close();
+        } catch (fsErr) {
+          // Usuário cancelou o picker ou API recusou → fallback para download.
+          if ((fsErr as DOMException).name === "AbortError") return; // cancelamento: não salvar
+          fileHandleRef.current = null;
+          baixar(blob, nome);
+        }
+      } else {
+        // Navegador não suporta File System Access — download tradicional.
+        baixar(blob, nome);
+      }
+
       setSalvo(true);
       // Salva/atualiza no histórico local (IndexedDB) — não fatal se falhar.
       const id = dbId ?? (() => { const n = gerarDbId(); setDbId(n); return n; })();
