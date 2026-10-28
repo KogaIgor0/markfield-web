@@ -42,7 +42,7 @@ maplibregl.addProtocol("pmtiles", _pmtilesProtocol.tilev4.bind(_pmtilesProtocol)
 // ---------------------------------------------------------------------------
 
 /** Cloudflare Worker que serve os assets BDGD com CORS. */
-const BDGD_CDN = "https://bdgd-cors.kogaigor0.workers.dev";
+const BDGD_CDN = "https://bdgd-cors.markfield-app.workers.dev";
 
 // ---------------------------------------------------------------------------
 // IDs internos

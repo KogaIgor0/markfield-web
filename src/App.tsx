@@ -56,6 +56,8 @@ import {
 } from "./domain/vaos";
 import type { LatLng, Projeto, TipoPonto } from "./domain/model";
 import { projetoVazio } from "./domain/model";
+import { salvarProjetoDb, gerarDbId, type ProjetoArquivado } from "./db/projetosDb";
+import { ProjetosModal } from "./ui/ProjetosModal";
 
 /**
  * Shell do Markfield Web.
@@ -134,6 +136,9 @@ export function App() {
   const [mostrarPrancha, setMostrarPrancha] = useState(false);
   const [mostrarCamadas, setMostrarCamadas] = useState(false);
   const [novoProjetoAberto, setNovoProjetoAberto] = useState(false);
+  const [projetosAberto, setProjetosAberto] = useState(false);
+  /** Id da entrada no IndexedDB correspondente ao projeto aberto (null = não registrado ainda). */
+  const [dbId, setDbId] = useState<string | null>(null);
   const [camadasBdgdVisiveis, setCamadasBdgdVisiveis] = useState<Set<string>>(BDGD_CAMADAS_PADRAO);
   const [bdgdFonteId, setBdgdFonteId] = useState("elektro");
   const [carregandoBdgd, setCarregandoBdgd] = useState(false);
@@ -319,6 +324,8 @@ export function App() {
     setCarregando(true);
     try {
       const nome = arquivo.name.toLowerCase();
+      // Para .mkf guardamos o blob original para registrar no histórico.
+      const mkfBlobParaDb: Blob | null = nome.endsWith(".mkf") ? arquivo : null;
       const resultado = nome.endsWith(".mkf")
         ? await importarMkf(await arquivo.arrayBuffer())
         : nome.endsWith(".zip")
@@ -352,12 +359,28 @@ export function App() {
       setModo("selecionar");
       setChaveEnq((c) => c + 1);
       setSalvo(true);
+      // Registra no histórico (só para .mkf; KML/ZIP ficam no histórico após o 1º "Salvar").
+      if (mkfBlobParaDb) {
+        const newDbId = gerarDbId();
+        setDbId(newDbId);
+        salvarProjetoDb({
+          dbId: newDbId,
+          nome: resultado.projeto.meta.nome,
+          distribuidoraId: bdgdFonteId,
+          atualizadoEm: new Date().toISOString(),
+          pontos: resultado.projeto.pontos.length,
+          trechos: resultado.projeto.trechos.length,
+          mkfBlob: mkfBlobParaDb,
+        }).catch(() => {});
+      } else {
+        setDbId(null);
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao ler o arquivo.");
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [bdgdFonteId]);
 
   // Nível 2 da conexão APP↔Web: mescla um segundo .mkf (outra equipe/dia) no
   // projeto aberto. Identidade por id — ver domain/merge.ts.
@@ -417,16 +440,85 @@ export function App() {
     [projeto, estado.blobs],
   );
 
+  /** Abre um projeto do histórico local (IndexedDB). */
+  const abrirDeDb = useCallback(async (entry: ProjetoArquivado) => {
+    setProjetosAberto(false);
+    setErro(null);
+    setCarregando(true);
+    try {
+      const resultado = await importarMkf(await entry.mkfBlob.arrayBuffer());
+      for (const url of imagensAntigas.current.values()) URL.revokeObjectURL(url);
+      const urls = new Map<string, string>();
+      for (const [chave, bytes] of resultado.imagens) {
+        const parte = bytes as unknown as BlobPart;
+        urls.set(chave, URL.createObjectURL(new Blob([parte], { type: "image/jpeg" })));
+      }
+      imagensAntigas.current = urls;
+      setEstado({
+        projeto: resultado.projeto,
+        imagens: urls,
+        blobs: resultado.imagens,
+        relatorio: resultado.relatorio,
+      });
+      setDbId(entry.dbId);
+      setBdgdFonteId(entry.distribuidoraId);
+      setSelecionadoId(null);
+      setSelecionadoTrechoId(null);
+      setLigarDeId(null);
+      setMovendoId(null);
+      setDestravadoId(null);
+      setMensagem(null);
+      setMedicao([]);
+      setModo("selecionar");
+      setChaveEnq((c) => c + 1);
+      setSalvo(true);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao abrir o projeto do histórico.");
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  /** Fecha o projeto aberto, voltando ao estado vazio. */
+  const fecharProjeto = useCallback(() => {
+    if (!salvo && !window.confirm("Há alterações não salvas. Fechar mesmo assim?")) return;
+    for (const url of imagensAntigas.current.values()) URL.revokeObjectURL(url);
+    imagensAntigas.current = new Map();
+    setEstado(VAZIO);
+    setDbId(null);
+    setSalvo(true);
+    setSelecionadoId(null);
+    setSelecionadoTrechoId(null);
+    setLigarDeId(null);
+    setMovendoId(null);
+    setDestravadoId(null);
+    setMensagem(null);
+    setMedicao([]);
+    setModo("selecionar");
+    setChaveEnq((c) => c + 1);
+  }, [salvo]);
+
   const salvar = useCallback(async () => {
     if (!projeto) return;
     try {
       const blob = await exportarMkf(projeto, estado.blobs);
       baixar(blob, nomeArquivoMkf(projeto));
       setSalvo(true);
+      // Salva/atualiza no histórico local (IndexedDB) — não fatal se falhar.
+      const id = dbId ?? (() => { const n = gerarDbId(); setDbId(n); return n; })();
+      salvarProjetoDb({
+        dbId: id,
+        nome: projeto.meta.nome,
+        distribuidoraId: bdgdFonteId,
+        atualizadoEm: new Date().toISOString(),
+        pontos: projeto.pontos.length,
+        trechos: projeto.trechos.length,
+        mkfBlob: blob,
+      }).catch(() => {});
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao salvar o .mkf.");
     }
-  }, [projeto, estado.blobs]);
+  }, [projeto, estado.blobs, dbId, bdgdFonteId]);
 
   const exportarDxf = useCallback(() => {
     if (!projeto) return;
@@ -614,10 +706,22 @@ export function App() {
         <div className="ct-project">
           <span className="ct-dist-badge">{bdgdFonteId.toUpperCase()}</span>
           <span className="ct-proj-name">{projeto?.meta.nome ?? rel?.nomeProjeto ?? "—"}</span>
+          {projeto && (
+            <button
+              className="ct-fechar-projeto"
+              onClick={fecharProjeto}
+              title="Fechar projeto"
+            >
+              ×
+            </button>
+          )}
         </div>
 
         {/* Arquivo */}
         <div className="ct-group">
+          <button className="cr-btn" onClick={() => setProjetosAberto(true)}>
+            Projetos
+          </button>
           <button className="cr-btn" onClick={() => setNovoProjetoAberto(true)}>
             Novo
           </button>
@@ -1357,11 +1461,20 @@ export function App() {
         />
       )}
 
+      {projetosAberto && (
+        <ProjetosModal
+          onAbrir={(entry) => void abrirDeDb(entry)}
+          onAbrirArquivo={() => inputRef.current?.click()}
+          onFechar={() => setProjetosAberto(false)}
+        />
+      )}
+
       {novoProjetoAberto && (
         <NovoProjetoModal
           onCriar={(nome, distribuidoraId) => {
             setEstado({ projeto: projetoVazio(nome), imagens: new Map(), blobs: new Map(), relatorio: null });
             setBdgdFonteId(distribuidoraId);
+            setDbId(null);
             setSalvo(false);
             setNovoProjetoAberto(false);
           }}
