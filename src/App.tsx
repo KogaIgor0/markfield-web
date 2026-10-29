@@ -734,11 +734,11 @@ export function App() {
           <span className="ct-name">Markfield</span>
         </div>
 
-        {/* Projeto / distribuidora */}
-        <div className="ct-project">
-          <span className="ct-dist-badge">{bdgdFonteId.toUpperCase()}</span>
-          <span className="ct-proj-name">{projeto?.meta.nome ?? rel?.nomeProjeto ?? "—"}</span>
-          {projeto && (
+        {/* Projeto / distribuidora — só aparece quando há projeto */}
+        {projeto && (
+          <div className="ct-project">
+            <span className="ct-dist-badge">{bdgdFonteId.toUpperCase()}</span>
+            <span className="ct-proj-name">{projeto.meta.nome || "Sem nome"}</span>
             <button
               className="ct-fechar-projeto"
               onClick={fecharProjeto}
@@ -746,19 +746,19 @@ export function App() {
             >
               ×
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Arquivo */}
         <div className="ct-group">
           <button className="cr-btn" onClick={() => setProjetosAberto(true)}>
-            Projetos
+            Abrir
           </button>
           <button className="cr-btn" onClick={() => setNovoProjetoAberto(true)}>
             Novo
           </button>
           <button className="cr-btn" onClick={() => inputRef.current?.click()} disabled={carregando}>
-            {carregando ? "Abrindo…" : "Abrir"}
+            {carregando ? "Importando…" : "Importar"}
           </button>
           {projeto && (
             <button className={`cr-btn${salvo ? "" : " unsaved"}`} onClick={() => void salvar()}>
@@ -787,7 +787,14 @@ export function App() {
           </button>
         </div>
 
-        <div className="ct-flex-space" />
+        <div className="ct-busca-area">
+          <BarraFerramentas
+            estiloBase={estiloBase}
+            onEstiloChange={setEstiloBase}
+            trafosData={trafosData}
+            onVoarPara={(alvo) => setVoarPara({ ...alvo })}
+          />
+        </div>
 
         {/* Resumo do projeto */}
         {rel && projeto && (
@@ -1086,10 +1093,10 @@ export function App() {
               <button
                 className={`tv-btn${modoRede ? " active-green" : ""}`}
                 onClick={() => setModoRede((v) => !v)}
-                title="Modo rede"
+                title="Análise: verifica pendências do projeto (estruturas, estais, amarração, para-raios)"
               >
                 <span className="tv-icon">⚡</span>
-                <span className="tv-label">Rede</span>
+                <span className="tv-label">Análise</span>
               </button>
               <button
                 className={`tv-btn${mostrarMateriais ? " active" : ""}`}
@@ -1167,12 +1174,7 @@ export function App() {
           voarPara={voarPara}
         />
 
-        <BarraFerramentas
-          estiloBase={estiloBase}
-          onEstiloChange={setEstiloBase}
-          trafosData={trafosData}
-          onVoarPara={(alvo) => setVoarPara({ ...alvo })}
-        />
+        {/* BarraFerramentas movida para a topbar */}
 
         {mostrarCamadas && (
           <PainelCamadas
@@ -1472,7 +1474,7 @@ export function App() {
 
       {/* Status bar */}
       <footer className="chrome-status">
-        <span className="cs-dist">{bdgdFonteId.toUpperCase()}</span>
+        {projeto && <span className="cs-dist">{bdgdFonteId.toUpperCase()}</span>}
         {projeto && (
           <>
             <span className="cs-sep" />

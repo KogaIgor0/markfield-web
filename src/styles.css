@@ -1426,22 +1426,14 @@ body {
    ============================================================ */
 
 .barra-ferramentas {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 30;
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(15, 23, 42, 0.88);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 10px;
-  padding: 5px 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  flex: 1;
+  min-width: 0;
+  max-width: 520px;
+  padding: 0 2px;
   pointer-events: all;
-  max-width: calc(100vw - 32px);
 }
 
 /* Grupo de botões de estilo */
@@ -1481,6 +1473,11 @@ body {
   position: relative;
   display: flex;
   align-items: center;
+  flex: 1;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 2px 6px;
 }
 
 .bf-busca-input {
@@ -1489,7 +1486,8 @@ body {
   outline: none;
   color: #e2e8f0;
   font-size: 13px;
-  width: 220px;
+  flex: 1;
+  min-width: 80px;
   padding: 4px 6px;
   caret-color: #60a5fa;
 }
@@ -1897,6 +1895,13 @@ body {
 }
 
 .ct-flex-space { flex: 1; }
+.ct-busca-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 6px;
+}
 
 .ct-resumo {
   font-size: 11px;
