@@ -1010,6 +1010,7 @@ export function App() {
         <nav className="chrome-toolbar-v">
           {projeto && (
             <>
+              <span className="tv-group-label">Edição</span>
               <button
                 className={`tv-btn${emAdd ? " active" : ""}`}
                 onClick={() => {
@@ -1057,6 +1058,7 @@ export function App() {
                 <span className="tv-label">Dividir{longos.length ? ` ${longos.length}` : ""}</span>
               </button>
               <div className="tv-sep" />
+              <span className="tv-group-label">Vista</span>
               <button
                 className={`tv-btn${emMedir ? " active" : ""}`}
                 onClick={() => {
@@ -1073,6 +1075,7 @@ export function App() {
                 <span className="tv-label">Medir</span>
               </button>
               <div className="tv-sep" />
+              <span className="tv-group-label">Projeto</span>
               <button
                 className={`tv-btn${!mostrarFotos ? " active" : ""}`}
                 onClick={() => setMostrarFotos((v) => !v)}

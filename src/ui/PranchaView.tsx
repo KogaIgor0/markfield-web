@@ -227,16 +227,27 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                 );
               })}
 
-            {/* Postes + rótulos */}
+            {/* Postes + balões de identificação */}
             {bbox &&
               projeto.pontos.map((p) => {
                 const [x, y] = toSvg(p.wgs84);
                 const trafo = p.tipo === "transformador";
                 const e = esforcos?.postes.get(p.id);
                 const cod = rotulosEstrutura.get(p.id);
+                const tp = acharPoste(p.posteTipo);
                 const mostraEsf = mostrarEsforco && e && e.esforcoDaN >= 1 && (e.precisaEstai || e.estais.length > 0);
+
+                // Texto do balão: "N° · cargaDaN · COD"  (ex.: "11 · 400 · CE1")
+                const partesBalao = [
+                  mostrarNumeros ? p.numero : null,
+                  tp ? String(tp.cargaDaN) : p.capacidadeDaN ? String(p.capacidadeDaN) : null,
+                  mostrarEstrutura ? cod : null,
+                ].filter(Boolean);
+                const textoBalao = partesBalao.join(" · ");
+
                 return (
                   <g key={`pt-${p.id}`}>
+                    {/* Símbolo do poste */}
                     {trafo ? (
                       <>
                         <circle cx={x} cy={y} r={1.6} fill="#fff" stroke="#000" strokeWidth={0.4} />
@@ -245,29 +256,18 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     ) : (
                       <circle cx={x} cy={y} r={0.9} fill="#fff" stroke="#000" strokeWidth={0.4} />
                     )}
-                    {mostrarNumeros && p.numero && (
-                      <text x={x + 1.6} y={y - 1.4} fontSize={2.6} fill="#000">
-                        {p.numero}
-                      </text>
+
+                    {/* Balão oblongo com identificação */}
+                    {textoBalao && (
+                      <BalaoPosto x={x} y={y} texto={textoBalao} />
                     )}
-                    {mostrarEstrutura && cod && (
-                      <text x={x + 1.6} y={y + 2.6} fontSize={2.2} fill="#b00">
-                        {cod}
-                      </text>
-                    )}
+
+                    {/* Esforço (se habilitado) — abaixo do poste */}
                     {mostraEsf && (
-                      <text x={x + 1.6} y={y + 5.2} fontSize={2} fill="#333">
+                      <text x={x + 1.6} y={y + 4} fontSize={2} fill="#333">
                         {Math.round(e!.esforcoDaN)} daN
                       </text>
                     )}
-                    {(() => {
-                      const tp = acharPoste(p.posteTipo);
-                      return tp ? (
-                        <text x={x + 1.6} y={y + (mostraEsf ? 7.8 : 5.2)} fontSize={2} fill="#555">
-                          {tp.alturaM}/{tp.cargaDaN}
-                        </text>
-                      ) : null;
-                    })()}
                   </g>
                 );
               })}
@@ -430,6 +430,60 @@ function QuadroMateriais({ w, materiais }: { w: number; materiais: ResumoMateria
       ))}
       <text x={0} y={linhas.length * lh + 2} fontSize={1.7} fill="#888">
         * estimado / tração provisória
+      </text>
+    </g>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Balão oblongo de identificação do poste (DIS-NOR-013)
+// --------------------------------------------------------------------------
+
+/**
+ * Balão oblongo acima-direita do poste, com linha de chamada.
+ * Texto: "N° · cargaDaN · COD"  (ex.: "11 · 400 · CE1")
+ */
+function BalaoPosto({ x, y, texto }: { x: number; y: number; texto: string }) {
+  // Tamanho do balão em mm
+  const fontSize = 2.2;
+  const bw = Math.max(texto.length * 1.35 + 3, 10); // largura proporcional ao texto
+  const bh = 4.2;
+  const rx = 2.1; // raio das bordas arredondadas (oblongo)
+
+  // Posição do balão: deslocado +8 mm à direita e -7 mm acima do poste
+  const bx = x + 8;
+  const by = y - 7;
+
+  // Ponto de toque da linha no canto inferior-esquerdo do balão
+  const lx = bx - bw / 2 + rx;
+  const ly = by + bh;
+
+  return (
+    <g>
+      {/* Linha de chamada: do símbolo ao balão */}
+      <line x1={x} y1={y} x2={lx} y2={ly} stroke="#000" strokeWidth={0.25} />
+      {/* Balão oblongo (retângulo com bordas arredondadas) */}
+      <rect
+        x={bx - bw / 2}
+        y={by}
+        width={bw}
+        height={bh}
+        rx={rx}
+        ry={rx}
+        fill="#fff"
+        stroke="#000"
+        strokeWidth={0.3}
+      />
+      {/* Texto centralizado no balão */}
+      <text
+        x={bx}
+        y={by + bh / 2 + fontSize * 0.38}
+        fontSize={fontSize}
+        textAnchor="middle"
+        fill="#000"
+        fontFamily="Arial, sans-serif"
+      >
+        {texto}
       </text>
     </g>
   );

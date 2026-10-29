@@ -1987,6 +1987,17 @@ body {
   flex-shrink: 0;
 }
 
+.tv-group-label {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #475569;
+  text-align: center;
+  width: 100%;
+  padding: 4px 0 1px;
+  user-select: none;
+}
+
 /* ── Status bar ──────────────────────────────────────────────── */
 .chrome-status {
   grid-row: 3;
