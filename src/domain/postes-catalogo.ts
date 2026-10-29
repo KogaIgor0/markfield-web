@@ -1,16 +1,11 @@
 /**
  * Catálogo de postes (B8) — concreto armado, DIS-ETE-011 rev.06 (Neoenergia).
  *
- * O poste é designado por **altura(m)/carga de topo(daN)** — ex.: `11/400`,
- * `12/600`, `12/1500`. A **carga nominal de topo** é a resistência que o esforço
- * usa (antes era um número solto no ponto); a **altura** vem da regra de projeto
- * (mín. rural 11 m / urbana 12 m — DIS-NOR-012 6.8.2) + vão/cruzamento.
- *
- * Fonte: DIS-ETE-011 rev.06, Anexo I (tabelas de postes seção circular e duplo
- * T). O projeto real da Elektro (Meridiano-SP) usa postes desta tabela: 11/300
- * (DT), 11/400, 11/600, 12/600 (circular). Como o catálogo de cabos, dá pra
- * editar aqui sem mexer no motor. *(A confirmar o subconjunto exato da Elektro.)*
+ * O poste é designado por **altura(m)/carga de topo(daN)** — ex.: `11/400`.
+ * Os dados vêm do PACK_ELEKTRO (fonte única). Editar = editar `packs/elektro.ts`.
+ * Ver `claude/markfield-arquitetura-motor.md`.
  */
+import { PACK_ELEKTRO } from "../packs/elektro";
 
 export type SecaoPoste = "circular" | "duploT";
 
@@ -26,23 +21,9 @@ export interface TipoPoste {
   rotulo: string;
 }
 
-/** Cargas por altura — seção CIRCULAR (DIS-ETE-011 rev06, Anexo I). */
-const CIRCULAR: Record<number, number[]> = {
-  9: [400, 600, 1000, 1500],
-  11: [400, 600, 1000, 1500],
-  12: [400, 600, 1000, 1500, 2000],
-  14: [1000, 1500, 2000],
-  16: [1000, 1500],
-};
-
-/** Cargas por altura — seção DUPLO T (DIS-ETE-011 rev06, Anexo I). */
-const DUPLO_T: Record<number, number[]> = {
-  9: [200, 300],
-  11: [200, 300],
-  12: [200, 300],
-  14: [300],
-  16: [300],
-};
+/** Tabelas de poste vindas do pack. */
+const CIRCULAR = PACK_ELEKTRO.postes.circular;
+const DUPLO_T  = PACK_ELEKTRO.postes.duploT;
 
 const PREFIXO: Record<SecaoPoste, string> = { circular: "C", duploT: "DT" };
 const NOME_SECAO: Record<SecaoPoste, string> = { circular: "circular", duploT: "duplo T" };
@@ -70,9 +51,9 @@ export const CATALOGO_POSTES: TipoPoste[] = [
   ...montar("duploT", DUPLO_T),
 ];
 
-// Defaults do piloto (rural / rede compacta MT) — confirmados com o Igor.
-export const POSTE_SECAO_PADRAO: SecaoPoste = "circular";
-export const POSTE_ALTURA_PADRAO = 11;
+// Defaults do piloto — vêm do pack da distribuidora.
+export const POSTE_SECAO_PADRAO: SecaoPoste = PACK_ELEKTRO.normas.postePadraoSecao;
+export const POSTE_ALTURA_PADRAO: number = PACK_ELEKTRO.normas.postePadraoAlturaM;
 /** Código do poste padrão (11 m / 400 daN circular). */
 export const POSTE_PADRAO = `${PREFIXO[POSTE_SECAO_PADRAO]}-${POSTE_ALTURA_PADRAO}/400`;
 

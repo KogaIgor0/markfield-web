@@ -2,6 +2,7 @@ import type { Ponto, Projeto } from "./model";
 import type { EstruturaAtribuida } from "./estrutura";
 import type { RedeModelada } from "./rede";
 import { distanciaM } from "./vaos";
+import { PACK_ELEKTRO } from "../packs/elektro";
 
 /**
  * Validação de amarração (B4 / norma) — DIS-NOR-013 §6.17.3:
@@ -15,9 +16,10 @@ import { distanciaM } from "./vaos";
  * (ex.: numa travessia), o que quebra o lance e tira o aviso.
  */
 
-export const LANCE_MAX_AMARRACAO_M = 500;
+/** Lance máximo sem amarração (m) — DIS-NOR-013 §6.17.3. Fonte: PACK_ELEKTRO. */
+export const LANCE_MAX_AMARRACAO_M: number = PACK_ELEKTRO.normas.lanceMaxAmarracaoM;
 
-const CODIGOS_AMARRACAO = ["CE3", "CE4", "CE3-CE3", "CE3TR"];
+const CODIGOS_AMARRACAO: readonly string[] = PACK_ELEKTRO.normas.codigosAmarracao;
 
 /** Um poste "amarra" se é encabeçamento/ancoragem ou não é poste de linha (grau≠2). */
 function ehAmarracao(codigo: string, grau: number): boolean {
@@ -176,8 +178,8 @@ export function proporAmarracao(
   return proporPontosEmLances(projeto, codigos, rede, LANCE_MAX_AMARRACAO_M);
 }
 
-/** Espaçamento máximo do estribo de espera (m) — DIS-NOR-013 6.15.2. */
-export const LANCE_ESTRIBO_M = 300;
+/** Espaçamento máximo do estribo de espera (m) — DIS-NOR-013 §6.15.2. Fonte: PACK_ELEKTRO. */
+export const LANCE_ESTRIBO_M: number = PACK_ELEKTRO.normas.lanceEstribosM;
 
 /**
  * Propõe pontos de **estribo de espera para aterramento temporário** — DIS-NOR-013

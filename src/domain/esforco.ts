@@ -9,6 +9,7 @@ import {
   type CondicaoVento,
 } from "./cabos";
 import { capacidadeDoPoste, sugerirPoste } from "./postes-catalogo";
+import { PACK_ELEKTRO } from "../packs/elektro";
 
 /**
  * Esforço mecânico + estai (B4 / T4) — rede compacta Elektro (DIS-NOR-013).
@@ -37,10 +38,10 @@ export type { CondicaoVento };
 /** Tração H (daN) do cabo padrão A35P por condição — atalho de compat. */
 export const TRACAO_DAN: Record<CondicaoVento, number> = acharCabo(CABO_PADRAO).tracaoDaN;
 
-/** Capacidade nominal padrão do poste (daN) — Quadro 8, concreto circular, A35P. */
-export const CAPACIDADE_PADRAO_DAN = 400;
-/** Comprimento do símbolo de estai no mapa (m) — footprint aproximado. */
-export const ESTAI_COMPRIMENTO_M = 10;
+/** Capacidade nominal padrão do poste (daN) — Quadro 8. Fonte: PACK_ELEKTRO. */
+export const CAPACIDADE_PADRAO_DAN: number = PACK_ELEKTRO.normas.capacidadePadraoDaN;
+/** Comprimento do símbolo de estai no mapa (m). Fonte: PACK_ELEKTRO. */
+export const ESTAI_COMPRIMENTO_M: number = PACK_ELEKTRO.normas.estaiComprimentoM;
 
 /** Normaliza um azimute para o intervalo [0, 360). */
 export function normalizarAzimute(graus: number): number {
