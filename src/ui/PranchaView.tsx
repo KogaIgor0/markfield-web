@@ -15,6 +15,8 @@ import {
 import { gerarDxfPrancha } from "../io/dxfPrancha";
 import { acharPoste } from "../domain/postes-catalogo";
 import { baixar } from "../io/exportar";
+import { distanciaM } from "../domain/vaos";
+import { espacadoresDoVao } from "../domain/materiais";
 
 /**
  * Prancha (B6) — a folha de projeto em ESCALA (SVG em mm), com moldura, Norte,
@@ -43,6 +45,9 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   const [mostrarNumeros, setMostrarNumeros] = useState(true);
   const [mostrarEstrutura, setMostrarEstrutura] = useState(true);
   const [mostrarEsforco, setMostrarEsforco] = useState(true);
+  const [mostrarTrechos, setMostrarTrechos] = useState(true);
+  // posição do balão por poste: 0=cima-dir, 1=cima-esq, 2=baixo-dir, 3=baixo-esq
+  const [balaoPos, setBalaoPos] = useState<Map<string, number>>(new Map());
 
   // Layout da folha (mm) — o mesmo do DXF (domain/prancha.ts).
   const layout = useMemo(() => layoutFolha(folha, orientacao), [folha, orientacao]);
@@ -139,6 +144,10 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
           <input type="checkbox" checked={mostrarEsforco} onChange={(e) => setMostrarEsforco(e.target.checked)} />
           Esforço
         </label>
+        <label className="prancha-chk">
+          <input type="checkbox" checked={mostrarTrechos} onChange={(e) => setMostrarTrechos(e.target.checked)} />
+          Vãos
+        </label>
         <span className="prancha-barra-sep" />
         <button className="btn" onClick={baixarDxf} title="Baixa a prancha em DXF (a folha em mm), como pede a norma junto do PDF">
           Baixar DXF
@@ -227,6 +236,33 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                 );
               })}
 
+            {/* Rótulos de trechos: cabo + distância + espaçadores */}
+            {bbox && mostrarTrechos &&
+              projeto.trechos.map((t) => {
+                if (!t.dePontoId || !t.aPontoId) return null;
+                const de = porId.get(t.dePontoId);
+                const a = porId.get(t.aPontoId);
+                if (!de || !a) return null;
+                const distM = distanciaM(de.wgs84, a.wgs84);
+                if (distM < 1) return null;
+                const nEsp = espacadoresDoVao(distM);
+                const cabo = t.tipoCabo ?? "A35P";
+                const mid: LatLng = {
+                  lat: (de.wgs84.lat + a.wgs84.lat) / 2,
+                  lng: (de.wgs84.lng + a.wgs84.lng) / 2,
+                };
+                const [mx, my] = toSvg(mid);
+                return (
+                  <TrechoLabel
+                    key={`tl-${t.id}`}
+                    x={mx} y={my}
+                    cabo={cabo}
+                    distM={Math.round(distM)}
+                    nEsp={nEsp}
+                  />
+                );
+              })}
+
             {/* Postes + balões de identificação */}
             {bbox &&
               projeto.pontos.map((p) => {
@@ -237,13 +273,18 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                 const tp = acharPoste(p.posteTipo);
                 const mostraEsf = mostrarEsforco && e && e.esforcoDaN >= 1 && (e.precisaEstai || e.estais.length > 0);
 
-                // Texto do balão: "N° · cargaDaN · COD"  (ex.: "11 · 400 · CE1")
-                const partesBalao = [
-                  mostrarNumeros ? p.numero : null,
-                  tp ? String(tp.cargaDaN) : p.capacidadeDaN ? String(p.capacidadeDaN) : null,
-                  mostrarEstrutura ? cod : null,
-                ].filter(Boolean);
-                const textoBalao = partesBalao.join(" · ");
+                // Texto do balão: "alturaM cargaDaN COD" — ex.: "11 400 CE2"
+                const alturaM = tp?.alturaM ?? 11;
+                const cargaDaN = tp?.cargaDaN ?? (p.capacidadeDaN ?? 400);
+                const partesBalao: string[] = [];
+                if (mostrarNumeros) {
+                  partesBalao.push(`${alturaM} ${cargaDaN}`);
+                }
+                if (mostrarEstrutura && cod) {
+                  partesBalao.push(cod);
+                }
+                const textoBalao = partesBalao.join(" ");
+                const pos = balaoPos.get(p.id) ?? 0;
 
                 return (
                   <g key={`pt-${p.id}`}>
@@ -257,12 +298,23 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                       <circle cx={x} cy={y} r={0.9} fill="#fff" stroke="#000" strokeWidth={0.4} />
                     )}
 
-                    {/* Balão oblongo com identificação */}
+                    {/* Balão oblongo — clique para rodar posição */}
                     {textoBalao && (
-                      <BalaoPosto x={x} y={y} texto={textoBalao} />
+                      <BalaoPosto
+                        x={x} y={y}
+                        texto={textoBalao}
+                        pos={pos}
+                        onClick={() =>
+                          setBalaoPos((m) => {
+                            const n = new Map(m);
+                            n.set(p.id, (pos + 1) % 4);
+                            return n;
+                          })
+                        }
+                      />
                     )}
 
-                    {/* Esforço (se habilitado) — abaixo do poste */}
+                    {/* Esforço (se habilitado) */}
                     {mostraEsf && (
                       <text x={x + 1.6} y={y + 4} fontSize={2} fill="#333">
                         {Math.round(e!.esforcoDaN)} daN
@@ -440,50 +492,90 @@ function QuadroMateriais({ w, materiais }: { w: number; materiais: ResumoMateria
 // --------------------------------------------------------------------------
 
 /**
- * Balão oblongo acima-direita do poste, com linha de chamada.
- * Texto: "N° · cargaDaN · COD"  (ex.: "11 · 400 · CE1")
+ * Balão oblongo de identificação do poste (DIS-NOR-013).
+ * Texto: "alturaM cargaDaN COD" (ex.: "11 400 CE2")
+ * pos: 0=cima-dir, 1=cima-esq, 2=baixo-dir, 3=baixo-esq
+ * Clique no balão para ciclar a posição.
  */
-function BalaoPosto({ x, y, texto }: { x: number; y: number; texto: string }) {
-  // Tamanho do balão em mm
+function BalaoPosto({
+  x, y, texto, pos, onClick,
+}: {
+  x: number; y: number; texto: string; pos: number; onClick: () => void;
+}) {
   const fontSize = 2.2;
-  const bw = Math.max(texto.length * 1.35 + 3, 10); // largura proporcional ao texto
+  const bw = Math.max(texto.length * 1.35 + 3, 10);
   const bh = 4.2;
-  const rx = 2.1; // raio das bordas arredondadas (oblongo)
+  const rx = 2.1;
+  const offX = 8;
+  const offY = 7;
 
-  // Posição do balão: deslocado +8 mm à direita e -7 mm acima do poste
-  const bx = x + 8;
-  const by = y - 7;
+  // Centro do balão por posição
+  const configs = [
+    { bx: x + offX + bw / 2, by: y - offY - bh },  // 0: cima-dir
+    { bx: x - offX - bw / 2, by: y - offY - bh },  // 1: cima-esq
+    { bx: x + offX + bw / 2, by: y + offY / 2 },   // 2: baixo-dir
+    { bx: x - offX - bw / 2, by: y + offY / 2 },   // 3: baixo-esq
+  ];
+  const { bx, by } = configs[pos % 4];
 
-  // Ponto de toque da linha no canto inferior-esquerdo do balão
-  const lx = bx - bw / 2 + rx;
-  const ly = by + bh;
+  // Ponto de ancoragem da linha: canto mais próximo do poste
+  const leaderCorners = [
+    { lx: bx - bw / 2, ly: by + bh },  // 0: canto baixo-esq do balão
+    { lx: bx + bw / 2, ly: by + bh },  // 1: canto baixo-dir
+    { lx: bx - bw / 2, ly: by },       // 2: canto cima-esq
+    { lx: bx + bw / 2, ly: by },       // 3: canto cima-dir
+  ];
+  const { lx, ly } = leaderCorners[pos % 4];
 
   return (
-    <g>
-      {/* Linha de chamada: do símbolo ao balão */}
+    <g onClick={onClick} style={{ cursor: "pointer" }}>
+      {/* Linha de chamada */}
       <line x1={x} y1={y} x2={lx} y2={ly} stroke="#000" strokeWidth={0.25} />
-      {/* Balão oblongo (retângulo com bordas arredondadas) */}
+      {/* Balão oblongo */}
       <rect
-        x={bx - bw / 2}
-        y={by}
-        width={bw}
-        height={bh}
-        rx={rx}
-        ry={rx}
-        fill="#fff"
-        stroke="#000"
-        strokeWidth={0.3}
+        x={bx - bw / 2} y={by}
+        width={bw} height={bh}
+        rx={rx} ry={rx}
+        fill="#fff" stroke="#000" strokeWidth={0.3}
       />
-      {/* Texto centralizado no balão */}
+      {/* Texto */}
       <text
-        x={bx}
-        y={by + bh / 2 + fontSize * 0.38}
-        fontSize={fontSize}
-        textAnchor="middle"
-        fill="#000"
-        fontFamily="Arial, sans-serif"
+        x={bx} y={by + bh / 2 + fontSize * 0.38}
+        fontSize={fontSize} textAnchor="middle"
+        fill="#000" fontFamily="Arial, sans-serif"
       >
         {texto}
+      </text>
+    </g>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Rótulo de trecho: cabo + distância + espaçadores
+// --------------------------------------------------------------------------
+
+function TrechoLabel({
+  x, y, cabo, distM, nEsp,
+}: {
+  x: number; y: number; cabo: string; distM: number; nEsp: number;
+}) {
+  const linha1 = cabo;
+  const linha2 = `${distM} m (${nEsp} esp.)`;
+  const bw = Math.max(Math.max(linha1.length, linha2.length) * 1.2 + 2, 14);
+  const bh = 5.5;
+  return (
+    <g>
+      <rect
+        x={x - bw / 2} y={y - bh / 2}
+        width={bw} height={bh}
+        rx={0.8} ry={0.8}
+        fill="#fffef0" stroke="#888" strokeWidth={0.2} fillOpacity={0.92}
+      />
+      <text x={x} y={y - 0.8} fontSize={2} textAnchor="middle" fill="#333" fontFamily="Arial, sans-serif" fontWeight="bold">
+        {linha1}
+      </text>
+      <text x={x} y={y + 2.4} fontSize={1.9} textAnchor="middle" fill="#555" fontFamily="Arial, sans-serif">
+        {linha2}
       </text>
     </g>
   );
