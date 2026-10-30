@@ -308,19 +308,29 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     {trafo ? (
                       /* Transformador "a instalar" — DIS-NOR-012 Anexo VIII:
                          triângulo invertido (base alinhada à rede, vértice para baixo),
-                         metade ESQ branca / metade DIR preta; linha 2 mm abaixo do vértice
-                         representa a ligação ao centro do poste. */
+                         metade ESQ branca / metade DIR preta;
+                         linha 2 mm do vértice → centro do poste (círculo tubular abaixo). */
                       <>
-                        {/* Preenchimentos das duas metades */}
+                        {/* === TRIÂNGULO === */}
                         <polygon points={`${x-2},${y} ${x},${y} ${x},${y+3.5}`} fill="#fff" stroke="none" />
                         <polygon points={`${x},${y} ${x+2},${y} ${x},${y+3.5}`} fill="#000" stroke="none" />
-                        {/* Contorno do triângulo completo */}
                         <polygon
                           points={`${x-2},${y} ${x+2},${y} ${x},${y+3.5}`}
                           fill="none" stroke="#000" strokeWidth={0.4}
                         />
-                        {/* Linha de conexão ao poste (2 mm abaixo do vértice) */}
+                        {/* === LINHA DE CONEXÃO 2 mm === */}
                         <line x1={x} y1={y+3.5} x2={x} y2={y+5.5} stroke="#000" strokeWidth={0.4} />
+                        {/* === SÍMBOLO DO POSTE (circular tubular) no centro da âncora === */}
+                        {/* Fundo branco */}
+                        <circle cx={x} cy={y+5.5} r={2.0} fill="#fff" stroke="#000" strokeWidth={0.4} />
+                        {/* Metade esquerda preta */}
+                        <path
+                          d={`M ${x} ${y+5.5-2.0} A 2.0 2.0 0 0 0 ${x} ${y+5.5+2.0} Z`}
+                          fill="#000"
+                        />
+                        {/* Contornos redesenhados */}
+                        <circle cx={x} cy={y+5.5} r={2.0} fill="none" stroke="#000" strokeWidth={0.4} />
+                        <circle cx={x} cy={y+5.5} r={1.2} fill="none" stroke="#000" strokeWidth={0.4} />
                       </>
                     ) : (
                       /* Poste circular TUBULAR "a instalar" — DIS-NOR-012 Anexo VIII:
@@ -458,11 +468,15 @@ function PainelDireito({
           <circle cx={1} cy={-0.8} r={0.55} fill="none" stroke="#000" strokeWidth={0.35} />
         </SimbLinha>
         <SimbLinha dy={5} label="Transformador">
-          {/* Mini triângulo invertido: metade dir. preta */}
-          <polygon points={`${-0.5},${-1.8} ${2.5},${-1.8} ${1},${-0.4}`} fill="#fff" stroke="none" />
-          <polygon points={`${1},${-1.8} ${2.5},${-1.8} ${1},${-0.4}`} fill="#000" stroke="none" />
-          <polygon points={`${-0.5},${-1.8} ${2.5},${-1.8} ${1},${-0.4}`} fill="none" stroke="#000" strokeWidth={0.35} />
-          <line x1={1} y1={-0.4} x2={1} y2={0.4} stroke="#000" strokeWidth={0.35} />
+          {/* Mini: triângulo + linha + círculo tubular */}
+          <polygon points={`${-0.5},${-3.5} ${2.5},${-3.5} ${1},${-1.8}`} fill="#fff" stroke="none" />
+          <polygon points={`${1},${-3.5} ${2.5},${-3.5} ${1},${-1.8}`} fill="#000" stroke="none" />
+          <polygon points={`${-0.5},${-3.5} ${2.5},${-3.5} ${1},${-1.8}`} fill="none" stroke="#000" strokeWidth={0.35} />
+          <line x1={1} y1={-1.8} x2={1} y2={-0.8} stroke="#000" strokeWidth={0.35} />
+          <circle cx={1} cy={-0.8} r={0.9} fill="#fff" stroke="#000" strokeWidth={0.3} />
+          <path d={`M 1 ${-0.8-0.9} A 0.9 0.9 0 0 0 1 ${-0.8+0.9} Z`} fill="#000" />
+          <circle cx={1} cy={-0.8} r={0.9} fill="none" stroke="#000" strokeWidth={0.3} />
+          <circle cx={1} cy={-0.8} r={0.55} fill="none" stroke="#000" strokeWidth={0.3} />
         </SimbLinha>
         <SimbLinha dy={10} label="Rede compacta">
           <line x1={-0.5} y1={-0.8} x2={2.5} y2={-0.8} stroke="#000" strokeWidth={0.5} />
