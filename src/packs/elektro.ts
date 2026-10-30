@@ -34,8 +34,13 @@ export interface CaboEntry {
   rotulo: string;
   secaoMm2: number;
   tensaoKv: number;
-  /** Diâmetro nominal (mm) — DIS-NOR-013 Anexo I Tab.2. */
+  /** Diâmetro nominal do cabo (mm) — DIS-NOR-013 Anexo I Tab.2. */
   diametroMm: number;
+  /**
+   * Diâmetro da cordoalha metálica (mm) — usado no rótulo da prancha:
+   * "3xA35P(7,94) - 15 kV". Específico por distribuidora/norma.
+   */
+  cordoalhaDiametroMm?: number;
   /** Carga de ruptura do condutor (daN). */
   rupturaDaN: number;
   /** Tração de projeto H (daN) por condição, vão de referência 50 m (Tab.7–9). */
@@ -189,6 +194,7 @@ export const PACK_ELEKTRO: PackConcessionaria = {
       secaoMm2: 35,
       tensaoKv: 15,
       diametroMm: 14.05,
+      cordoalhaDiametroMm: 7.94,  // Neoenergia Elektro — DIS-NOR-013
       rupturaDaN: 455,
       tracaoDaN: { urbana: 438, rural_alto: 595, rural_medio_baixo: 714 },
       tracaoReduzidaDaN: 215, // ~30% de 714 (vão frouxo) — provisório

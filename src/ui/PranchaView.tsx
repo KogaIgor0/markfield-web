@@ -191,7 +191,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
               </text>
             )}
 
-            {/* Trechos */}
+            {/* Trechos — proposto = pontilhado, tração reduzida = traço-ponto menor */}
             {bbox &&
               projeto.trechos.map((t) => {
                 const caminho =
@@ -202,6 +202,8 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                       ) as LatLng[];
                 if (caminho.length < 2) return null;
                 const pts = caminho.map((c) => toSvg(c).join(",")).join(" ");
+                // Proposto = pontilhado (DIS-NOR-012); tração reduzida = traço menor
+                const dash = t.tracaoReduzida ? "1.5 1.5" : "3 2";
                 return (
                   <polyline
                     key={t.id}
@@ -209,7 +211,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     fill="none"
                     stroke="#000"
                     strokeWidth={0.5}
-                    strokeDasharray={t.tracaoReduzida ? "2 1.2" : undefined}
+                    strokeDasharray={dash}
                     strokeLinejoin="round"
                   />
                 );
@@ -286,22 +288,22 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
 
                 return (
                   <g key={`pt-${p.id}`}>
-                    {/* Símbolo do poste — DIS-NOR-012 Anexo VIII */}
+                    {/* Símbolo do poste — DIS-NOR-012 Anexo VIII, r=2 mm */}
                     {trafo ? (
                       /* Transformador: círculo duplo com ponto central */
                       <>
-                        <circle cx={x} cy={y} r={1.6} fill="#fff" stroke="#000" strokeWidth={0.4} />
-                        <circle cx={x} cy={y} r={0.6} fill="#000" />
+                        <circle cx={x} cy={y} r={2.0} fill="#fff" stroke="#000" strokeWidth={0.4} />
+                        <circle cx={x} cy={y} r={0.8} fill="#000" />
                       </>
                     ) : (
-                      /* Poste "a instalar": metade esquerda cheia (◑) */
+                      /* Poste circular "a instalar": semicírculo esquerdo cheio (◑) r=2 mm */
                       <>
-                        <circle cx={x} cy={y} r={1.0} fill="#fff" stroke="#000" strokeWidth={0.4} />
+                        <circle cx={x} cy={y} r={2.0} fill="#fff" stroke="#000" strokeWidth={0.4} />
                         <path
-                          d={`M ${x} ${y - 1.0} A 1.0 1.0 0 0 0 ${x} ${y + 1.0} Z`}
+                          d={`M ${x} ${y - 2.0} A 2.0 2.0 0 0 0 ${x} ${y + 2.0} Z`}
                           fill="#000"
                         />
-                        <circle cx={x} cy={y} r={1.0} fill="none" stroke="#000" strokeWidth={0.4} />
+                        <circle cx={x} cy={y} r={2.0} fill="none" stroke="#000" strokeWidth={0.4} />
                       </>
                     )}
 
@@ -575,76 +577,46 @@ function TrechoVao({
 }) {
   const mx = (ax + bx) / 2;
   const my = (ay + by) / 2;
-  const svgLen = Math.hypot(bx - ax, by - ay);
-
   // Ângulo da linha em graus; normalizado para texto nunca ficar de cabeça para baixo
   let angle = Math.atan2(by - ay, bx - ax) * 180 / Math.PI;
   if (angle > 90) angle -= 180;
   if (angle < -90) angle += 180;
 
-  // Label do cabo: "3xCOD(diâm) - tensão kV"
+  // Label do cabo: "3xCOD(cordoalha) - tensão kV" — usa diâmetro da cordoalha
   const entry = PACK_ELEKTRO.cabos.find((c) => c.codigo === cabo);
-  const diam = entry ? entry.diametroMm.toFixed(2).replace(".", ",") : "?";
+  const diam = entry?.cordoalhaDiametroMm
+    ? entry.cordoalhaDiametroMm.toFixed(2).replace(".", ",")
+    : entry?.diametroMm.toFixed(2).replace(".", ",") ?? "?";
   const tensao = entry ? entry.tensaoKv : 15;
   const cableLabel = `3x${cabo}(${diam}) - ${tensao} kV`;
 
-  const bw = Math.max(cableLabel.length * 1.25 + 3, 16);
-  const bh = 3.8;
-
-  // Posições dos espaçadores ao longo da linha (coordenadas SVG absolutas)
-  const spacers: [number, number][] = [];
-  for (let k = 1; k <= nEsp; k++) {
-    const t = k / (nEsp + 1);
-    spacers.push([ax + (bx - ax) * t, ay + (by - ay) * t]);
-  }
-
-  // Direção perpendicular à linha (normalizada), para os ticks dos espaçadores
-  const len = Math.max(svgLen, 0.001);
-  const perpX = -(by - ay) / len;
-  const perpY = (bx - ax) / len;
-  const tickH = 1.6; // metade da altura do tick
+  const bw = Math.max(cableLabel.length * 1.1 + 2, 14);
+  const bh = 3.2;
 
   return (
-    <g>
-      {/* Marcas de espaçador: linha perpendicular ao trecho */}
-      {spacers.map(([sx, sy], i) => (
-        <line key={i}
-          x1={sx - perpX * tickH} y1={sy - perpY * tickH}
-          x2={sx + perpX * tickH} y2={sy + perpY * tickH}
-          stroke="#000" strokeWidth={0.4}
-        />
-      ))}
+    <g transform={`rotate(${angle}, ${mx}, ${my})`}>
+      {/* Label do cabo: acima da linha, próximo (offset 3 mm) */}
+      <rect
+        x={mx - bw / 2} y={my - 3 - bh}
+        width={bw} height={bh}
+        rx={1.0} ry={1.0}
+        fill="#fff" stroke="#c00" strokeWidth={0.35}
+      />
+      <text
+        x={mx} y={my - 3 - bh / 2 + 0.75}
+        fontSize={1.8} textAnchor="middle"
+        fill="#c00" fontFamily="Arial, sans-serif"
+      >
+        {cableLabel}
+      </text>
 
-      {/* Label do cabo: acima da linha, rotacionado */}
-      <g transform={`rotate(${angle}, ${mx}, ${my})`}>
-        <rect
-          x={mx - bw / 2} y={my - 8 - bh}
-          width={bw} height={bh}
-          rx={1.2} ry={1.2}
-          fill="#fff" stroke="#c00" strokeWidth={0.4}
-        />
-        <text
-          x={mx} y={my - 8 - bh / 2 + 0.9}
-          fontSize={2.1} textAnchor="middle"
-          fill="#c00" fontFamily="Arial, sans-serif"
-        >
-          {cableLabel}
-        </text>
-
-        {/* Distância e espaçadores: abaixo da linha */}
-        <text x={mx} y={my + 5}
-          fontSize={2} textAnchor="middle"
-          fill="#333" fontFamily="Arial, sans-serif"
-        >
-          {distM} m
-        </text>
-        <text x={mx} y={my + 7.8}
-          fontSize={1.9} textAnchor="middle"
-          fill="#555" fontFamily="Arial, sans-serif"
-        >
-          ({nEsp} espaçadores)
-        </text>
-      </g>
+      {/* Distância e espaçadores: abaixo da linha, próximo (offset 2 mm) */}
+      <text x={mx} y={my + 3.5}
+        fontSize={1.7} textAnchor="middle"
+        fill="#444" fontFamily="Arial, sans-serif"
+      >
+        {distM} m  ({nEsp} espaçadores)
+      </text>
     </g>
   );
 }
