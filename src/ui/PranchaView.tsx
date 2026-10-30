@@ -296,14 +296,21 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                         <circle cx={x} cy={y} r={0.8} fill="#000" />
                       </>
                     ) : (
-                      /* Poste circular "a instalar": semicírculo esquerdo cheio (◑) r=2 mm */
+                      /* Poste circular TUBULAR "a instalar" — DIS-NOR-012 Anexo VIII:
+                         dois círculos concêntricos (anel externo r=2 mm, interno r=1,2 mm),
+                         metade ESQUERDA preenchida em preto. */
                       <>
+                        {/* Fundo branco do anel externo */}
                         <circle cx={x} cy={y} r={2.0} fill="#fff" stroke="#000" strokeWidth={0.4} />
+                        {/* Metade esquerda preta (arco horário de cima→baixo pelo lado esquerdo) */}
                         <path
                           d={`M ${x} ${y - 2.0} A 2.0 2.0 0 0 0 ${x} ${y + 2.0} Z`}
                           fill="#000"
                         />
+                        {/* Contorno externo redesenhado sobre o preenchimento */}
                         <circle cx={x} cy={y} r={2.0} fill="none" stroke="#000" strokeWidth={0.4} />
+                        {/* Anel interno (tubo) — visível sobre branco e sobre preto */}
+                        <circle cx={x} cy={y} r={1.2} fill="none" stroke="#000" strokeWidth={0.4} />
                       </>
                     )}
 
@@ -416,8 +423,12 @@ function PainelDireito({
         Simbologia
       </text>
       <g transform={`translate(${x + 4}, ${by + 16})`}>
-        <SimbLinha dy={0} label="Poste">
-          <circle cx={1} cy={-0.8} r={0.9} fill="#fff" stroke="#000" strokeWidth={0.4} />
+        <SimbLinha dy={0} label="Poste circ. tubular">
+          {/* Miniatura do símbolo DIS-NOR-012: dois anéis, metade esq. preta */}
+          <circle cx={1} cy={-0.8} r={0.9} fill="#fff" stroke="#000" strokeWidth={0.35} />
+          <path d={`M 1 ${-0.8 - 0.9} A 0.9 0.9 0 0 0 1 ${-0.8 + 0.9} Z`} fill="#000" />
+          <circle cx={1} cy={-0.8} r={0.9} fill="none" stroke="#000" strokeWidth={0.35} />
+          <circle cx={1} cy={-0.8} r={0.55} fill="none" stroke="#000" strokeWidth={0.35} />
         </SimbLinha>
         <SimbLinha dy={5} label="Transformador">
           <circle cx={1} cy={-0.8} r={1.5} fill="#fff" stroke="#000" strokeWidth={0.4} />
