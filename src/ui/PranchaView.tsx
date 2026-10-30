@@ -228,10 +228,26 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   <g key={`estai-${p.id}`}>
                     {e.estais.map((es) => {
                       const [ax, ay] = toSvg(es.ate);
+                      // Direção poste → âncora (normalizada)
+                      const dxE = ax - px, dyE = ay - py;
+                      const lenE = Math.sqrt(dxE * dxE + dyE * dyE);
+                      if (lenE < 0.01) return null;
+                      const uxE = dxE / lenE, uyE = dyE / lenE;
+                      // Semicírculo ⊃: diâmetro ⊥ ao estai, arco voltado para fora do poste
+                      // Pontos extremos do diâmetro: perp (-uyE, uxE) aplicada ao centro da âncora
+                      const rA = 1.5;
+                      const ap1x = ax - uyE * rA, ap1y = ay + uxE * rA;
+                      const ap2x = ax + uyE * rA, ap2y = ay - uxE * rA;
                       return (
                         <g key={es.id}>
-                          <line x1={px} y1={py} x2={ax} y2={ay} stroke="#000" strokeWidth={0.35} />
-                          <rect x={ax - 0.8} y={ay - 0.8} width={1.6} height={1.6} fill="#000" transform={`rotate(45 ${ax} ${ay})`} />
+                          {/* Linha pontilhada proposta poste → âncora */}
+                          <line x1={px} y1={py} x2={ax} y2={ay}
+                            stroke="#000" strokeWidth={0.35} strokeDasharray="2.5 1.5" />
+                          {/* Âncora: semicírculo ⊃ — arco CCW (sweep=0) = curva para fora do poste */}
+                          <path
+                            d={`M ${ap1x} ${ap1y} A ${rA} ${rA} 0 0 0 ${ap2x} ${ap2y}`}
+                            fill="none" stroke="#000" strokeWidth={0.4}
+                          />
                         </g>
                       );
                     })}
@@ -290,10 +306,21 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   <g key={`pt-${p.id}`}>
                     {/* Símbolo do poste — DIS-NOR-012 Anexo VIII, r=2 mm */}
                     {trafo ? (
-                      /* Transformador: círculo duplo com ponto central */
+                      /* Transformador "a instalar" — DIS-NOR-012 Anexo VIII:
+                         triângulo invertido (base alinhada à rede, vértice para baixo),
+                         metade ESQ branca / metade DIR preta; linha 2 mm abaixo do vértice
+                         representa a ligação ao centro do poste. */
                       <>
-                        <circle cx={x} cy={y} r={2.0} fill="#fff" stroke="#000" strokeWidth={0.4} />
-                        <circle cx={x} cy={y} r={0.8} fill="#000" />
+                        {/* Preenchimentos das duas metades */}
+                        <polygon points={`${x-2},${y} ${x},${y} ${x},${y+3.5}`} fill="#fff" stroke="none" />
+                        <polygon points={`${x},${y} ${x+2},${y} ${x},${y+3.5}`} fill="#000" stroke="none" />
+                        {/* Contorno do triângulo completo */}
+                        <polygon
+                          points={`${x-2},${y} ${x+2},${y} ${x},${y+3.5}`}
+                          fill="none" stroke="#000" strokeWidth={0.4}
+                        />
+                        {/* Linha de conexão ao poste (2 mm abaixo do vértice) */}
+                        <line x1={x} y1={y+3.5} x2={x} y2={y+5.5} stroke="#000" strokeWidth={0.4} />
                       </>
                     ) : (
                       /* Poste circular TUBULAR "a instalar" — DIS-NOR-012 Anexo VIII:
@@ -431,8 +458,11 @@ function PainelDireito({
           <circle cx={1} cy={-0.8} r={0.55} fill="none" stroke="#000" strokeWidth={0.35} />
         </SimbLinha>
         <SimbLinha dy={5} label="Transformador">
-          <circle cx={1} cy={-0.8} r={1.5} fill="#fff" stroke="#000" strokeWidth={0.4} />
-          <circle cx={1} cy={-0.8} r={0.55} fill="#000" />
+          {/* Mini triângulo invertido: metade dir. preta */}
+          <polygon points={`${-0.5},${-1.8} ${2.5},${-1.8} ${1},${-0.4}`} fill="#fff" stroke="none" />
+          <polygon points={`${1},${-1.8} ${2.5},${-1.8} ${1},${-0.4}`} fill="#000" stroke="none" />
+          <polygon points={`${-0.5},${-1.8} ${2.5},${-1.8} ${1},${-0.4}`} fill="none" stroke="#000" strokeWidth={0.35} />
+          <line x1={1} y1={-0.4} x2={1} y2={0.4} stroke="#000" strokeWidth={0.35} />
         </SimbLinha>
         <SimbLinha dy={10} label="Rede compacta">
           <line x1={-0.5} y1={-0.8} x2={2.5} y2={-0.8} stroke="#000" strokeWidth={0.5} />
@@ -440,9 +470,10 @@ function PainelDireito({
         <SimbLinha dy={15} label="Tração reduzida">
           <line x1={-0.5} y1={-0.8} x2={2.5} y2={-0.8} stroke="#000" strokeWidth={0.5} strokeDasharray="1 0.8" />
         </SimbLinha>
-        <SimbLinha dy={20} label="Estai">
-          <line x1={-0.5} y1={0} x2={2} y2={-1.6} stroke="#000" strokeWidth={0.35} />
-          <rect x={1.4} y={-2.2} width={1.2} height={1.2} fill="#000" transform="rotate(45 2 -1.6)" />
+        <SimbLinha dy={20} label="Estai proposto">
+          {/* Linha pontilhada + semicírculo âncora ⊃ */}
+          <line x1={-0.5} y1={-0.5} x2={2} y2={-0.5} stroke="#000" strokeWidth={0.35} strokeDasharray="1.5 0.8" />
+          <path d={`M 2 ${-0.5-0.8} A 0.8 0.8 0 0 0 2 ${-0.5+0.8}`} fill="none" stroke="#000" strokeWidth={0.35} />
         </SimbLinha>
       </g>
       <text x={x + 3} y={by + 42} fontSize={1.8} fill="#888">
