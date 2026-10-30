@@ -311,26 +311,26 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                          metade ESQ branca / metade DIR preta;
                          linha 2 mm do vértice → centro do poste (círculo tubular abaixo). */
                       <>
-                        {/* === TRIÂNGULO === */}
-                        <polygon points={`${x-2},${y} ${x},${y} ${x},${y+3.5}`} fill="#fff" stroke="none" />
-                        <polygon points={`${x},${y} ${x+2},${y} ${x},${y+3.5}`} fill="#000" stroke="none" />
+                        {/* === TRIÂNGULO 4mm === */}
+                        <polygon points={`${x-2},${y} ${x},${y} ${x},${y+4}`} fill="#fff" stroke="none" />
+                        <polygon points={`${x},${y} ${x+2},${y} ${x},${y+4}`} fill="#000" stroke="none" />
                         <polygon
-                          points={`${x-2},${y} ${x+2},${y} ${x},${y+3.5}`}
+                          points={`${x-2},${y} ${x+2},${y} ${x},${y+4}`}
                           fill="none" stroke="#000" strokeWidth={0.4}
                         />
                         {/* === LINHA DE CONEXÃO 2 mm === */}
-                        <line x1={x} y1={y+3.5} x2={x} y2={y+5.5} stroke="#000" strokeWidth={0.4} />
-                        {/* === SÍMBOLO DO POSTE (circular tubular) no centro da âncora === */}
+                        <line x1={x} y1={y+4} x2={x} y2={y+6} stroke="#000" strokeWidth={0.4} />
+                        {/* === SÍMBOLO DO POSTE (circular tubular) centrado no fim da linha === */}
                         {/* Fundo branco */}
-                        <circle cx={x} cy={y+5.5} r={2.0} fill="#fff" stroke="#000" strokeWidth={0.4} />
+                        <circle cx={x} cy={y+6} r={2.0} fill="#fff" stroke="#000" strokeWidth={0.4} />
                         {/* Metade esquerda preta */}
                         <path
-                          d={`M ${x} ${y+5.5-2.0} A 2.0 2.0 0 0 0 ${x} ${y+5.5+2.0} Z`}
+                          d={`M ${x} ${y+6-2.0} A 2.0 2.0 0 0 0 ${x} ${y+6+2.0} Z`}
                           fill="#000"
                         />
                         {/* Contornos redesenhados */}
-                        <circle cx={x} cy={y+5.5} r={2.0} fill="none" stroke="#000" strokeWidth={0.4} />
-                        <circle cx={x} cy={y+5.5} r={1.2} fill="none" stroke="#000" strokeWidth={0.4} />
+                        <circle cx={x} cy={y+6} r={2.0} fill="none" stroke="#000" strokeWidth={0.4} />
+                        <circle cx={x} cy={y+6} r={1.2} fill="none" stroke="#000" strokeWidth={0.4} />
                       </>
                     ) : (
                       /* Poste circular TUBULAR "a instalar" — DIS-NOR-012 Anexo VIII:
