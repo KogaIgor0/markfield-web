@@ -17,6 +17,7 @@ import { acharPoste } from "../domain/postes-catalogo";
 import { baixar } from "../io/exportar";
 import { distanciaM } from "../domain/vaos";
 import { espacadoresDoVao } from "../domain/materiais";
+import { PACK_ELEKTRO } from "../packs/elektro";
 
 /**
  * Prancha (B6) — a folha de projeto em ESCALA (SVG em mm), com moldura, Norte,
@@ -236,7 +237,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                 );
               })}
 
-            {/* Rótulos de trechos: cabo + distância + espaçadores */}
+            {/* Rótulos de trechos: cabo + espaçadores + distância, alinhados ao trecho */}
             {bbox && mostrarTrechos &&
               projeto.trechos.map((t) => {
                 if (!t.dePontoId || !t.aPontoId) return null;
@@ -245,17 +246,14 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                 if (!de || !a) return null;
                 const distM = distanciaM(de.wgs84, a.wgs84);
                 if (distM < 1) return null;
+                const [ax2, ay2] = toSvg(de.wgs84);
+                const [bx2, by2] = toSvg(a.wgs84);
                 const nEsp = espacadoresDoVao(distM);
                 const cabo = t.tipoCabo ?? "A35P";
-                const mid: LatLng = {
-                  lat: (de.wgs84.lat + a.wgs84.lat) / 2,
-                  lng: (de.wgs84.lng + a.wgs84.lng) / 2,
-                };
-                const [mx, my] = toSvg(mid);
                 return (
-                  <TrechoLabel
-                    key={`tl-${t.id}`}
-                    x={mx} y={my}
+                  <TrechoVao
+                    key={`tv-${t.id}`}
+                    ax={ax2} ay={ay2} bx={bx2} by={by2}
                     cabo={cabo}
                     distM={Math.round(distM)}
                     nEsp={nEsp}
@@ -288,14 +286,23 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
 
                 return (
                   <g key={`pt-${p.id}`}>
-                    {/* Símbolo do poste */}
+                    {/* Símbolo do poste — DIS-NOR-012 Anexo VIII */}
                     {trafo ? (
+                      /* Transformador: círculo duplo com ponto central */
                       <>
                         <circle cx={x} cy={y} r={1.6} fill="#fff" stroke="#000" strokeWidth={0.4} />
                         <circle cx={x} cy={y} r={0.6} fill="#000" />
                       </>
                     ) : (
-                      <circle cx={x} cy={y} r={0.9} fill="#fff" stroke="#000" strokeWidth={0.4} />
+                      /* Poste "a instalar": metade esquerda cheia (◑) */
+                      <>
+                        <circle cx={x} cy={y} r={1.0} fill="#fff" stroke="#000" strokeWidth={0.4} />
+                        <path
+                          d={`M ${x} ${y - 1.0} A 1.0 1.0 0 0 0 ${x} ${y + 1.0} Z`}
+                          fill="#000"
+                        />
+                        <circle cx={x} cy={y} r={1.0} fill="none" stroke="#000" strokeWidth={0.4} />
+                      </>
                     )}
 
                     {/* Balão oblongo — clique para rodar posição */}
@@ -551,32 +558,93 @@ function BalaoPosto({
 }
 
 // --------------------------------------------------------------------------
-// Rótulo de trecho: cabo + distância + espaçadores
+// Rótulo de trecho: cabo rotacionado + espaçadores + distância (DIS-NOR-012 Anexo VIII)
 // --------------------------------------------------------------------------
 
-function TrechoLabel({
-  x, y, cabo, distM, nEsp,
+/**
+ * Renderiza sobre um trecho:
+ * - Label do cabo acima da linha (rotacionado, formato "3xA35P(14,05) - 15 kV")
+ * - Marcas de espaçador perpendiculares à linha
+ * - Distância em metros + contagem de espaçadores abaixo da linha
+ */
+function TrechoVao({
+  ax, ay, bx, by, cabo, distM, nEsp,
 }: {
-  x: number; y: number; cabo: string; distM: number; nEsp: number;
+  ax: number; ay: number; bx: number; by: number;
+  cabo: string; distM: number; nEsp: number;
 }) {
-  const linha1 = cabo;
-  const linha2 = `${distM} m (${nEsp} esp.)`;
-  const bw = Math.max(Math.max(linha1.length, linha2.length) * 1.2 + 2, 14);
-  const bh = 5.5;
+  const mx = (ax + bx) / 2;
+  const my = (ay + by) / 2;
+  const svgLen = Math.hypot(bx - ax, by - ay);
+
+  // Ângulo da linha em graus; normalizado para texto nunca ficar de cabeça para baixo
+  let angle = Math.atan2(by - ay, bx - ax) * 180 / Math.PI;
+  if (angle > 90) angle -= 180;
+  if (angle < -90) angle += 180;
+
+  // Label do cabo: "3xCOD(diâm) - tensão kV"
+  const entry = PACK_ELEKTRO.cabos.find((c) => c.codigo === cabo);
+  const diam = entry ? entry.diametroMm.toFixed(2).replace(".", ",") : "?";
+  const tensao = entry ? entry.tensaoKv : 15;
+  const cableLabel = `3x${cabo}(${diam}) - ${tensao} kV`;
+
+  const bw = Math.max(cableLabel.length * 1.25 + 3, 16);
+  const bh = 3.8;
+
+  // Posições dos espaçadores ao longo da linha (coordenadas SVG absolutas)
+  const spacers: [number, number][] = [];
+  for (let k = 1; k <= nEsp; k++) {
+    const t = k / (nEsp + 1);
+    spacers.push([ax + (bx - ax) * t, ay + (by - ay) * t]);
+  }
+
+  // Direção perpendicular à linha (normalizada), para os ticks dos espaçadores
+  const len = Math.max(svgLen, 0.001);
+  const perpX = -(by - ay) / len;
+  const perpY = (bx - ax) / len;
+  const tickH = 1.6; // metade da altura do tick
+
   return (
     <g>
-      <rect
-        x={x - bw / 2} y={y - bh / 2}
-        width={bw} height={bh}
-        rx={0.8} ry={0.8}
-        fill="#fffef0" stroke="#888" strokeWidth={0.2} fillOpacity={0.92}
-      />
-      <text x={x} y={y - 0.8} fontSize={2} textAnchor="middle" fill="#333" fontFamily="Arial, sans-serif" fontWeight="bold">
-        {linha1}
-      </text>
-      <text x={x} y={y + 2.4} fontSize={1.9} textAnchor="middle" fill="#555" fontFamily="Arial, sans-serif">
-        {linha2}
-      </text>
+      {/* Marcas de espaçador: linha perpendicular ao trecho */}
+      {spacers.map(([sx, sy], i) => (
+        <line key={i}
+          x1={sx - perpX * tickH} y1={sy - perpY * tickH}
+          x2={sx + perpX * tickH} y2={sy + perpY * tickH}
+          stroke="#000" strokeWidth={0.4}
+        />
+      ))}
+
+      {/* Label do cabo: acima da linha, rotacionado */}
+      <g transform={`rotate(${angle}, ${mx}, ${my})`}>
+        <rect
+          x={mx - bw / 2} y={my - 8 - bh}
+          width={bw} height={bh}
+          rx={1.2} ry={1.2}
+          fill="#fff" stroke="#c00" strokeWidth={0.4}
+        />
+        <text
+          x={mx} y={my - 8 - bh / 2 + 0.9}
+          fontSize={2.1} textAnchor="middle"
+          fill="#c00" fontFamily="Arial, sans-serif"
+        >
+          {cableLabel}
+        </text>
+
+        {/* Distância e espaçadores: abaixo da linha */}
+        <text x={mx} y={my + 5}
+          fontSize={2} textAnchor="middle"
+          fill="#333" fontFamily="Arial, sans-serif"
+        >
+          {distM} m
+        </text>
+        <text x={mx} y={my + 7.8}
+          fontSize={1.9} textAnchor="middle"
+          fill="#555" fontFamily="Arial, sans-serif"
+        >
+          ({nEsp} espaçadores)
+        </text>
+      </g>
     </g>
   );
 }
