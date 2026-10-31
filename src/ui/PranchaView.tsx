@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { LatLng, Projeto } from "../domain/model";
 import type { RedeEsforcos } from "../domain/esforco";
 import type { ResumoMateriais } from "../domain/materiais";
+import { MAPTILER_KEY } from "../config";
 import {
   bboxProjeto,
   escalaParaCaber,
@@ -47,6 +48,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   const [mostrarEstrutura, setMostrarEstrutura] = useState(true);
   const [mostrarEsforco, setMostrarEsforco] = useState(true);
   const [mostrarTrechos, setMostrarTrechos] = useState(true);
+  const [mostrarSatelite, setMostrarSatelite] = useState(false);
   // posição do balão por poste: 0=cima-dir, 1=cima-esq, 2=baixo-dir, 3=baixo-esq
   const [balaoPos, setBalaoPos] = useState<Map<string, number>>(new Map());
 
@@ -68,6 +70,33 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   const cabe = proj.cabe;
 
   const porId = useMemo(() => new Map(projeto.pontos.map((p) => [p.id, p])), [projeto]);
+
+  // Bbox WGS84 para o fundo de satélite — cobre a área de desenho incluindo o padding.
+  const satUrl = useMemo(() => {
+    if (!bbox || !mostrarSatelite) return null;
+    // Dimensões em metros da bbox do projeto
+    const larguraM = (bbox.maxE - bbox.minE) || 1;
+    const alturaM = (bbox.maxN - bbox.minN) || 1;
+    // Padding proporcional ao proj.padX/padY na escala corrente
+    const padLat = (alturaM * (proj.padY / desenho.h)) / 111320;
+    const padLng = (larguraM * (proj.padX / desenho.w)) / (111320 * Math.cos((((bbox.minN + bbox.maxN) / 2) * Math.PI) / 180));
+    // Converter bbox UTM para WGS84 aproximado usando os pontos do projeto
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    for (const p of projeto.pontos) {
+      if (p.wgs84.lat < minLat) minLat = p.wgs84.lat;
+      if (p.wgs84.lat > maxLat) maxLat = p.wgs84.lat;
+      if (p.wgs84.lng < minLng) minLng = p.wgs84.lng;
+      if (p.wgs84.lng > maxLng) maxLng = p.wgs84.lng;
+    }
+    // Adicionar padding
+    minLat -= padLat; maxLat += padLat;
+    minLng -= padLng; maxLng += padLng;
+    // Dimensões do request em pixels (proporcional ao desenho)
+    const aspect = desenho.w / desenho.h;
+    const pH = Math.min(1024, Math.round(800 / aspect));
+    const pW = Math.round(pH * aspect);
+    return `https://api.maptiler.com/maps/satellite-v2/static/${minLng.toFixed(6)},${minLat.toFixed(6)},${maxLng.toFixed(6)},${maxLat.toFixed(6)}/${pW}x${pH}.png?key=${MAPTILER_KEY}`;
+  }, [bbox, mostrarSatelite, proj.padX, proj.padY, desenho, projeto.pontos, escala]);
 
   const baixarDxf = () => {
     const dxf = gerarDxfPrancha({ projeto, esforcos, rotulosEstrutura, materiais, folha, orientacao, escala });
@@ -149,6 +178,10 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
           <input type="checkbox" checked={mostrarTrechos} onChange={(e) => setMostrarTrechos(e.target.checked)} />
           Vãos
         </label>
+        <label className="prancha-chk">
+          <input type="checkbox" checked={mostrarSatelite} onChange={(e) => setMostrarSatelite(e.target.checked)} />
+          🛰 Satélite
+        </label>
         <span className="prancha-barra-sep" />
         <button className="btn" onClick={baixarDxf} title="Baixa a prancha em DXF (a folha em mm), como pede a norma junto do PDF">
           Baixar DXF
@@ -185,6 +218,18 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
 
           {/* --- Área de desenho (rede em escala) --- */}
           <g clipPath="url(#clip-desenho)">
+            {/* Fundo de satélite (opcional) */}
+            {satUrl && (
+              <image
+                x={desenho.x}
+                y={desenho.y}
+                width={desenho.w}
+                height={desenho.h}
+                href={satUrl}
+                preserveAspectRatio="xMidYMid slice"
+              />
+            )}
+
             {!bbox && (
               <text x={desenho.x + desenho.w / 2} y={desenho.y + desenho.h / 2} fontSize={4} textAnchor="middle" fill="#666">
                 Sem pontos para desenhar.

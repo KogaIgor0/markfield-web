@@ -70,6 +70,14 @@ const FONTE_ESRI_LABELS: maplibregl.RasterSourceSpecification = {
   attribution: "Labels © Esri",
 };
 
+// Tiles vetoriais OSM via MapTiler (esquema OpenMapTiles: landcover, building, transportation)
+const FONTE_OSM_VEC: maplibregl.VectorSourceSpecification = {
+  type: "vector",
+  url: `https://api.maptiler.com/tiles/v3/tiles.json?key=${MAPTILER_KEY}`,
+};
+
+const OSM_VEC_LYRS = ["osm-landcover", "osm-buildings", "osm-roads", "osm-paths"] as const;
+
 /**
  * Estilo base multi-camada: todas as 3 bases (satélite, ruas, híbrido)
  * são carregadas na inicialização. Alternar o estilo é apenas mudar
@@ -188,6 +196,8 @@ interface MapCanvasProps {
   bdgdCarregarTrigger?: number;
   /** Estilo da base cartográfica ("satellite" | "streets" | "hybrid"). */
   estiloBase?: EstiloBase;
+  /** Mostra a camada vetorial OSM (estradas, edificações, vegetação). */
+  mostrarOsm?: boolean;
   /** Voa para um ponto/bbox no mapa. Trocar o objeto dispara o flyTo. */
   voarPara?: MapAlvo | null;
 }
@@ -245,6 +255,7 @@ export function MapCanvas(props: MapCanvasProps) {
     bdgdFonteId,
     bdgdCarregarTrigger,
     estiloBase,
+    mostrarOsm,
     voarPara,
   } = props;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -276,9 +287,12 @@ export function MapCanvas(props: MapCanvasProps) {
     mapRef.current = map;
     map.on("load", () => {
       prontoRef.current = true;
+      inicializarCamadasOsmVec(map);
       inicializarCamadasBdgd(map);
       // Aplica estilo inicial (pode ter sido alterado antes do load)
       aplicarEstiloBase(map, propsRef.current.estiloBase ?? "satellite");
+      // Aplica visibilidade OSM inicial
+      aplicarVisibilidadeOsmVec(map, propsRef.current.mostrarOsm ?? false);
     });
 
     const emModoAdicionar = () => typeof propsRef.current.modo === "object";
@@ -676,6 +690,13 @@ export function MapCanvas(props: MapCanvasProps) {
     aplicarEstiloBase(map, estiloBase ?? "satellite");
   }, [estiloBase]);
 
+  // Camada vetorial OSM (estradas, edificações, vegetação)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !prontoRef.current) return;
+    aplicarVisibilidadeOsmVec(map, mostrarOsm ?? false);
+  }, [mostrarOsm]);
+
   // Voar para ponto/bbox (cada novo objeto de referência dispara um flyTo)
   useEffect(() => {
     if (!voarPara) return;
@@ -911,6 +932,85 @@ function desenharProjeto(
       "circle-stroke-color": "#ffffff",
     },
   });
+}
+
+/** Inicializa as camadas vetoriais OSM (estradas, edifícios, vegetação) — todas ocultas. */
+function inicializarCamadasOsmVec(map: maplibregl.Map) {
+  if (map.getSource("osm-vec-src")) return;
+  map.addSource("osm-vec-src", FONTE_OSM_VEC);
+
+  // Vegetação / cobertura do solo
+  map.addLayer({
+    id: "osm-landcover",
+    type: "fill",
+    source: "osm-vec-src",
+    "source-layer": "landcover",
+    layout: { visibility: "none" },
+    paint: {
+      "fill-color": [
+        "match", ["get", "class"],
+        ["wood", "forest"], "#2d6a35",
+        "grass", "#57a05a",
+        "wetland", "#3d9b78",
+        "#5a9e5e",
+      ],
+      "fill-opacity": 0.4,
+    },
+  });
+
+  // Edificações
+  map.addLayer({
+    id: "osm-buildings",
+    type: "fill",
+    source: "osm-vec-src",
+    "source-layer": "building",
+    layout: { visibility: "none" },
+    paint: {
+      "fill-color": "#c8a96e",
+      "fill-opacity": 0.55,
+      "fill-outline-color": "#9a7240",
+    },
+  });
+
+  // Estradas (secondary+)
+  map.addLayer({
+    id: "osm-roads",
+    type: "line",
+    source: "osm-vec-src",
+    "source-layer": "transportation",
+    filter: ["match", ["get", "class"],
+      ["motorway", "trunk", "primary", "secondary", "tertiary", "minor"], true, false],
+    layout: { visibility: "none", "line-cap": "round", "line-join": "round" },
+    paint: {
+      "line-color": "#ffffff",
+      "line-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 16, 4],
+      "line-opacity": 0.85,
+    },
+  });
+
+  // Caminhos e trilhas
+  map.addLayer({
+    id: "osm-paths",
+    type: "line",
+    source: "osm-vec-src",
+    "source-layer": "transportation",
+    filter: ["match", ["get", "class"], ["path", "track", "service"], true, false],
+    layout: { visibility: "none", "line-cap": "round", "line-join": "round" },
+    paint: {
+      "line-color": "#ffe082",
+      "line-width": ["interpolate", ["linear"], ["zoom"], 12, 0.8, 16, 2.5],
+      "line-dasharray": [3, 1.5],
+      "line-opacity": 0.8,
+    },
+  });
+}
+
+/** Liga ou desliga as camadas vetoriais OSM. */
+function aplicarVisibilidadeOsmVec(map: maplibregl.Map, visivel: boolean) {
+  const vis: "visible" | "none" = visivel ? "visible" : "none";
+  for (const id of OSM_VEC_LYRS) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
+  }
 }
 
 /** Enquadra nos pontos e nas fotos confiáveis (ignora GPS lixo). */

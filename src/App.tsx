@@ -144,6 +144,7 @@ export function App() {
   const [carregandoBdgd, setCarregandoBdgd] = useState(false);
   const [bdgdCarregarTrigger, setBdgdCarregarTrigger] = useState(0);
   const [estiloBase, setEstiloBase] = useState<EstiloBase>("satellite");
+  const [mostrarOsm, setMostrarOsm] = useState(false);
   const [voarPara, setVoarPara] = useState<MapAlvo | null>(null);
   const [trafosData, setTrafosData] = useState<FeatureCollection | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -785,6 +786,12 @@ export function App() {
           >
             🗺 Rede BDGD
           </button>
+          <button
+            className={`cr-btn${mostrarOsm ? " active" : ""}`}
+            onClick={() => setMostrarOsm((v) => !v)}
+          >
+            🌿 OSM
+          </button>
         </div>
 
         <div className="ct-busca-area">
@@ -1174,6 +1181,7 @@ export function App() {
           bdgdFonteId={bdgdFonteId}
           bdgdCarregarTrigger={bdgdCarregarTrigger}
           estiloBase={estiloBase}
+          mostrarOsm={mostrarOsm}
           voarPara={voarPara}
         />
 
