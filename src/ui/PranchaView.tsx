@@ -302,21 +302,50 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                 const textoBalao = partesBalao.join(" ");
                 const pos = balaoPos.get(p.id) ?? 0;
 
+                // Direção da rede no poste (para rotacionar triângulo do trafo)
+                // Soma vetorial das direções de todos os trechos conectados.
+                let txUx = 1, txUy = 0;
+                if (trafo) {
+                  let sumDx = 0, sumDy = 0;
+                  for (const t of projeto.trechos) {
+                    const vizId = t.dePontoId === p.id ? t.aPontoId
+                                : t.aPontoId  === p.id ? t.dePontoId
+                                : null;
+                    const viz = vizId ? porId.get(vizId) : undefined;
+                    if (!viz) continue;
+                    const [vx, vy] = toSvg(viz.wgs84);
+                    const dx = vx - x, dy = vy - y;
+                    const len = Math.sqrt(dx * dx + dy * dy);
+                    if (len > 0.01) { sumDx += dx / len; sumDy += dy / len; }
+                  }
+                  const ls = Math.sqrt(sumDx * sumDx + sumDy * sumDy);
+                  if (ls > 0.01) { txUx = sumDx / ls; txUy = sumDy / ls; }
+                }
+                // Perpendicular da direção da rede apontando para SVG-y+ (sul = baixo)
+                let txPx = -txUy, txPy = txUx;
+                if (txPy < 0 || (Math.abs(txPy) < 0.001 && txPx < 0)) {
+                  txPx = txUy; txPy = -txUx;
+                }
+                // Pontos do triângulo do trafo (H=8 mm altura, B=3 mm meia-base)
+                const TH = 8, TB = 3;
+                const bmx = x + TH * txPx, bmy = y + TH * txPy;      // centro da base
+                const b1x = bmx + TB * txUx,  b1y = bmy + TB * txUy; // extremo direito
+                const b2x = bmx - TB * txUx,  b2y = bmy - TB * txUy; // extremo esquerdo
+
                 return (
                   <g key={`pt-${p.id}`}>
                     {/* Símbolo do poste — DIS-NOR-012 Anexo VIII, r=2 mm */}
                     {trafo ? (
                       /* Transformador "a instalar" — DIS-NOR-012 Anexo VIII:
-                         O POSTE fica em (x,y) = fim da rede (igual ao poste normal).
-                         Triângulo: VÉRTICE em (x,y), BASE 8 mm abaixo em (x,y+8).
-                         Metade ESQ branca / metade DIR preta.
-                         Círculo tubular centrado em (x,y) — desenhado por cima do triângulo. */
+                         VÉRTICE em (x,y) = centro do poste = fim da rede.
+                         BASE paralela à rede, 8 mm na perpendicular (lado sul/baixo).
+                         Metade ESQ branca / DIR preta. Círculo do poste por cima. */
                       <>
-                        {/* === TRIÂNGULO 8mm: vértice no centro do poste, base ao sul === */}
-                        <polygon points={`${x-3},${y+8} ${x},${y+8} ${x},${y}`} fill="#fff" stroke="none" />
-                        <polygon points={`${x},${y+8} ${x+3},${y+8} ${x},${y}`} fill="#000" stroke="none" />
+                        {/* === TRIÂNGULO rotacionado — base paralela à rede === */}
+                        <polygon points={`${x},${y} ${bmx},${bmy} ${b2x},${b2y}`} fill="#fff" stroke="none" />
+                        <polygon points={`${x},${y} ${b1x},${b1y} ${bmx},${bmy}`} fill="#000" stroke="none" />
                         <polygon
-                          points={`${x-3},${y+8} ${x+3},${y+8} ${x},${y}`}
+                          points={`${x},${y} ${b1x},${b1y} ${b2x},${b2y}`}
                           fill="none" stroke="#000" strokeWidth={0.4}
                         />
                         {/* === POSTE (circular tubular) centrado em (x,y) — por cima do triângulo === */}
