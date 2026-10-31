@@ -307,26 +307,26 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     {/* Símbolo do poste — DIS-NOR-012 Anexo VIII, r=2 mm */}
                     {trafo ? (
                       /* Transformador "a instalar" — DIS-NOR-012 Anexo VIII:
-                         triângulo invertido 6 mm: BASE em y = linha da rede, VÉRTICE em y+6.
+                         O POSTE fica em (x,y) = fim da rede (igual ao poste normal).
+                         Triângulo: VÉRTICE em (x,y), BASE 8 mm abaixo em (x,y+8).
                          Metade ESQ branca / metade DIR preta.
-                         Círculo tubular centrado no VÉRTICE (x, y+6) — abaixo da rede. */
+                         Círculo tubular centrado em (x,y) — desenhado por cima do triângulo. */
                       <>
-                        {/* === TRIÂNGULO 6mm ===
-                             BASE (x±2, y) alinhada à linha da rede; VÉRTICE (x, y+6) abaixo. */}
-                        <polygon points={`${x-2},${y} ${x},${y} ${x},${y+6}`} fill="#fff" stroke="none" />
-                        <polygon points={`${x},${y} ${x+2},${y} ${x},${y+6}`} fill="#000" stroke="none" />
+                        {/* === TRIÂNGULO 8mm: vértice no centro do poste, base ao sul === */}
+                        <polygon points={`${x-3},${y+8} ${x},${y+8} ${x},${y}`} fill="#fff" stroke="none" />
+                        <polygon points={`${x},${y+8} ${x+3},${y+8} ${x},${y}`} fill="#000" stroke="none" />
                         <polygon
-                          points={`${x-2},${y} ${x+2},${y} ${x},${y+6}`}
+                          points={`${x-3},${y+8} ${x+3},${y+8} ${x},${y}`}
                           fill="none" stroke="#000" strokeWidth={0.4}
                         />
-                        {/* === SÍMBOLO DO POSTE (circular tubular) centrado no vértice === */}
-                        <circle cx={x} cy={y+6} r={2.0} fill="#fff" stroke="#000" strokeWidth={0.4} />
+                        {/* === POSTE (circular tubular) centrado em (x,y) — por cima do triângulo === */}
+                        <circle cx={x} cy={y} r={2.0} fill="#fff" stroke="#000" strokeWidth={0.4} />
                         <path
-                          d={`M ${x} ${y+6-2.0} A 2.0 2.0 0 0 0 ${x} ${y+6+2.0} Z`}
+                          d={`M ${x} ${y-2.0} A 2.0 2.0 0 0 0 ${x} ${y+2.0} Z`}
                           fill="#000"
                         />
-                        <circle cx={x} cy={y+6} r={2.0} fill="none" stroke="#000" strokeWidth={0.4} />
-                        <circle cx={x} cy={y+6} r={1.2} fill="none" stroke="#000" strokeWidth={0.4} />
+                        <circle cx={x} cy={y} r={2.0} fill="none" stroke="#000" strokeWidth={0.4} />
+                        <circle cx={x} cy={y} r={1.2} fill="none" stroke="#000" strokeWidth={0.4} />
                       </>
                     ) : (
                       /* Poste circular TUBULAR "a instalar" — DIS-NOR-012 Anexo VIII:
