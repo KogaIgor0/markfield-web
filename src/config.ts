@@ -50,4 +50,4 @@ export const ESRI_MAXZOOM = lerEsriMaxzoom();
  * use `VITE_MAPTILER_KEY` como variável de ambiente.
  */
 export const MAPTILER_KEY =
-  (import.meta.env.VITE_MAPTILER_KEY as string | undefined) ?? "uzHeG3MjScryOo45geMn";
+  (import.meta.env.VITE_MAPTILER_KEY as string | undefined) ?? "3ajBpnhRJmaHD1nwcU1G";
