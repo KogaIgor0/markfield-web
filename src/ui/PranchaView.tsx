@@ -108,7 +108,8 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
       for (let ty = tyMin; ty <= tyMax; ty++) {
         const [x1, y1] = proj.toXY({ lat: ty2lat(ty,     zTarget), lng: tx2lng(tx,     zTarget) });
         const [x2, y2] = proj.toXY({ lat: ty2lat(ty + 1, zTarget), lng: tx2lng(tx + 1, zTarget) });
-        tiles.push({ key: `${prefixKey}-${zTarget}-${tx}-${ty}`, url: urlFn(zTarget, ty, tx), x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
+        // +0.2 mm de sobreposição elimina a fresta entre tiles adjacentes no SVG
+        tiles.push({ key: `${prefixKey}-${zTarget}-${tx}-${ty}`, url: urlFn(zTarget, ty, tx), x: x1, y: y1, w: (x2 - x1) + 0.2, h: (y2 - y1) + 0.2 });
       }
     }
     return tiles;
@@ -132,13 +133,12 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
     [mostrarSatelite, buildTiles, zSat],
   );
 
-  // OSM na prancha: tiles Carto Light sem labels (bom para sobrepor à rede)
+  // OSM na prancha: tiles OpenStreetMap (gratuito, sem chave)
   const osmTiles = useMemo(() => {
     if (!mostrarOsmPrancha) return null;
     const z = Math.min(zSat, 17); // OSM vai até z19 mas usamos o mesmo nível do sat
-    const sub = ["a", "b", "c"];
     return buildTiles(
-      (z, ty, tx) => `https://${sub[tx % 3]}.basemaps.cartocdn.com/light_nolabels/${z}/${tx}/${ty}.png`,
+      (_z, ty, tx) => `https://tile.openstreetmap.org/${_z}/${tx}/${ty}.png`,
       "osm", z,
     );
   }, [mostrarOsmPrancha, buildTiles, zSat]);
