@@ -103,13 +103,32 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
     const tyMin = lat2ty(maxLat, zTarget);
     const tyMax = lat2ty(minLat, zTarget);
     if ((txMax - txMin + 1) * (tyMax - tyMin + 1) > 200) return null;
+    // Pré-calcula a posição x de cada coluna e y de cada linha com uma única
+    // lat/lng de referência. Isso garante que tiles adjacentes compartilhem
+    // EXATAMENTE a mesma coordenada de borda — sem fresta nem sobreposição.
+    const refLat = (minLat + maxLat) / 2;
+    const refLng = (minLng + maxLng) / 2;
+    const colX: number[] = [];
+    for (let col = txMin; col <= txMax + 1; col++) {
+      colX.push(proj.toXY({ lat: refLat, lng: tx2lng(col, zTarget) })[0]);
+    }
+    const rowY: number[] = [];
+    for (let row = tyMin; row <= tyMax + 1; row++) {
+      rowY.push(proj.toXY({ lat: ty2lat(row, zTarget), lng: refLng })[1]);
+    }
     const tiles: { key: string; url: string; x: number; y: number; w: number; h: number }[] = [];
     for (let tx = txMin; tx <= txMax; tx++) {
       for (let ty = tyMin; ty <= tyMax; ty++) {
-        const [x1, y1] = proj.toXY({ lat: ty2lat(ty,     zTarget), lng: tx2lng(tx,     zTarget) });
-        const [x2, y2] = proj.toXY({ lat: ty2lat(ty + 1, zTarget), lng: tx2lng(tx + 1, zTarget) });
-        // +0.2 mm de sobreposição elimina a fresta entre tiles adjacentes no SVG
-        tiles.push({ key: `${prefixKey}-${zTarget}-${tx}-${ty}`, url: urlFn(zTarget, ty, tx), x: x1, y: y1, w: (x2 - x1) + 0.2, h: (y2 - y1) + 0.2 });
+        const xi = tx - txMin;
+        const yi = ty - tyMin;
+        tiles.push({
+          key: `${prefixKey}-${zTarget}-${tx}-${ty}`,
+          url: urlFn(zTarget, ty, tx),
+          x: colX[xi],
+          y: rowY[yi],
+          w: colX[xi + 1] - colX[xi],
+          h: rowY[yi + 1] - rowY[yi],
+        });
       }
     }
     return tiles;
@@ -133,12 +152,14 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
     [mostrarSatelite, buildTiles, zSat],
   );
 
-  // OSM na prancha: tiles OpenStreetMap (gratuito, sem chave)
+  // Mapa de ruas na prancha: Esri World Street Map — mesmo servidor do satélite,
+  // sem chave, sem bloqueio de localhost (tile.openstreetmap.org bloqueia dev).
   const osmTiles = useMemo(() => {
     if (!mostrarOsmPrancha) return null;
-    const z = Math.min(zSat, 17); // OSM vai até z19 mas usamos o mesmo nível do sat
+    const z = Math.min(zSat, 17);
     return buildTiles(
-      (_z, ty, tx) => `https://tile.openstreetmap.org/${_z}/${tx}/${ty}.png`,
+      (_z, ty, tx) =>
+        `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${_z}/${ty}/${tx}`,
       "osm", z,
     );
   }, [mostrarOsmPrancha, buildTiles, zSat]);
