@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { LatLng, Projeto } from "../domain/model";
 import type { RedeEsforcos } from "../domain/esforco";
 import type { ResumoMateriais } from "../domain/materiais";
@@ -49,6 +49,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   const [mostrarEsforco, setMostrarEsforco] = useState(true);
   const [mostrarTrechos, setMostrarTrechos] = useState(true);
   const [mostrarSatelite, setMostrarSatelite] = useState(false);
+  const [mostrarOsmPrancha, setMostrarOsmPrancha] = useState(false);
   // posição do balão por poste: 0=cima-dir, 1=cima-esq, 2=baixo-dir, 3=baixo-esq
   const [balaoPos, setBalaoPos] = useState<Map<string, number>>(new Map());
 
@@ -71,11 +72,13 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
 
   const porId = useMemo(() => new Map(projeto.pontos.map((p) => [p.id, p])), [projeto]);
 
-  // Tiles de satélite Esri posicionados individualmente no SVG para máxima nitidez.
-  const satTiles = useMemo(() => {
-    if (!bbox || !mostrarSatelite || projeto.pontos.length === 0) return null;
-
-    // Helpers de conversão tile ↔ WGS84
+  // Helper: gera grid de tiles raster para uma fonte qualquer no zoom correto.
+  const buildTiles = useCallback((
+    urlFn: (z: number, ty: number, tx: number) => string,
+    prefixKey: string,
+    zTarget: number,
+  ) => {
+    if (!bbox || projeto.pontos.length === 0) return null;
     const n = (z: number) => Math.pow(2, z);
     const lng2tx = (lng: number, z: number) => Math.floor((lng + 180) / 360 * n(z));
     const lat2ty = (lat: number, z: number) =>
@@ -85,15 +88,6 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
       const ang = Math.PI - 2 * Math.PI * y / n(z);
       return 180 / Math.PI * Math.atan(0.5 * (Math.exp(ang) - Math.exp(-ang)));
     };
-
-    // Zoom baseado na escala do desenho, limitado ao máximo disponível para a região
-    const zMax = Math.min(ESRI_MAXZOOM, 15); // z15 tem cobertura garantida no interior do Brasil
-    let z = zMax;
-    if (escala > 2000)  z = Math.min(zMax, 14);
-    if (escala > 5000)  z = Math.min(zMax, 13);
-    if (escala > 10000) z = Math.min(zMax, 12);
-
-    // Bbox WGS84 dos pontos do projeto
     let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
     for (const p of projeto.pontos) {
       if (p.wgs84.lat < minLat) minLat = p.wgs84.lat;
@@ -101,36 +95,53 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
       if (p.wgs84.lng < minLng) minLng = p.wgs84.lng;
       if (p.wgs84.lng > maxLng) maxLng = p.wgs84.lng;
     }
-    // Margem extra de 1 tile para garantir cobertura total
-    const tileDeg = 360 / n(z);
+    const tileDeg = 360 / n(zTarget);
     minLng -= tileDeg; maxLng += tileDeg;
     minLat -= tileDeg * 0.5; maxLat += tileDeg * 0.5;
-
-    const txMin = lng2tx(minLng, z);
-    const txMax = lng2tx(maxLng, z);
-    const tyMin = lat2ty(maxLat, z); // y é invertido: latitude alta → ty menor
-    const tyMax = lat2ty(minLat, z);
-
-    // Limitar a 200 tiles para não travar
+    const txMin = lng2tx(minLng, zTarget);
+    const txMax = lng2tx(maxLng, zTarget);
+    const tyMin = lat2ty(maxLat, zTarget);
+    const tyMax = lat2ty(minLat, zTarget);
     if ((txMax - txMin + 1) * (tyMax - tyMin + 1) > 200) return null;
-
     const tiles: { key: string; url: string; x: number; y: number; w: number; h: number }[] = [];
     for (let tx = txMin; tx <= txMax; tx++) {
       for (let ty = tyMin; ty <= tyMax; ty++) {
-        const tileLatN = ty2lat(ty,     z);
-        const tileLatS = ty2lat(ty + 1, z);
-        const tileLngW = tx2lng(tx,     z);
-        const tileLngE = tx2lng(tx + 1, z);
-
-        const [x1, y1] = proj.toXY({ lat: tileLatN, lng: tileLngW }); // NW → topo-esq
-        const [x2, y2] = proj.toXY({ lat: tileLatS, lng: tileLngE }); // SE → baixo-dir
-
-        const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}`;
-        tiles.push({ key: `${z}-${tx}-${ty}`, url, x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
+        const [x1, y1] = proj.toXY({ lat: ty2lat(ty,     zTarget), lng: tx2lng(tx,     zTarget) });
+        const [x2, y2] = proj.toXY({ lat: ty2lat(ty + 1, zTarget), lng: tx2lng(tx + 1, zTarget) });
+        tiles.push({ key: `${prefixKey}-${zTarget}-${tx}-${ty}`, url: urlFn(zTarget, ty, tx), x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
       }
     }
     return tiles;
-  }, [bbox, mostrarSatelite, proj, projeto.pontos, escala]);
+  }, [bbox, proj, projeto.pontos]);
+
+  // Zoom do satélite: igual ao editor (ESRI_MAXZOOM), reduzindo para áreas grandes
+  const zSat = useMemo(() => {
+    const zMax = ESRI_MAXZOOM;
+    if (escala > 10000) return Math.min(zMax, 13);
+    if (escala > 5000)  return Math.min(zMax, 14);
+    if (escala > 2000)  return Math.min(zMax, 15);
+    return zMax; // 1:1000 e 1:2000 → zoom máximo disponível (16 ou 17)
+  }, [escala]);
+
+  const satTiles = useMemo(
+    () => mostrarSatelite
+      ? buildTiles((z, ty, tx) =>
+          `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}`,
+          "sat", zSat)
+      : null,
+    [mostrarSatelite, buildTiles, zSat],
+  );
+
+  // OSM na prancha: tiles Carto Light sem labels (bom para sobrepor à rede)
+  const osmTiles = useMemo(() => {
+    if (!mostrarOsmPrancha) return null;
+    const z = Math.min(zSat, 17); // OSM vai até z19 mas usamos o mesmo nível do sat
+    const sub = ["a", "b", "c"];
+    return buildTiles(
+      (z, ty, tx) => `https://${sub[tx % 3]}.basemaps.cartocdn.com/light_nolabels/${z}/${tx}/${ty}.png`,
+      "osm", z,
+    );
+  }, [mostrarOsmPrancha, buildTiles, zSat]);
 
   const baixarDxf = () => {
     const dxf = gerarDxfPrancha({ projeto, esforcos, rotulosEstrutura, materiais, folha, orientacao, escala });
@@ -216,6 +227,10 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
           <input type="checkbox" checked={mostrarSatelite} onChange={(e) => setMostrarSatelite(e.target.checked)} />
           🛰 Satélite
         </label>
+        <label className="prancha-chk">
+          <input type="checkbox" checked={mostrarOsmPrancha} onChange={(e) => setMostrarOsmPrancha(e.target.checked)} />
+          🌿 OSM
+        </label>
         <span className="prancha-barra-sep" />
         <button className="btn" onClick={baixarDxf} title="Baixa a prancha em DXF (a folha em mm), como pede a norma junto do PDF">
           Baixar DXF
@@ -254,15 +269,13 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
           <g clipPath="url(#clip-desenho)">
             {/* Fundo de satélite — tiles Esri individuais posicionados em escala */}
             {satTiles && satTiles.map((t) => (
-              <image
-                key={t.key}
-                x={t.x}
-                y={t.y}
-                width={t.w}
-                height={t.h}
-                href={t.url}
-                preserveAspectRatio="none"
-              />
+              <image key={t.key} x={t.x} y={t.y} width={t.w} height={t.h}
+                href={t.url} preserveAspectRatio="none" />
+            ))}
+            {/* Overlay OSM (Carto Light) sobre o satélite */}
+            {osmTiles && osmTiles.map((t) => (
+              <image key={t.key} x={t.x} y={t.y} width={t.w} height={t.h}
+                href={t.url} preserveAspectRatio="none" opacity={0.6} />
             ))}
 
             {!bbox && (
