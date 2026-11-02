@@ -1,6 +1,13 @@
 import { useState } from "react";
-import type { LatLng, Ponto, TipoPonto } from "../domain/model";
+import type { DadosTransformador, LatLng, Ponto, TipoPonto } from "../domain/model";
 import type { PatchPonto } from "../domain/edicao";
+import {
+  ELOS_FUSIVEL,
+  FASES_OPCOES,
+  novoTrafo,
+  POTENCIAS_KVA,
+  sugerirEloFusivel,
+} from "../domain/trafo-catalogo";
 import { rotuloPapel, type Papel } from "../domain/rede";
 import { type EstruturaAtribuida } from "../domain/estrutura";
 import {
@@ -512,6 +519,11 @@ export function PainelPonto({
         </button>
       </div>
 
+      {/* Seção EQUIPAMENTOS — visível somente em pontos transformador */}
+      {ponto.tipo === "transformador" && (
+        <PainelEquipamentosTrafo trafo={ponto.trafo} onEditar={onEditar} />
+      )}
+
       <div className="painel-info">
         {ponto.origem === "web" ? "Criado no Web" : "Do campo"}
         {ponto.precisaoM != null && ` · precisão ${ponto.precisaoM} m`}
@@ -522,5 +534,228 @@ export function PainelPonto({
         Excluir ponto
       </button>
     </aside>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Sub-componente: painel de equipamentos do transformador
+// --------------------------------------------------------------------------
+
+interface PropsTrafo {
+  trafo: DadosTransformador | undefined;
+  onEditar: (patch: PatchPonto) => void;
+}
+
+/**
+ * Painel de equipamentos do transformador (E-06).
+ * Ordem de exibição (de cima para baixo, como na estrutura física):
+ *   estrutura primária (já na seção Rede acima) →
+ *   chaves fusíveis → para-raio → aterramento →
+ *   transformador (fases + kVA) → elo fusível →
+ *   estrutura secundária → iluminação pública → compartilhamento.
+ */
+function PainelEquipamentosTrafo({ trafo, onEditar }: PropsTrafo) {
+  // Se ainda não há trafo configurado, exibe botão para criar
+  if (!trafo) {
+    return (
+      <div className="painel-trafo">
+        <div className="painel-sub">Equipamentos</div>
+        <button
+          className="btn-trafo-iniciar"
+          onClick={() => onEditar({ trafo: novoTrafo() })}
+        >
+          + Configurar equipamento
+        </button>
+      </div>
+    );
+  }
+
+  /** Aplica um patch parcial no DadosTransformador e recalcula elo auto. */
+  const patch = (delta: Partial<DadosTransformador>) => {
+    const next = { ...trafo, ...delta };
+    // Recalcula elo fusível automaticamente, a menos que esteja no modo manual
+    if (!next.eloFusivelManual && !("eloFusivel" in delta)) {
+      next.eloFusivel = sugerirEloFusivel(next.fases, next.potenciaKva);
+    }
+    onEditar({ trafo: next });
+  };
+
+  const patchElo = (elo: string) => {
+    onEditar({ trafo: { ...trafo, eloFusivel: elo, eloFusivelManual: true } });
+  };
+
+  const resetEloAuto = () => {
+    onEditar({
+      trafo: {
+        ...trafo,
+        eloFusivel: sugerirEloFusivel(trafo.fases, trafo.potenciaKva),
+        eloFusivelManual: false,
+      },
+    });
+  };
+
+  return (
+    <div className="painel-trafo">
+      <div className="painel-sub">Equipamentos</div>
+
+      {/* Chaves fusíveis */}
+      <label className="trafo-toggle">
+        <input
+          type="checkbox"
+          checked={trafo.chaveFusivel}
+          onChange={(e) => patch({ chaveFusivel: e.target.checked })}
+        />
+        Chaves fusíveis
+      </label>
+
+      {/* Para-raio */}
+      <label className="trafo-toggle">
+        <input
+          type="checkbox"
+          checked={trafo.paraRaio}
+          onChange={(e) => patch({ paraRaio: e.target.checked })}
+        />
+        Para-raio
+      </label>
+
+      {/* Aterramento */}
+      <label className="trafo-toggle">
+        <input
+          type="checkbox"
+          checked={trafo.aterramento}
+          onChange={(e) => patch({ aterramento: e.target.checked })}
+        />
+        Aterramento
+      </label>
+
+      {/* Transformador: fases + potência */}
+      <div className="painel-sub trafo-sub">Transformador</div>
+      <div className="coord-linha">
+        <label className="campo campo-mini">
+          <span>Fases</span>
+          <select
+            value={trafo.fases}
+            onChange={(e) => {
+              const fases = e.target.value as DadosTransformador["fases"];
+              const elo = sugerirEloFusivel(fases, trafo.potenciaKva);
+              onEditar({
+                trafo: { ...trafo, fases, eloFusivel: elo, eloFusivelManual: false },
+              });
+            }}
+          >
+            {FASES_OPCOES.map((f) => (
+              <option key={f.valor} value={f.valor}>{f.rotulo}</option>
+            ))}
+          </select>
+        </label>
+        <label className="campo campo-mini">
+          <span>Potência</span>
+          <select
+            value={trafo.potenciaKva}
+            onChange={(e) => {
+              const kva = Number(e.target.value);
+              const elo = sugerirEloFusivel(trafo.fases, kva);
+              onEditar({
+                trafo: { ...trafo, potenciaKva: kva, eloFusivel: elo, eloFusivelManual: false },
+              });
+            }}
+          >
+            {POTENCIAS_KVA.map((k) => (
+              <option key={k} value={k}>{k} kVA</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {/* Elo fusível (auto-sugerido ou manual) */}
+      {trafo.chaveFusivel && (
+        <div className="trafo-elo">
+          <label className="campo campo-mini">
+            <span>
+              Elo fusível{trafo.eloFusivelManual ? " (manual)" : " (auto)"}
+            </span>
+            <select value={trafo.eloFusivel ?? ""} onChange={(e) => patchElo(e.target.value)}>
+              <option value="">— selecionar —</option>
+              {ELOS_FUSIVEL.map((e) => (
+                <option key={e} value={e}>{e}</option>
+              ))}
+            </select>
+          </label>
+          {trafo.eloFusivelManual && (
+            <button className="btn-mini-sec trafo-elo-auto" onClick={resetEloAuto}>
+              Recalcular
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Estrutura secundária */}
+      <label className="campo">
+        <span>Estrutura secundária</span>
+        <input
+          type="text"
+          defaultValue={trafo.estruturaSecundaria ?? ""}
+          placeholder="ex.: EDB1, EM1"
+          onBlur={(e) =>
+            patch({ estruturaSecundaria: e.target.value.trim() || undefined })
+          }
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLElement).blur(); }}
+        />
+      </label>
+
+      {/* Iluminação pública */}
+      <label className="trafo-toggle">
+        <input
+          type="checkbox"
+          checked={trafo.iluminacaoPublica}
+          onChange={(e) => patch({ iluminacaoPublica: e.target.checked })}
+        />
+        Iluminação pública
+      </label>
+      {trafo.iluminacaoPublica && (
+        <label className="campo">
+          <span>Tipo / potência</span>
+          <input
+            type="text"
+            defaultValue={trafo.iluminacaoTipo ?? ""}
+            placeholder="ex.: LED 100W"
+            onBlur={(e) =>
+              patch({ iluminacaoTipo: e.target.value.trim() || undefined })
+            }
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLElement).blur(); }}
+          />
+        </label>
+      )}
+
+      {/* Compartilhamento */}
+      <label className="trafo-toggle">
+        <input
+          type="checkbox"
+          checked={trafo.compartilhamento}
+          onChange={(e) => patch({ compartilhamento: e.target.checked })}
+        />
+        Compartilhamento de infraestrutura
+      </label>
+      {trafo.compartilhamento && (
+        <label className="campo">
+          <span>Detalhe</span>
+          <textarea
+            rows={2}
+            defaultValue={trafo.compartilhamentoDetalhe ?? ""}
+            placeholder="ex.: Telecom, fibra óptica"
+            onBlur={(e) =>
+              patch({ compartilhamentoDetalhe: e.target.value.trim() || undefined })
+            }
+          />
+        </label>
+      )}
+
+      <button
+        className="btn-mini-sec trafo-remover"
+        onClick={() => onEditar({ trafo: undefined })}
+      >
+        Remover configuração
+      </button>
+    </div>
   );
 }

@@ -417,6 +417,29 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   partesBalao.push(cod);
                 }
                 const textoBalao = partesBalao.join(" ");
+
+                // Linhas extras do transformador (oblongo multi-linha)
+                const linhasTrafo: string[] = [];
+                if (trafo && p.trafo) {
+                  const t = p.trafo;
+                  // Linha 1: fases + kVA
+                  const fasLabel = t.fases === "trifasico" ? "3F" : t.fases === "bifasico" ? "2F" : "1F";
+                  linhasTrafo.push(`${fasLabel} ${t.potenciaKva} kVA`);
+                  // Linha 2: CF / PR / AT (apenas os marcados)
+                  const equip: string[] = [];
+                  if (t.chaveFusivel) equip.push(t.eloFusivel ? `CF ${t.eloFusivel}` : "CF");
+                  if (t.paraRaio) equip.push("PR");
+                  if (t.aterramento) equip.push("AT");
+                  if (equip.length > 0) linhasTrafo.push(equip.join(" / "));
+                  // Linha 3: estrutura secundária (se houver)
+                  if (t.estruturaSecundaria) linhasTrafo.push(`2ª: ${t.estruturaSecundaria}`);
+                  // Linha 4: IP / comp.
+                  const extras: string[] = [];
+                  if (t.iluminacaoPublica) extras.push(t.iluminacaoTipo ? `IP ${t.iluminacaoTipo}` : "IP");
+                  if (t.compartilhamento) extras.push("Comp.");
+                  if (extras.length > 0) linhasTrafo.push(extras.join(" · "));
+                }
+
                 const pos = balaoPos.get(p.id) ?? 0;
 
                 // Direção da rede no poste (para rotacionar triângulo do trafo)
@@ -498,6 +521,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                       <BalaoPosto
                         x={x} y={y}
                         texto={textoBalao}
+                        linhasExtras={linhasTrafo}
                         pos={pos}
                         onClick={() =>
                           setBalaoPos((m) => {
@@ -700,18 +724,25 @@ function QuadroMateriais({ w, materiais }: { w: number; materiais: ResumoMateria
 
 /**
  * Balão oblongo de identificação do poste (DIS-NOR-013).
- * Texto: "alturaM cargaDaN COD" (ex.: "11 400 CE2")
+ * Linha principal: "alturaM cargaDaN COD" (ex.: "11 400 CE2")
+ * `linhasExtras`: linhas adicionais para equipamentos de trafo, etc.
  * pos: 0=cima-dir, 1=cima-esq, 2=baixo-dir, 3=baixo-esq
  * Clique no balão para ciclar a posição.
  */
 function BalaoPosto({
-  x, y, texto, pos, onClick,
+  x, y, texto, linhasExtras = [], pos, onClick,
 }: {
-  x: number; y: number; texto: string; pos: number; onClick: () => void;
+  x: number; y: number; texto: string;
+  linhasExtras?: string[];
+  pos: number; onClick: () => void;
 }) {
   const fontSize = 2.2;
-  const bw = Math.max(texto.length * 1.35 + 3, 10);
-  const bh = 4.2;
+  const lh = 3.2; // espaçamento entre linhas
+  const todasLinhas = [texto, ...linhasExtras];
+  // Largura: a mais longa das linhas
+  const bw = Math.max(...todasLinhas.map((l) => l.length * 1.35 + 3), 10);
+  // Altura: linha principal + extras
+  const bh = 4.2 + linhasExtras.length * lh;
   const rx = 2.1;
   const offX = 8;
   const offY = 7;
@@ -734,6 +765,9 @@ function BalaoPosto({
   ];
   const { lx, ly } = leaderCorners[pos % 4];
 
+  // Se há linhas extras, linha divisória separa dados do poste dos equipamentos
+  const yLinhaPrinc = by + 3.0; // y-baseline da primeira linha (título)
+
   return (
     <g onClick={onClick} style={{ cursor: "pointer" }}>
       {/* Linha de chamada */}
@@ -745,14 +779,33 @@ function BalaoPosto({
         rx={rx} ry={rx}
         fill="#fff" stroke="#000" strokeWidth={0.3}
       />
-      {/* Texto */}
+      {/* Linha divisória entre poste e equipamentos (só se houver extras) */}
+      {linhasExtras.length > 0 && (
+        <line
+          x1={bx - bw / 2 + 1} y1={by + 4.4}
+          x2={bx + bw / 2 - 1} y2={by + 4.4}
+          stroke="#999" strokeWidth={0.2}
+        />
+      )}
+      {/* Texto principal */}
       <text
-        x={bx} y={by + bh / 2 + fontSize * 0.38}
+        x={bx} y={yLinhaPrinc}
         fontSize={fontSize} textAnchor="middle"
-        fill="#000" fontFamily="Arial, sans-serif"
+        fill="#000" fontFamily="Arial, sans-serif" fontWeight="bold"
       >
         {texto}
       </text>
+      {/* Linhas extras */}
+      {linhasExtras.map((linha, i) => (
+        <text
+          key={i}
+          x={bx} y={yLinhaPrinc + 4.4 + i * lh}
+          fontSize={fontSize * 0.88} textAnchor="middle"
+          fill="#000" fontFamily="Arial, sans-serif"
+        >
+          {linha}
+        </text>
+      ))}
     </g>
   );
 }

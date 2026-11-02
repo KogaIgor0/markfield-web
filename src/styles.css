@@ -2360,3 +2360,84 @@ body {
   flex-shrink: 0;
 }
 .ct-fechar-projeto:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
+
+/* =========================================================
+   Painel de equipamentos do transformador (E-06)
+   ========================================================= */
+
+.painel-trafo {
+  border-top: 1px solid var(--hair);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trafo-sub {
+  margin-top: 4px;
+}
+
+/* Toggle simples (checkbox + label em linha) */
+.trafo-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.trafo-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--accent, #4f88f5);
+  flex-shrink: 0;
+}
+
+/* Linha de elo fusível: dropdown + botão recalcular */
+.trafo-elo {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.trafo-elo .campo {
+  flex: 1;
+}
+
+.trafo-elo-auto {
+  flex-shrink: 0;
+  font-size: 11px;
+  margin-bottom: 1px;
+}
+
+/* Botão iniciar configuração */
+.btn-trafo-iniciar {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 10px;
+  border: 1px dashed var(--muted, #aaa);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg, #222);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, border-color 0.12s;
+}
+.btn-trafo-iniciar:hover {
+  background: rgba(79, 136, 245, 0.08);
+  border-color: var(--accent, #4f88f5);
+}
+
+/* Botão remover configuração */
+.trafo-remover {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #c0392b;
+  border-color: #c0392b44;
+}
+.trafo-remover:hover {
+  background: rgba(192, 57, 43, 0.08);
+  border-color: #c0392b;
+}

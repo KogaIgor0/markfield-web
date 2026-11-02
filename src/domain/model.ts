@@ -145,6 +145,11 @@ export interface Ponto {
    */
   estais?: EstaiPonto[];
   /**
+   * Equipamento transformador (E-06) — preenchido quando `tipo === "transformador"`.
+   * Ausente = equipamento ainda não configurado.
+   */
+  trafo?: DadosTransformador;
+  /**
    * @deprecated Compatibilidade com arquivos antigos (um estai só). Na leitura,
    * o motor converte `estaiInstalado`/`estaiAzimuteManual` para `estais[]`; ao
    * editar, o Web passa a gravar `estais` e limpa estes campos. Não usar em código novo.
@@ -152,6 +157,44 @@ export interface Ponto {
   estaiInstalado?: boolean;
   /** @deprecated ver `estais` — azimute do estai único dos arquivos antigos. */
   estaiAzimuteManual?: number;
+}
+
+/**
+ * Dados do equipamento transformador instalado num poste (E-06).
+ *
+ * O campo `trafo` é populado automaticamente quando o tipo do ponto é
+ * "transformador" e o projetista preenche o painel de equipamentos.
+ * Todos os campos booleanos têm default `false`, exceto `paraRaio` que é `true`
+ * (norma — trafo sempre leva para-raio).
+ */
+export interface DadosTransformador {
+  /** Fases: mono (1F), bi (1F c/ neutro) ou trifásico (3F). */
+  fases: "monofasico" | "bifasico" | "trifasico";
+  /** Potência nominal em kVA. */
+  potenciaKva: number;
+  /** Chaves fusíveis instaladas (default false). */
+  chaveFusivel: boolean;
+  /** Para-raio instalado (default true — norma exige em trafo). */
+  paraRaio: boolean;
+  /** Aterramento instalado. */
+  aterramento: boolean;
+  /**
+   * Elo fusível (ex.: "3K", "6K", "10K"). Auto-sugerido pelo catálogo a partir
+   * das fases e da potência; pode ser sobrescrito pelo projetista.
+   */
+  eloFusivel?: string;
+  /** `true` = elo definido manualmente (não será recalculado). */
+  eloFusivelManual?: boolean;
+  /** Estrutura da rede secundária (ex.: "EDB1", "EM1"). */
+  estruturaSecundaria?: string;
+  /** Iluminação pública instalada neste ponto. */
+  iluminacaoPublica: boolean;
+  /** Tipo/potência da luminária, quando `iluminacaoPublica` = true (ex.: "LED 100W"). */
+  iluminacaoTipo?: string;
+  /** Compartilhamento de infraestrutura (telecom, etc.). */
+  compartilhamento: boolean;
+  /** Descrição do compartilhamento quando `compartilhamento` = true. */
+  compartilhamentoDetalhe?: string;
 }
 
 /**
