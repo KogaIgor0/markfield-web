@@ -121,13 +121,15 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
       for (let ty = tyMin; ty <= tyMax; ty++) {
         const xi = tx - txMin;
         const yi = ty - tyMin;
+        // +0.5 mm de sobreposição: o tile seguinte cobre esta franja,
+        // eliminando o artefato de 1 px que o renderer cria entre imagens SVG.
         tiles.push({
           key: `${prefixKey}-${zTarget}-${tx}-${ty}`,
           url: urlFn(zTarget, ty, tx),
           x: colX[xi],
           y: rowY[yi],
-          w: colX[xi + 1] - colX[xi],
-          h: rowY[yi + 1] - rowY[yi],
+          w: colX[xi + 1] - colX[xi] + 0.5,
+          h: rowY[yi + 1] - rowY[yi] + 0.5,
         });
       }
     }
@@ -293,10 +295,11 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
               <image key={t.key} x={t.x} y={t.y} width={t.w} height={t.h}
                 href={t.url} preserveAspectRatio="none" />
             ))}
-            {/* Overlay OSM (Carto Light) sobre o satélite */}
+            {/* Overlay mapa de ruas (Esri Street Map) — semi-trans sobre sat, opaco sozinho */}
             {osmTiles && osmTiles.map((t) => (
               <image key={t.key} x={t.x} y={t.y} width={t.w} height={t.h}
-                href={t.url} preserveAspectRatio="none" opacity={0.6} />
+                href={t.url} preserveAspectRatio="none"
+                opacity={mostrarSatelite ? 0.5 : 1.0} />
             ))}
 
             {!bbox && (
