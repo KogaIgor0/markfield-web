@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { LatLng, Projeto } from "../domain/model";
 import type { RedeEsforcos } from "../domain/esforco";
 import type { ResumoMateriais } from "../domain/materiais";
+import { ESRI_MAXZOOM } from "../config";
 import {
   bboxProjeto,
   escalaParaCaber,
@@ -85,12 +86,12 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
       return 180 / Math.PI * Math.atan(0.5 * (Math.exp(ang) - Math.exp(-ang)));
     };
 
-    // Zoom baseado na escala do desenho
-    let z = 18;
-    if (escala > 1000) z = 17;
-    if (escala > 2000) z = 16;
-    if (escala > 5000) z = 15;
-    if (escala > 10000) z = 14;
+    // Zoom baseado na escala do desenho, limitado ao máximo disponível para a região
+    const zMax = Math.min(ESRI_MAXZOOM, 15); // z15 tem cobertura garantida no interior do Brasil
+    let z = zMax;
+    if (escala > 2000)  z = Math.min(zMax, 14);
+    if (escala > 5000)  z = Math.min(zMax, 13);
+    if (escala > 10000) z = Math.min(zMax, 12);
 
     // Bbox WGS84 dos pontos do projeto
     let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
