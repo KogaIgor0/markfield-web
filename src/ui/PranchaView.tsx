@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { LatLng, Projeto } from "../domain/model";
 import type { RedeEsforcos } from "../domain/esforco";
 import type { ResumoMateriais } from "../domain/materiais";
-import { MAPTILER_KEY } from "../config";
 import {
   bboxProjeto,
   escalaParaCaber,
@@ -95,7 +94,12 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
     const aspect = desenho.w / desenho.h;
     const pH = Math.min(1024, Math.round(800 / aspect));
     const pW = Math.round(pH * aspect);
-    return `https://api.maptiler.com/maps/satellite-v2/static/${minLng.toFixed(6)},${minLat.toFixed(6)},${maxLng.toFixed(6)},${maxLat.toFixed(6)}/${pW}x${pH}.png?key=${MAPTILER_KEY}`;
+    // Esri World Imagery — gratuito, sem chave, mesma fonte do fundo do mapa
+    return (
+      `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export` +
+      `?bbox=${minLng.toFixed(6)},${minLat.toFixed(6)},${maxLng.toFixed(6)},${maxLat.toFixed(6)}` +
+      `&bboxSR=4326&imageSR=4326&size=${pW},${pH}&format=png32&f=image`
+    );
   }, [bbox, mostrarSatelite, proj.padX, proj.padY, desenho, projeto.pontos, escala]);
 
   const baixarDxf = () => {
