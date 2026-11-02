@@ -70,16 +70,29 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
 
   const porId = useMemo(() => new Map(projeto.pontos.map((p) => [p.id, p])), [projeto]);
 
-  // Bbox WGS84 para o fundo de satélite — cobre a área de desenho incluindo o padding.
-  const satUrl = useMemo(() => {
-    if (!bbox || !mostrarSatelite) return null;
-    // Dimensões em metros da bbox do projeto
-    const larguraM = (bbox.maxE - bbox.minE) || 1;
-    const alturaM = (bbox.maxN - bbox.minN) || 1;
-    // Padding proporcional ao proj.padX/padY na escala corrente
-    const padLat = (alturaM * (proj.padY / desenho.h)) / 111320;
-    const padLng = (larguraM * (proj.padX / desenho.w)) / (111320 * Math.cos((((bbox.minN + bbox.maxN) / 2) * Math.PI) / 180));
-    // Converter bbox UTM para WGS84 aproximado usando os pontos do projeto
+  // Tiles de satélite Esri posicionados individualmente no SVG para máxima nitidez.
+  const satTiles = useMemo(() => {
+    if (!bbox || !mostrarSatelite || projeto.pontos.length === 0) return null;
+
+    // Helpers de conversão tile ↔ WGS84
+    const n = (z: number) => Math.pow(2, z);
+    const lng2tx = (lng: number, z: number) => Math.floor((lng + 180) / 360 * n(z));
+    const lat2ty = (lat: number, z: number) =>
+      Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n(z));
+    const tx2lng = (x: number, z: number) => x / n(z) * 360 - 180;
+    const ty2lat = (y: number, z: number) => {
+      const ang = Math.PI - 2 * Math.PI * y / n(z);
+      return 180 / Math.PI * Math.atan(0.5 * (Math.exp(ang) - Math.exp(-ang)));
+    };
+
+    // Zoom baseado na escala do desenho
+    let z = 18;
+    if (escala > 1000) z = 17;
+    if (escala > 2000) z = 16;
+    if (escala > 5000) z = 15;
+    if (escala > 10000) z = 14;
+
+    // Bbox WGS84 dos pontos do projeto
     let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
     for (const p of projeto.pontos) {
       if (p.wgs84.lat < minLat) minLat = p.wgs84.lat;
@@ -87,20 +100,36 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
       if (p.wgs84.lng < minLng) minLng = p.wgs84.lng;
       if (p.wgs84.lng > maxLng) maxLng = p.wgs84.lng;
     }
-    // Adicionar padding
-    minLat -= padLat; maxLat += padLat;
-    minLng -= padLng; maxLng += padLng;
-    // Dimensões do request em pixels — alta resolução para a prancha
-    const aspect = desenho.w / desenho.h;
-    const pW = Math.min(4096, Math.round(4096 * Math.min(aspect, 1)));
-    const pH = Math.round(pW / aspect);
-    // Esri World Imagery — gratuito, sem chave, mesma fonte do fundo do mapa
-    return (
-      `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export` +
-      `?bbox=${minLng.toFixed(6)},${minLat.toFixed(6)},${maxLng.toFixed(6)},${maxLat.toFixed(6)}` +
-      `&bboxSR=4326&imageSR=4326&size=${pW},${pH}&format=jpg&dpi=300&f=image`
-    );
-  }, [bbox, mostrarSatelite, proj.padX, proj.padY, desenho, projeto.pontos, escala]);
+    // Margem extra de 1 tile para garantir cobertura total
+    const tileDeg = 360 / n(z);
+    minLng -= tileDeg; maxLng += tileDeg;
+    minLat -= tileDeg * 0.5; maxLat += tileDeg * 0.5;
+
+    const txMin = lng2tx(minLng, z);
+    const txMax = lng2tx(maxLng, z);
+    const tyMin = lat2ty(maxLat, z); // y é invertido: latitude alta → ty menor
+    const tyMax = lat2ty(minLat, z);
+
+    // Limitar a 200 tiles para não travar
+    if ((txMax - txMin + 1) * (tyMax - tyMin + 1) > 200) return null;
+
+    const tiles: { key: string; url: string; x: number; y: number; w: number; h: number }[] = [];
+    for (let tx = txMin; tx <= txMax; tx++) {
+      for (let ty = tyMin; ty <= tyMax; ty++) {
+        const tileLatN = ty2lat(ty,     z);
+        const tileLatS = ty2lat(ty + 1, z);
+        const tileLngW = tx2lng(tx,     z);
+        const tileLngE = tx2lng(tx + 1, z);
+
+        const [x1, y1] = proj.toXY({ lat: tileLatN, lng: tileLngW }); // NW → topo-esq
+        const [x2, y2] = proj.toXY({ lat: tileLatS, lng: tileLngE }); // SE → baixo-dir
+
+        const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}`;
+        tiles.push({ key: `${z}-${tx}-${ty}`, url, x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
+      }
+    }
+    return tiles;
+  }, [bbox, mostrarSatelite, proj, projeto.pontos, escala]);
 
   const baixarDxf = () => {
     const dxf = gerarDxfPrancha({ projeto, esforcos, rotulosEstrutura, materiais, folha, orientacao, escala });
@@ -222,17 +251,18 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
 
           {/* --- Área de desenho (rede em escala) --- */}
           <g clipPath="url(#clip-desenho)">
-            {/* Fundo de satélite (opcional) */}
-            {satUrl && (
+            {/* Fundo de satélite — tiles Esri individuais posicionados em escala */}
+            {satTiles && satTiles.map((t) => (
               <image
-                x={desenho.x}
-                y={desenho.y}
-                width={desenho.w}
-                height={desenho.h}
-                href={satUrl}
-                preserveAspectRatio="xMidYMid slice"
+                key={t.key}
+                x={t.x}
+                y={t.y}
+                width={t.w}
+                height={t.h}
+                href={t.url}
+                preserveAspectRatio="none"
               />
-            )}
+            ))}
 
             {!bbox && (
               <text x={desenho.x + desenho.w / 2} y={desenho.y + desenho.h / 2} fontSize={4} textAnchor="middle" fill="#666">
