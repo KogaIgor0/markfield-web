@@ -90,15 +90,15 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
     // Adicionar padding
     minLat -= padLat; maxLat += padLat;
     minLng -= padLng; maxLng += padLng;
-    // Dimensões do request em pixels (proporcional ao desenho)
+    // Dimensões do request em pixels — alta resolução para a prancha
     const aspect = desenho.w / desenho.h;
-    const pH = Math.min(1024, Math.round(800 / aspect));
-    const pW = Math.round(pH * aspect);
+    const pW = Math.min(4096, Math.round(4096 * Math.min(aspect, 1)));
+    const pH = Math.round(pW / aspect);
     // Esri World Imagery — gratuito, sem chave, mesma fonte do fundo do mapa
     return (
       `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export` +
       `?bbox=${minLng.toFixed(6)},${minLat.toFixed(6)},${maxLng.toFixed(6)},${maxLat.toFixed(6)}` +
-      `&bboxSR=4326&imageSR=4326&size=${pW},${pH}&format=png32&f=image`
+      `&bboxSR=4326&imageSR=4326&size=${pW},${pH}&format=jpg&dpi=300&f=image`
     );
   }, [bbox, mostrarSatelite, proj.padX, proj.padY, desenho, projeto.pontos, escala]);
 
