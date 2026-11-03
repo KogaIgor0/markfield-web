@@ -190,6 +190,9 @@ export function textoEquipamentosPoste(eq: EquipamentoPosto, qtdAuto = 1): strin
   }
   if (eq.chaveFusivel) {
     partes.push(`${qtd}CHFU${eq.chaveFusivelSpec ?? ""}`);
+    if (eq.eloFusivel) {
+      partes.push(`${qtd}ELO${eq.eloFusivel}`);
+    }
   }
   return partes.join(" - ");
 }

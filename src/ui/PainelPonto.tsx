@@ -616,24 +616,28 @@ function PainelEquipamentosPoste({ eq, qtdAuto, onEditar }: PropsEqPoste) {
     <div className="painel-trafo">
       <div className="painel-sub">Equipamentos</div>
 
-      {/* Para-raio */}
+      {/* Para-raio — default PR12K */}
       <div className="trafo-equip-linha">
         <label className="trafo-toggle trafo-toggle-inline">
           <input
             type="checkbox"
             checked={eq?.paraRaio ?? false}
-            onChange={(e) => patch({ paraRaio: e.target.checked })}
+            onChange={(e) =>
+              patch({
+                paraRaio: e.target.checked,
+                paraRaioSpec: e.target.checked ? (eq?.paraRaioSpec ?? "12K") : undefined,
+              })
+            }
           />
           <span>Para-raio<em className="trafo-qtd"> {qtdEfetiva}×</em></span>
         </label>
         {eq?.paraRaio && (
           <select
             className="trafo-spec-sel"
-            value={eq.paraRaioSpec ?? ""}
-            onChange={(e) => patch({ paraRaioSpec: e.target.value || undefined })}
+            value={eq.paraRaioSpec ?? "12K"}
+            onChange={(e) => patch({ paraRaioSpec: e.target.value })}
             title="Especificação do para-raio"
           >
-            <option value="">— spec —</option>
             {PARA_RAIO_SPECS.map((s) => (
               <option key={s} value={s}>PR{s}</option>
             ))}
@@ -641,30 +645,51 @@ function PainelEquipamentosPoste({ eq, qtdAuto, onEditar }: PropsEqPoste) {
         )}
       </div>
 
-      {/* Chave fusível */}
+      {/* Chave fusível — default CHFU15K */}
       <div className="trafo-equip-linha">
         <label className="trafo-toggle trafo-toggle-inline">
           <input
             type="checkbox"
             checked={eq?.chaveFusivel ?? false}
-            onChange={(e) => patch({ chaveFusivel: e.target.checked })}
+            onChange={(e) =>
+              patch({
+                chaveFusivel: e.target.checked,
+                chaveFusivelSpec: e.target.checked ? (eq?.chaveFusivelSpec ?? "15K") : undefined,
+                eloFusivel: e.target.checked ? eq?.eloFusivel : undefined,
+              })
+            }
           />
           <span>Chave fusível<em className="trafo-qtd"> {qtdEfetiva}×</em></span>
         </label>
         {eq?.chaveFusivel && (
           <select
             className="trafo-spec-sel"
-            value={eq.chaveFusivelSpec ?? ""}
-            onChange={(e) => patch({ chaveFusivelSpec: e.target.value || undefined })}
+            value={eq.chaveFusivelSpec ?? "15K"}
+            onChange={(e) => patch({ chaveFusivelSpec: e.target.value })}
             title="Especificação da chave fusível"
           >
-            <option value="">— spec —</option>
             {CHFU_SPECS.map((s) => (
               <option key={s} value={s}>CHFU{s}</option>
             ))}
           </select>
         )}
       </div>
+
+      {/* Elo fusível — campo separado, visível quando chave marcada */}
+      {eq?.chaveFusivel && (
+        <label className="campo campo-mini" style={{ marginLeft: "20px" }}>
+          <span>Elo fusível</span>
+          <select
+            value={eq.eloFusivel ?? ""}
+            onChange={(e) => patch({ eloFusivel: e.target.value || undefined })}
+          >
+            <option value="">— sem elo —</option>
+            {ELOS_FUSIVEL.map((e) => (
+              <option key={e} value={e}>ELO{e}</option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {/* Aterramento */}
       <label className="trafo-toggle">

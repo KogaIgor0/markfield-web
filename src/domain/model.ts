@@ -199,6 +199,11 @@ export interface EquipamentoPosto {
   /** Aterramento instalado. */
   aterramento?: boolean;
   /**
+   * Elo fusível da chave (ex.: "5K", "8K"). Campo independente, aparece
+   * junto com a chave fusível no oblongo (ex.: "1CHFU15K - 1ELO5K").
+   */
+  eloFusivel?: string;
+  /**
    * Quantidade de unidades de cada equipamento (para-raio + chave fusível).
    * `undefined` = **automático**: 3 quando o poste está em rede primária, 1 caso contrário.
    * Defina manualmente (1, 2 ou 3) quando quiser sobrescrever a detecção automática.
