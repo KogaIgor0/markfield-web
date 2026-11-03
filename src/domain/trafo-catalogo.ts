@@ -180,18 +180,19 @@ export function textoOblongoTrafo(
  * Formato: "3PR12K - ATERRAMENTO - 3CHFU15K" (mesma convenção do oblongo trafo).
  */
 export function textoEquipamentosPoste(eq: EquipamentoPosto, qtdAuto = 1): string {
-  const qtd = eq.qtd ?? qtdAuto;
+  const qtdPr = eq.qtdParaRaio ?? qtdAuto;
+  const qtdCh = eq.qtdChaveFusivel ?? qtdAuto;
   const partes: string[] = [];
   if (eq.paraRaio) {
-    partes.push(`${qtd}PR${eq.paraRaioSpec ?? ""}`);
+    partes.push(`${qtdPr}PR${eq.paraRaioSpec ?? ""}`);
   }
   if (eq.aterramento) {
     partes.push("ATERRAMENTO");
   }
   if (eq.chaveFusivel) {
-    partes.push(`${qtd}CHFU${eq.chaveFusivelSpec ?? ""}`);
+    partes.push(`${qtdCh}CHFU${eq.chaveFusivelSpec ?? ""}`);
     if (eq.eloFusivel) {
-      partes.push(`${qtd}ELO${eq.eloFusivel}`);
+      partes.push(`${qtdCh}ELO${eq.eloFusivel}`);
     }
   }
   return partes.join(" - ");

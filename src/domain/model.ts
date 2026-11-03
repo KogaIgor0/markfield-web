@@ -204,11 +204,15 @@ export interface EquipamentoPosto {
    */
   eloFusivel?: string;
   /**
-   * Quantidade de unidades de cada equipamento (para-raio + chave fusível).
+   * Quantidade de para-raios.
    * `undefined` = **automático**: 3 quando o poste está em rede primária, 1 caso contrário.
-   * Defina manualmente (1, 2 ou 3) quando quiser sobrescrever a detecção automática.
    */
-  qtd?: number;
+  qtdParaRaio?: number;
+  /**
+   * Quantidade de chaves fusíveis (e elos).
+   * `undefined` = **automático**: 3 quando o poste está em rede primária, 1 caso contrário.
+   */
+  qtdChaveFusivel?: number;
 }
 
 /**

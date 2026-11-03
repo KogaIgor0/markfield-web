@@ -608,9 +608,11 @@ function PainelEquipamentosPoste({ eq, qtdAuto, onEditar }: PropsEqPoste) {
     onEditar(algum ? next : undefined);
   };
 
-  // Quantidade efetiva: manual se definida, automática caso contrário
-  const qtdEfetiva = eq?.qtd ?? qtdAuto;
-  const isManual = eq?.qtd !== undefined;
+  // Quantidades efetivas independentes por tipo de equipamento
+  const qtdPrEfetiva = eq?.qtdParaRaio ?? qtdAuto;
+  const isPrManual = eq?.qtdParaRaio !== undefined;
+  const qtdChEfetiva = eq?.qtdChaveFusivel ?? qtdAuto;
+  const isChManual = eq?.qtdChaveFusivel !== undefined;
 
   return (
     <div className="painel-trafo">
@@ -629,19 +631,48 @@ function PainelEquipamentosPoste({ eq, qtdAuto, onEditar }: PropsEqPoste) {
               })
             }
           />
-          <span>Para-raio<em className="trafo-qtd"> {qtdEfetiva}×</em></span>
+          <span>Para-raio<em className="trafo-qtd"> {qtdPrEfetiva}×</em></span>
         </label>
         {eq?.paraRaio && (
-          <select
-            className="trafo-spec-sel"
-            value={eq.paraRaioSpec ?? "12K"}
-            onChange={(e) => patch({ paraRaioSpec: e.target.value })}
-            title="Especificação do para-raio"
-          >
-            {PARA_RAIO_SPECS.map((s) => (
-              <option key={s} value={s}>PR{s}</option>
-            ))}
-          </select>
+          <>
+            <select
+              className="trafo-spec-sel"
+              value={eq.paraRaioSpec ?? "12K"}
+              onChange={(e) => patch({ paraRaioSpec: e.target.value })}
+              title="Especificação do para-raio"
+            >
+              {PARA_RAIO_SPECS.map((s) => (
+                <option key={s} value={s}>PR{s}</option>
+              ))}
+            </select>
+            {isPrManual ? (
+              <>
+                <select
+                  className="trafo-spec-sel"
+                  value={qtdPrEfetiva}
+                  onChange={(e) => patch({ qtdParaRaio: Number(e.target.value) })}
+                  title="Quantidade de para-raios"
+                >
+                  <option value={1}>1×</option>
+                  <option value={2}>2×</option>
+                  <option value={3}>3×</option>
+                </select>
+                <button
+                  className="btn-mini-sec"
+                  style={{ marginLeft: "2px" }}
+                  onClick={() => patch({ qtdParaRaio: undefined })}
+                  title="Voltar para automático"
+                >Auto</button>
+              </>
+            ) : (
+              <button
+                className="btn-mini-sec"
+                style={{ marginLeft: "2px" }}
+                onClick={() => patch({ qtdParaRaio: qtdAuto })}
+                title="Definir quantidade manualmente"
+              >Manual</button>
+            )}
+          </>
         )}
       </div>
 
@@ -659,19 +690,48 @@ function PainelEquipamentosPoste({ eq, qtdAuto, onEditar }: PropsEqPoste) {
               })
             }
           />
-          <span>Chave fusível<em className="trafo-qtd"> {qtdEfetiva}×</em></span>
+          <span>Chave fusível<em className="trafo-qtd"> {qtdChEfetiva}×</em></span>
         </label>
         {eq?.chaveFusivel && (
-          <select
-            className="trafo-spec-sel"
-            value={eq.chaveFusivelSpec ?? "15K"}
-            onChange={(e) => patch({ chaveFusivelSpec: e.target.value })}
-            title="Especificação da chave fusível"
-          >
-            {CHFU_SPECS.map((s) => (
-              <option key={s} value={s}>CHFU{s}</option>
-            ))}
-          </select>
+          <>
+            <select
+              className="trafo-spec-sel"
+              value={eq.chaveFusivelSpec ?? "15K"}
+              onChange={(e) => patch({ chaveFusivelSpec: e.target.value })}
+              title="Especificação da chave fusível"
+            >
+              {CHFU_SPECS.map((s) => (
+                <option key={s} value={s}>CHFU{s}</option>
+              ))}
+            </select>
+            {isChManual ? (
+              <>
+                <select
+                  className="trafo-spec-sel"
+                  value={qtdChEfetiva}
+                  onChange={(e) => patch({ qtdChaveFusivel: Number(e.target.value) })}
+                  title="Quantidade de chaves fusíveis"
+                >
+                  <option value={1}>1×</option>
+                  <option value={2}>2×</option>
+                  <option value={3}>3×</option>
+                </select>
+                <button
+                  className="btn-mini-sec"
+                  style={{ marginLeft: "2px" }}
+                  onClick={() => patch({ qtdChaveFusivel: undefined })}
+                  title="Voltar para automático"
+                >Auto</button>
+              </>
+            ) : (
+              <button
+                className="btn-mini-sec"
+                style={{ marginLeft: "2px" }}
+                onClick={() => patch({ qtdChaveFusivel: qtdAuto })}
+                title="Definir quantidade manualmente"
+              >Manual</button>
+            )}
+          </>
         )}
       </div>
 
@@ -701,46 +761,6 @@ function PainelEquipamentosPoste({ eq, qtdAuto, onEditar }: PropsEqPoste) {
         Aterramento
       </label>
 
-      {/* Controle de quantidade — só aparece quando algum equipamento está marcado */}
-      {(eq?.paraRaio || eq?.chaveFusivel) && (
-        <div className="trafo-equip-linha" style={{ marginTop: "4px" }}>
-          <span className="trafo-qtd-label">
-            Qtd: <strong>{qtdEfetiva}×</strong>
-            {!isManual && <em className="op-dica"> (auto)</em>}
-          </span>
-          {isManual ? (
-            <>
-              <select
-                className="trafo-spec-sel"
-                value={qtdEfetiva}
-                onChange={(e) => patch({ qtd: Number(e.target.value) })}
-                title="Quantidade de unidades"
-              >
-                <option value={1}>1×</option>
-                <option value={2}>2×</option>
-                <option value={3}>3×</option>
-              </select>
-              <button
-                className="btn-mini-sec"
-                style={{ marginLeft: "4px" }}
-                onClick={() => patch({ qtd: undefined })}
-                title="Voltar para automático"
-              >
-                Auto
-              </button>
-            </>
-          ) : (
-            <button
-              className="btn-mini-sec"
-              style={{ marginLeft: "4px" }}
-              onClick={() => patch({ qtd: qtdAuto })}
-              title="Definir quantidade manualmente"
-            >
-              Manual
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }
