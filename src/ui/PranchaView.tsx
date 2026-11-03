@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { LatLng, Projeto } from "../domain/model";
+import type { PatchPonto } from "../domain/edicao";
 import type { RedeEsforcos } from "../domain/esforco";
 import type { ResumoMateriais } from "../domain/materiais";
 import { ESRI_MAXZOOM } from "../config";
@@ -37,11 +38,13 @@ interface Props {
   rotulosEstrutura: Map<string, string>;
   materiais: ResumoMateriais | null;
   onFechar: () => void;
+  /** Persiste edições de ponto (ex.: posição do balão) para sobreviver à navegação. */
+  onEditarPonto?: (id: string, patch: PatchPonto) => void;
 }
 
 type EscalaModo = "auto" | number;
 
-export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, onFechar }: Props) {
+export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, onFechar, onEditarPonto }: Props) {
   const [folha, setFolha] = useState<FolhaId>("A3");
   const [orientacao, setOrientacao] = useState<Orientacao>("paisagem");
   const [escalaModo, setEscalaModo] = useState<EscalaModo>("auto");
@@ -51,8 +54,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   const [mostrarTrechos, setMostrarTrechos] = useState(true);
   const [mostrarSatelite, setMostrarSatelite] = useState(false);
   const [mostrarOsmPrancha, setMostrarOsmPrancha] = useState(false);
-  // posição do balão por poste: 0=cima-dir, 1=cima-esq, 2=baixo-dir, 3=baixo-esq
-  const [balaoPos, setBalaoPos] = useState<Map<string, number>>(new Map());
+  // posição do balão: lida de p.balaoPos (persiste no modelo)
 
   // Layout da folha (mm) — o mesmo do DXF (domain/prancha.ts).
   const layout = useMemo(() => layoutFolha(folha, orientacao), [folha, orientacao]);
@@ -431,7 +433,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   balaoLinhas = textoBalao ? [textoBalao] : [];
                 }
 
-                const pos = balaoPos.get(p.id) ?? 0;
+                const pos = p.balaoPos ?? 0;
 
                 // Direção da rede no poste (para rotacionar triângulo do trafo)
                 // Soma vetorial das direções de todos os trechos conectados.
@@ -517,11 +519,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                         observacao={p.observacao}
                         pos={pos}
                         onClick={() =>
-                          setBalaoPos((m) => {
-                            const n = new Map(m);
-                            n.set(p.id, (pos + 1) % 4);
-                            return n;
-                          })
+                          onEditarPonto?.(p.id, { balaoPos: (pos + 1) % 4 })
                         }
                       />
                     )}
@@ -746,9 +744,9 @@ function BalaoPosto({
   onClick: () => void;
 }) {
   const fontSize = 2.2;
-  const lh = 3.0;        // espaçamento entre linhas dentro do oblongo (mm)
-  const aboveLh = 2.8;   // espaçamento das linhas acima do oblongo (mais compacto)
-  const paddingV = 1.2;  // margem vertical interna topo/fundo
+  const lh = 2.6;        // espaçamento entre linhas dentro do oblongo (mm)
+  const aboveLh = 2.6;   // espaçamento das linhas acima do oblongo
+  const paddingV = 1.0;  // margem vertical interna topo/fundo
   const divH = 0.25;     // espessura da linha divisória
 
   // Linhas de reinstalação (quebradas pelo mesmo limite)

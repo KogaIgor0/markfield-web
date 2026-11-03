@@ -150,6 +150,11 @@ export interface Ponto {
    */
   trafo?: DadosTransformador;
   /**
+   * Posição do balão oblongo na prancha: 0=cima-dir, 1=cima-esq,
+   * 2=baixo-dir, 3=baixo-esq. Persiste o ciclo escolhido pelo projetista.
+   */
+  balaoPos?: number;
+  /**
    * Texto de **retirada** — exibido ACIMA do balão riscado (DIS-NOR-012).
    * Indica o poste/equipamento existente que será retirado. Ex.: "11300DT - M1".
    */

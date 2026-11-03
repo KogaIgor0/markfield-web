@@ -1503,6 +1503,7 @@ export function App() {
           rotulosEstrutura={rotulosEstrutura}
           materiais={materiais}
           onFechar={() => setMostrarPrancha(false)}
+          onEditarPonto={(id, patch) => atualizar(editarPonto(projeto, id, patch))}
         />
       )}
 
