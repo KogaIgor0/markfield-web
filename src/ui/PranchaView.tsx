@@ -512,6 +512,9 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                       <BalaoPosto
                         x={x} y={y}
                         linhas={balaoLinhas}
+                        reinstalacao={p.reinstalacao}
+                        retirada={p.retirada}
+                        observacao={p.observacao}
                         pos={pos}
                         onClick={() =>
                           setBalaoPos((m) => {
@@ -713,37 +716,67 @@ function QuadroMateriais({ w, materiais }: { w: number; materiais: ResumoMateria
 // --------------------------------------------------------------------------
 
 /**
- * Balão oblongo de identificação do poste (DIS-NOR-013).
+ * Balão oblongo de identificação do poste (DIS-NOR-012 / DIS-NOR-013).
  *
- * Todas as linhas têm a mesma formatação — sem linha divisória interna, pois
- * a linha divisória significa "reinstalação" (DIS-NOR-012) e aqui é instalação.
+ * Zonas (DIS-NOR-012 simbologia):
  *
- * `linhas`: array de strings pré-quebradas (uma por linha do oblongo).
- *   Poste simples  → ["11 600 CE2"]
- *   Poste-trafo    → quebrarLinhasOblongo(textoOblongoTrafo(...))
+ *   [observacao — texto acima do balão, texto livre]
+ *   [retirada   — texto acima do balão, riscado (traço horizontal)]
+ *   ┌─────────────────────────────┐
+ *   │  linhas[] — INSTALAÇÃO      │  ← sempre presente, sem linha divisória
+ *   ├─────────────────────────────┤  ← linha divisória, SÓ se reinstalacao definido
+ *   │  reinstalacao — REINSTALAÇÃO│  ← abaixo da linha (opcional)
+ *   └─────────────────────────────┘
+ *
+ * `linhas`: texto da instalação partido em múltiplas linhas (mesmo tamanho de
+ *   fonte, sem formatação diferenciada). Nunca inclui linha divisória — ela
+ *   significa reinstalação e aparece somente quando `reinstalacao` está preenchido.
  *
  * pos: 0=cima-dir, 1=cima-esq, 2=baixo-dir, 3=baixo-esq
  * Clique no balão para ciclar a posição.
  */
 function BalaoPosto({
-  x, y, linhas, pos, onClick,
+  x, y, linhas, reinstalacao, retirada, observacao, pos, onClick,
 }: {
-  x: number; y: number; linhas: string[];
-  pos: number; onClick: () => void;
+  x: number; y: number;
+  linhas: string[];
+  reinstalacao?: string;
+  retirada?: string;
+  observacao?: string;
+  pos: number;
+  onClick: () => void;
 }) {
   const fontSize = 2.2;
-  const lh = 3.2; // espaçamento entre linhas (mm)
+  const lh = 3.2;       // espaçamento entre linhas (mm)
   const paddingV = 1.5; // margem vertical interna (topo + fundo)
+  const divH = 0.3;     // espessura da linha divisória
 
-  // Largura: a mais longa das linhas (estimativa proporcional ao número de chars)
-  const bw = Math.max(...linhas.map((l) => l.length * 1.35 + 3), 10);
-  // Altura: paddingV + todas as linhas com espaçamento
-  const bh = paddingV * 2 + lh * linhas.length;
+  // Linhas de reinstalação (quebradas pelo mesmo limite)
+  const linhasReinst = reinstalacao
+    ? quebrarLinhasOblongo(reinstalacao, 26)
+    : [];
+
+  // Todas as linhas para calcular a largura do oblongo
+  const todasLinhas = [...linhas, ...linhasReinst];
+  if (retirada) todasLinhas.push(retirada);
+  if (observacao) {
+    for (const obs of observacao.split("\n")) if (obs.trim()) todasLinhas.push(obs.trim());
+  }
+
+  const bw = Math.max(...todasLinhas.map((l) => l.length * 1.35 + 3), 10);
+
+  // Altura do oblongo: instalação + (divisória + reinstalação se houver)
+  const bhInst = paddingV + lh * linhas.length + paddingV;
+  const bhReinst = linhasReinst.length > 0
+    ? divH + paddingV + lh * linhasReinst.length + paddingV
+    : 0;
+  const bh = bhInst + bhReinst;
+
   const rx = 2.1;
   const offX = 8;
   const offY = 7;
 
-  // Centro do balão por posição
+  // Centro do oblongo por posição
   const configs = [
     { bx: x + offX + bw / 2, by: y - offY - bh },  // 0: cima-dir
     { bx: x - offX - bw / 2, by: y - offY - bh },  // 1: cima-esq
@@ -752,40 +785,115 @@ function BalaoPosto({
   ];
   const { bx, by } = configs[pos % 4];
 
-  // Ponto de ancoragem da linha de chamada: canto mais próximo do poste
+  // Linha de chamada: canto mais próximo do poste
   const leaderCorners = [
-    { lx: bx - bw / 2, ly: by + bh },  // 0: canto baixo-esq do balão
-    { lx: bx + bw / 2, ly: by + bh },  // 1: canto baixo-dir
-    { lx: bx - bw / 2, ly: by },       // 2: canto cima-esq
-    { lx: bx + bw / 2, ly: by },       // 3: canto cima-dir
+    { lx: bx - bw / 2, ly: by + bh },
+    { lx: bx + bw / 2, ly: by + bh },
+    { lx: bx - bw / 2, ly: by },
+    { lx: bx + bw / 2, ly: by },
   ];
   const { lx, ly } = leaderCorners[pos % 4];
 
-  // Baseline da primeira linha de texto
-  const yFirst = by + paddingV + fontSize;
+  // Baseline da primeira linha de instalação
+  const yInst0 = by + paddingV + fontSize;
+  // Y onde começa a seção de reinstalação (topo do bloco abaixo da divisória)
+  const yDivisoria = by + bhInst;
+  const yReinst0 = yDivisoria + divH + paddingV + fontSize;
+
+  // Textos acima do oblongo (observação + retirada)
+  const obsLinhas: string[] = observacao
+    ? observacao.split("\n").map((l) => l.trim()).filter(Boolean)
+    : [];
+
+  // Quanto espaço acima do oblongo ocupam os textos
+  const acimaTotalH =
+    (obsLinhas.length > 0 ? obsLinhas.length * lh + 1 : 0) +
+    (retirada ? lh + 1 : 0);
+  const yAcima0 = by - acimaTotalH + fontSize;
 
   return (
     <g onClick={onClick} style={{ cursor: "pointer" }}>
-      {/* Linha de chamada (leader) */}
+      {/* ── Textos acima do oblongo ── */}
+
+      {/* Observação: texto livre (ex.: "IMPLANTAR AO LADO") */}
+      {obsLinhas.map((linha, i) => (
+        <text
+          key={`obs-${i}`}
+          x={bx} y={yAcima0 + i * lh}
+          fontSize={fontSize} textAnchor="middle"
+          fill="#000" fontFamily="Arial, sans-serif"
+        >
+          {linha}
+        </text>
+      ))}
+
+      {/* Retirada: texto riscado (DIS-NOR-012 — "X" sobre o texto existente) */}
+      {retirada && (() => {
+        const yRet = yAcima0 + obsLinhas.length * (obsLinhas.length > 0 ? lh : 0);
+        const rw = retirada.length * 1.35 + 3;
+        return (
+          <g>
+            <text
+              x={bx} y={yRet}
+              fontSize={fontSize} textAnchor="middle"
+              fill="#000" fontFamily="Arial, sans-serif"
+              textDecoration="line-through"
+            >
+              {retirada}
+            </text>
+            {/* Linha adicional reforçando o "riscado" (padrão DIS-NOR-012) */}
+            <line
+              x1={bx - rw / 2} y1={yRet - fontSize * 0.35}
+              x2={bx + rw / 2} y2={yRet - fontSize * 0.35}
+              stroke="#000" strokeWidth={0.3}
+            />
+          </g>
+        );
+      })()}
+
+      {/* ── Linha de chamada (leader) ── */}
       <line x1={x} y1={y} x2={lx} y2={ly} stroke="#000" strokeWidth={0.25} />
-      {/* Oblongo: sem linha divisória interna (divisória = reinstalação, DIS-NOR-012) */}
+
+      {/* ── Oblongo ── */}
       <rect
         x={bx - bw / 2} y={by}
         width={bw} height={bh}
         rx={rx} ry={rx}
         fill="#fff" stroke="#000" strokeWidth={0.3}
       />
-      {/* Todas as linhas com a mesma formatação (bold, mesmo tamanho) */}
+
+      {/* Linhas de INSTALAÇÃO (sem formatação diferenciada — mesma fonte) */}
       {linhas.map((linha, i) => (
         <text
-          key={i}
-          x={bx} y={yFirst + i * lh}
+          key={`inst-${i}`}
+          x={bx} y={yInst0 + i * lh}
           fontSize={fontSize} textAnchor="middle"
           fill="#000" fontFamily="Arial, sans-serif" fontWeight="bold"
         >
           {linha}
         </text>
       ))}
+
+      {/* Linha divisória + seção REINSTALAÇÃO (só quando preenchida) */}
+      {linhasReinst.length > 0 && (
+        <>
+          <line
+            x1={bx - bw / 2 + 1} y1={yDivisoria}
+            x2={bx + bw / 2 - 1} y2={yDivisoria}
+            stroke="#000" strokeWidth={0.25}
+          />
+          {linhasReinst.map((linha, i) => (
+            <text
+              key={`reinst-${i}`}
+              x={bx} y={yReinst0 + i * lh}
+              fontSize={fontSize} textAnchor="middle"
+              fill="#000" fontFamily="Arial, sans-serif" fontWeight="bold"
+            >
+              {linha}
+            </text>
+          ))}
+        </>
+      )}
     </g>
   );
 }

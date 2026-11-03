@@ -150,6 +150,17 @@ export interface Ponto {
    */
   trafo?: DadosTransformador;
   /**
+   * Texto de **retirada** — exibido ACIMA do balão riscado (DIS-NOR-012).
+   * Indica o poste/equipamento existente que será retirado. Ex.: "11300DT - M1".
+   */
+  retirada?: string;
+  /**
+   * Texto de **reinstalação** — exibido ABAIXO da linha divisória dentro do balão.
+   * A linha divisória aparece SOMENTE quando este campo está preenchido (DIS-NOR-012).
+   * Ex.: "ESTAI" ou "CHFU15 - 3 LÂMINAS".
+   */
+  reinstalacao?: string;
+  /**
    * @deprecated Compatibilidade com arquivos antigos (um estai só). Na leitura,
    * o motor converte `estaiInstalado`/`estaiAzimuteManual` para `estais[]`; ao
    * editar, o Web passa a gravar `estais` e limpa estes campos. Não usar em código novo.

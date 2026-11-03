@@ -2430,6 +2430,23 @@ body {
   border-color: var(--accent, #4f88f5);
 }
 
+/* ── Seção "Operação" (retirada / reinstalação / observação) ── */
+.painel-operacao {
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Dica em itálico ao lado do rótulo do campo */
+.op-dica {
+  font-weight: normal;
+  font-style: italic;
+  font-size: 11px;
+  color: var(--muted, #888);
+  margin-left: 2px;
+}
+
 /* Linha de equipamento com toggle + quantidade + seletor de spec */
 .trafo-equip-linha {
   display: flex;

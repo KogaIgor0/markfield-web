@@ -172,14 +172,51 @@ export function PainelPonto({
         />
       </label>
 
-      <label className="campo">
-        <span>Observação</span>
-        <textarea
-          rows={2}
-          defaultValue={ponto.observacao ?? ""}
-          onBlur={(e) => onEditar({ observacao: e.target.value })}
-        />
-      </label>
+      {/* ── Operação: observação / retirada / reinstalação (DIS-NOR-012) ── */}
+      <div className="painel-operacao">
+        <div className="painel-sub">Operação</div>
+
+        <label className="campo">
+          <span>Observação <em className="op-dica">(acima do balão, texto livre)</em></span>
+          <textarea
+            rows={2}
+            defaultValue={ponto.observacao ?? ""}
+            onBlur={(e) => onEditar({ observacao: e.target.value || undefined })}
+          />
+        </label>
+
+        <label className="campo">
+          <span>
+            Retirada{" "}
+            <em className="op-dica">
+              (acima do balão, riscado — ex.: 11300DT - M1)
+            </em>
+          </span>
+          <input
+            type="text"
+            defaultValue={ponto.retirada ?? ""}
+            placeholder="ex.: 11300DT - M1"
+            onBlur={(e) => onEditar({ retirada: e.target.value.trim() || undefined })}
+            onKeyDown={enterBlur}
+          />
+        </label>
+
+        <label className="campo">
+          <span>
+            Reinstalação{" "}
+            <em className="op-dica">
+              (dentro do balão, abaixo da linha — ex.: ESTAI)
+            </em>
+          </span>
+          <input
+            type="text"
+            defaultValue={ponto.reinstalacao ?? ""}
+            placeholder="ex.: ESTAI ou CHFU15 - 3 LÂMINAS"
+            onBlur={(e) => onEditar({ reinstalacao: e.target.value.trim() || undefined })}
+            onKeyDown={enterBlur}
+          />
+        </label>
+      </div>
 
       <div className="painel-coord">
         <div className="painel-sub">Coordenada</div>
