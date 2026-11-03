@@ -721,16 +721,15 @@ function QuadroMateriais({ w, materiais }: { w: number; materiais: ResumoMateria
  * Zonas (DIS-NOR-012 simbologia):
  *
  *   [observacao — texto acima do balão, texto livre]
- *   [retirada   — texto acima do balão, riscado (traço horizontal)]
+ *   [retirada   — texto acima do balão com "X" (dois traços diagonais finos)]
  *   ┌─────────────────────────────┐
  *   │  linhas[] — INSTALAÇÃO      │  ← sempre presente, sem linha divisória
  *   ├─────────────────────────────┤  ← linha divisória, SÓ se reinstalacao definido
  *   │  reinstalacao — REINSTALAÇÃO│  ← abaixo da linha (opcional)
  *   └─────────────────────────────┘
  *
- * `linhas`: texto da instalação partido em múltiplas linhas (mesmo tamanho de
- *   fonte, sem formatação diferenciada). Nunca inclui linha divisória — ela
- *   significa reinstalação e aparece somente quando `reinstalacao` está preenchido.
+ * Retirada: "X" feito com dois traços diagonais finos cruzando o texto (DIS-NOR-012).
+ * Observação/retirada ficam imediatamente acima do oblongo (~1 mm de folga).
  *
  * pos: 0=cima-dir, 1=cima-esq, 2=baixo-dir, 3=baixo-esq
  * Clique no balão para ciclar a posição.
@@ -747,41 +746,42 @@ function BalaoPosto({
   onClick: () => void;
 }) {
   const fontSize = 2.2;
-  const lh = 3.2;       // espaçamento entre linhas (mm)
-  const paddingV = 1.5; // margem vertical interna (topo + fundo)
-  const divH = 0.3;     // espessura da linha divisória
+  const lh = 3.0;        // espaçamento entre linhas dentro do oblongo (mm)
+  const aboveLh = 2.8;   // espaçamento das linhas acima do oblongo (mais compacto)
+  const paddingV = 1.2;  // margem vertical interna topo/fundo
+  const divH = 0.25;     // espessura da linha divisória
 
   // Linhas de reinstalação (quebradas pelo mesmo limite)
-  const linhasReinst = reinstalacao
-    ? quebrarLinhasOblongo(reinstalacao, 26)
+  const linhasReinst = reinstalacao ? quebrarLinhasOblongo(reinstalacao, 26) : [];
+
+  // Linhas de observação
+  const obsLinhas: string[] = observacao
+    ? observacao.split("\n").map((l) => l.trim()).filter(Boolean)
     : [];
 
-  // Todas as linhas para calcular a largura do oblongo
-  const todasLinhas = [...linhas, ...linhasReinst];
-  if (retirada) todasLinhas.push(retirada);
-  if (observacao) {
-    for (const obs of observacao.split("\n")) if (obs.trim()) todasLinhas.push(obs.trim());
-  }
+  // Largura do oblongo: linha mais longa entre instalação + reinstalação + acima
+  const cadidatas = [...linhas, ...linhasReinst];
+  if (retirada) cadidatas.push(retirada);
+  obsLinhas.forEach((l) => cadidatas.push(l));
+  const bw = Math.max(...cadidatas.map((l) => l.length * 1.35 + 3), 10);
 
-  const bw = Math.max(...todasLinhas.map((l) => l.length * 1.35 + 3), 10);
-
-  // Altura do oblongo: instalação + (divisória + reinstalação se houver)
+  // Altura do oblongo
   const bhInst = paddingV + lh * linhas.length + paddingV;
   const bhReinst = linhasReinst.length > 0
     ? divH + paddingV + lh * linhasReinst.length + paddingV
     : 0;
   const bh = bhInst + bhReinst;
 
-  const rx = 2.1;
+  const rx = 2.0;
   const offX = 8;
-  const offY = 7;
+  const offY = 6;
 
   // Centro do oblongo por posição
   const configs = [
-    { bx: x + offX + bw / 2, by: y - offY - bh },  // 0: cima-dir
-    { bx: x - offX - bw / 2, by: y - offY - bh },  // 1: cima-esq
-    { bx: x + offX + bw / 2, by: y + offY / 2 },   // 2: baixo-dir
-    { bx: x - offX - bw / 2, by: y + offY / 2 },   // 3: baixo-esq
+    { bx: x + offX + bw / 2, by: y - offY - bh },
+    { bx: x - offX - bw / 2, by: y - offY - bh },
+    { bx: x + offX + bw / 2, by: y + offY / 2 },
+    { bx: x - offX - bw / 2, by: y + offY / 2 },
   ];
   const { bx, by } = configs[pos % 4];
 
@@ -794,32 +794,29 @@ function BalaoPosto({
   ];
   const { lx, ly } = leaderCorners[pos % 4];
 
-  // Baseline da primeira linha de instalação
+  // Y dos textos dentro do oblongo
   const yInst0 = by + paddingV + fontSize;
-  // Y onde começa a seção de reinstalação (topo do bloco abaixo da divisória)
   const yDivisoria = by + bhInst;
   const yReinst0 = yDivisoria + divH + paddingV + fontSize;
 
-  // Textos acima do oblongo (observação + retirada)
-  const obsLinhas: string[] = observacao
-    ? observacao.split("\n").map((l) => l.trim()).filter(Boolean)
-    : [];
-
-  // Quanto espaço acima do oblongo ocupam os textos
-  const acimaTotalH =
-    (obsLinhas.length > 0 ? obsLinhas.length * lh + 1 : 0) +
-    (retirada ? lh + 1 : 0);
-  const yAcima0 = by - acimaTotalH + fontSize;
+  // Posicionamento compacto dos textos acima do oblongo:
+  // o último item acima fica a 1 mm do topo do oblongo (by).
+  const gapAcima = 1.0;
+  const nAcima = obsLinhas.length + (retirada ? 1 : 0);
+  // baseline do ÚLTIMO item acima = by - gapAcima
+  // baseline do item i (de cima para baixo) = by - gapAcima - (nAcima - 1 - i) * aboveLh
+  const yAcima = (i: number) => by - gapAcima - (nAcima - 1 - i) * aboveLh;
 
   return (
     <g onClick={onClick} style={{ cursor: "pointer" }}>
+
       {/* ── Textos acima do oblongo ── */}
 
-      {/* Observação: texto livre (ex.: "IMPLANTAR AO LADO") */}
+      {/* Observação (texto livre, sem marcação especial) */}
       {obsLinhas.map((linha, i) => (
         <text
           key={`obs-${i}`}
-          x={bx} y={yAcima0 + i * lh}
+          x={bx} y={yAcima(i)}
           fontSize={fontSize} textAnchor="middle"
           fill="#000" fontFamily="Arial, sans-serif"
         >
@@ -827,26 +824,28 @@ function BalaoPosto({
         </text>
       ))}
 
-      {/* Retirada: texto riscado (DIS-NOR-012 — "X" sobre o texto existente) */}
+      {/* Retirada: texto normal + "X" de dois traços diagonais finos (DIS-NOR-012) */}
       {retirada && (() => {
-        const yRet = yAcima0 + obsLinhas.length * (obsLinhas.length > 0 ? lh : 0);
-        const rw = retirada.length * 1.35 + 3;
+        const yr = yAcima(obsLinhas.length);
+        // Caixa aproximada do texto (capitals + descenders)
+        const rw = retirada.length * 1.35 + 2;
+        const xt = bx - rw / 2;
+        const xb = bx + rw / 2;
+        const ytop = yr - fontSize * 0.82; // topo dos maiúsculos
+        const ybot = yr + fontSize * 0.18; // linha de base
         return (
           <g>
             <text
-              x={bx} y={yRet}
+              x={bx} y={yr}
               fontSize={fontSize} textAnchor="middle"
               fill="#000" fontFamily="Arial, sans-serif"
-              textDecoration="line-through"
             >
               {retirada}
             </text>
-            {/* Linha adicional reforçando o "riscado" (padrão DIS-NOR-012) */}
-            <line
-              x1={bx - rw / 2} y1={yRet - fontSize * 0.35}
-              x2={bx + rw / 2} y2={yRet - fontSize * 0.35}
-              stroke="#000" strokeWidth={0.3}
-            />
+            {/* X: traço superior-esq → inferior-dir */}
+            <line x1={xt} y1={ytop} x2={xb} y2={ybot} stroke="#000" strokeWidth={0.22} />
+            {/* X: traço superior-dir → inferior-esq */}
+            <line x1={xb} y1={ytop} x2={xt} y2={ybot} stroke="#000" strokeWidth={0.22} />
           </g>
         );
       })()}
@@ -862,7 +861,7 @@ function BalaoPosto({
         fill="#fff" stroke="#000" strokeWidth={0.3}
       />
 
-      {/* Linhas de INSTALAÇÃO (sem formatação diferenciada — mesma fonte) */}
+      {/* INSTALAÇÃO — todas as linhas, mesma fonte */}
       {linhas.map((linha, i) => (
         <text
           key={`inst-${i}`}
@@ -874,13 +873,13 @@ function BalaoPosto({
         </text>
       ))}
 
-      {/* Linha divisória + seção REINSTALAÇÃO (só quando preenchida) */}
+      {/* Linha divisória + REINSTALAÇÃO (só quando preenchida) */}
       {linhasReinst.length > 0 && (
         <>
           <line
             x1={bx - bw / 2 + 1} y1={yDivisoria}
             x2={bx + bw / 2 - 1} y2={yDivisoria}
-            stroke="#000" strokeWidth={0.25}
+            stroke="#000" strokeWidth={0.22}
           />
           {linhasReinst.map((linha, i) => (
             <text
