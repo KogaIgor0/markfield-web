@@ -174,13 +174,24 @@ export interface DadosTransformador {
   potenciaKva: number;
   /** Chaves fusíveis instaladas (default false). */
   chaveFusivel: boolean;
+  /**
+   * Especificação da chave fusível (ex.: "15K"). A quantidade é automática
+   * pelo número de fases (1/2/3). Renderizado no oblongo como "NxCHFU15K".
+   */
+  chaveFusivelSpec?: string;
   /** Para-raio instalado (default true — norma exige em trafo). */
   paraRaio: boolean;
+  /**
+   * Especificação do para-raio (ex.: "12K"). Quantidade automática por fases.
+   * Renderizado no oblongo como "NxPR12K".
+   */
+  paraRaioSpec?: string;
   /** Aterramento instalado. */
   aterramento: boolean;
   /**
-   * Elo fusível (ex.: "3K", "6K", "10K"). Auto-sugerido pelo catálogo a partir
-   * das fases e da potência; pode ser sobrescrito pelo projetista.
+   * Elo fusível (ex.: "5K", "8K"). Auto-sugerido pelo catálogo a partir das
+   * fases e da potência; pode ser sobrescrito pelo projetista.
+   * Renderizado no oblongo como "NxELO5K".
    */
   eloFusivel?: string;
   /** `true` = elo definido manualmente (não será recalculado). */

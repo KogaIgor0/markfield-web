@@ -2,10 +2,13 @@ import { useState } from "react";
 import type { DadosTransformador, LatLng, Ponto, TipoPonto } from "../domain/model";
 import type { PatchPonto } from "../domain/edicao";
 import {
+  CHFU_SPECS,
   ELOS_FUSIVEL,
   FASES_OPCOES,
   novoTrafo,
+  PARA_RAIO_SPECS,
   POTENCIAS_KVA,
+  qtdPorFases,
   sugerirEloFusivel,
 } from "../domain/trafo-catalogo";
 import { rotuloPapel, type Papel } from "../domain/rede";
@@ -598,37 +601,7 @@ function PainelEquipamentosTrafo({ trafo, onEditar }: PropsTrafo) {
     <div className="painel-trafo">
       <div className="painel-sub">Equipamentos</div>
 
-      {/* Chaves fusíveis */}
-      <label className="trafo-toggle">
-        <input
-          type="checkbox"
-          checked={trafo.chaveFusivel}
-          onChange={(e) => patch({ chaveFusivel: e.target.checked })}
-        />
-        Chaves fusíveis
-      </label>
-
-      {/* Para-raio */}
-      <label className="trafo-toggle">
-        <input
-          type="checkbox"
-          checked={trafo.paraRaio}
-          onChange={(e) => patch({ paraRaio: e.target.checked })}
-        />
-        Para-raio
-      </label>
-
-      {/* Aterramento */}
-      <label className="trafo-toggle">
-        <input
-          type="checkbox"
-          checked={trafo.aterramento}
-          onChange={(e) => patch({ aterramento: e.target.checked })}
-        />
-        Aterramento
-      </label>
-
-      {/* Transformador: fases + potência */}
+      {/* Transformador: fases + potência (define quantidade de todos os equip.) */}
       <div className="painel-sub trafo-sub">Transformador</div>
       <div className="coord-linha">
         <label className="campo campo-mini">
@@ -638,9 +611,7 @@ function PainelEquipamentosTrafo({ trafo, onEditar }: PropsTrafo) {
             onChange={(e) => {
               const fases = e.target.value as DadosTransformador["fases"];
               const elo = sugerirEloFusivel(fases, trafo.potenciaKva);
-              onEditar({
-                trafo: { ...trafo, fases, eloFusivel: elo, eloFusivelManual: false },
-              });
+              onEditar({ trafo: { ...trafo, fases, eloFusivel: elo, eloFusivelManual: false } });
             }}
           >
             {FASES_OPCOES.map((f) => (
@@ -655,9 +626,7 @@ function PainelEquipamentosTrafo({ trafo, onEditar }: PropsTrafo) {
             onChange={(e) => {
               const kva = Number(e.target.value);
               const elo = sugerirEloFusivel(trafo.fases, kva);
-              onEditar({
-                trafo: { ...trafo, potenciaKva: kva, eloFusivel: elo, eloFusivelManual: false },
-              });
+              onEditar({ trafo: { ...trafo, potenciaKva: kva, eloFusivel: elo, eloFusivelManual: false } });
             }}
           >
             {POTENCIAS_KVA.map((k) => (
@@ -667,27 +636,97 @@ function PainelEquipamentosTrafo({ trafo, onEditar }: PropsTrafo) {
         </label>
       </div>
 
-      {/* Elo fusível (auto-sugerido ou manual) */}
-      {trafo.chaveFusivel && (
-        <div className="trafo-elo">
-          <label className="campo campo-mini">
-            <span>
-              Elo fusível{trafo.eloFusivelManual ? " (manual)" : " (auto)"}
-            </span>
-            <select value={trafo.eloFusivel ?? ""} onChange={(e) => patchElo(e.target.value)}>
-              <option value="">— selecionar —</option>
-              {ELOS_FUSIVEL.map((e) => (
-                <option key={e} value={e}>{e}</option>
-              ))}
-            </select>
-          </label>
-          {trafo.eloFusivelManual && (
-            <button className="btn-mini-sec trafo-elo-auto" onClick={resetEloAuto}>
-              Recalcular
-            </button>
-          )}
-        </div>
-      )}
+      {/* Equipamentos (quantidade automática por fases) */}
+      {(() => {
+        const qtd = qtdPorFases(trafo.fases);
+        const qtdLabel = qtd > 1 ? `${qtd}×` : "";
+        return (
+          <>
+            {/* Para-raio */}
+            <div className="trafo-equip-linha">
+              <label className="trafo-toggle trafo-toggle-inline">
+                <input
+                  type="checkbox"
+                  checked={trafo.paraRaio}
+                  onChange={(e) => patch({ paraRaio: e.target.checked })}
+                />
+                <span>Para-raio{qtdLabel && <em className="trafo-qtd"> {qtdLabel}</em>}</span>
+              </label>
+              {trafo.paraRaio && (
+                <select
+                  className="trafo-spec-sel"
+                  value={trafo.paraRaioSpec ?? ""}
+                  onChange={(e) => patch({ paraRaioSpec: e.target.value || undefined })}
+                  title="Especificação do para-raio"
+                >
+                  <option value="">— spec —</option>
+                  {PARA_RAIO_SPECS.map((s) => (
+                    <option key={s} value={s}>PR{s}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Aterramento */}
+            <label className="trafo-toggle">
+              <input
+                type="checkbox"
+                checked={trafo.aterramento}
+                onChange={(e) => patch({ aterramento: e.target.checked })}
+              />
+              Aterramento
+            </label>
+
+            {/* Chaves fusíveis + elo */}
+            <div className="trafo-equip-linha">
+              <label className="trafo-toggle trafo-toggle-inline">
+                <input
+                  type="checkbox"
+                  checked={trafo.chaveFusivel}
+                  onChange={(e) => patch({ chaveFusivel: e.target.checked })}
+                />
+                <span>Chave fusível{qtdLabel && <em className="trafo-qtd"> {qtdLabel}</em>}</span>
+              </label>
+              {trafo.chaveFusivel && (
+                <select
+                  className="trafo-spec-sel"
+                  value={trafo.chaveFusivelSpec ?? ""}
+                  onChange={(e) => patch({ chaveFusivelSpec: e.target.value || undefined })}
+                  title="Especificação da chave fusível"
+                >
+                  <option value="">— spec —</option>
+                  {CHFU_SPECS.map((s) => (
+                    <option key={s} value={s}>CHFU{s}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Elo fusível (auto-sugerido ou manual) */}
+            {trafo.chaveFusivel && (
+              <div className="trafo-elo">
+                <label className="campo campo-mini">
+                  <span>
+                    Elo fusível{qtdLabel && ` ${qtdLabel}`}
+                    {trafo.eloFusivelManual ? " (manual)" : " (auto)"}
+                  </span>
+                  <select value={trafo.eloFusivel ?? ""} onChange={(e) => patchElo(e.target.value)}>
+                    <option value="">— selecionar —</option>
+                    {ELOS_FUSIVEL.map((e) => (
+                      <option key={e} value={e}>ELO{e}</option>
+                    ))}
+                  </select>
+                </label>
+                {trafo.eloFusivelManual && (
+                  <button className="btn-mini-sec trafo-elo-auto" onClick={resetEloAuto}>
+                    Recalcular
+                  </button>
+                )}
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* Estrutura secundária */}
       <label className="campo">
@@ -695,7 +734,7 @@ function PainelEquipamentosTrafo({ trafo, onEditar }: PropsTrafo) {
         <input
           type="text"
           defaultValue={trafo.estruturaSecundaria ?? ""}
-          placeholder="ex.: EDB1, EM1"
+          placeholder="ex.: EDB1, EM1, E2F1"
           onBlur={(e) =>
             patch({ estruturaSecundaria: e.target.value.trim() || undefined })
           }

@@ -2430,6 +2430,42 @@ body {
   border-color: var(--accent, #4f88f5);
 }
 
+/* Linha de equipamento com toggle + quantidade + seletor de spec */
+.trafo-equip-linha {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Toggle inline (dentro de trafo-equip-linha) — não expande */
+.trafo-toggle-inline {
+  flex-shrink: 0;
+}
+
+/* Quantidade automática de equipamentos (ex.: "3×") */
+.trafo-qtd {
+  font-style: italic;
+  font-size: 11px;
+  color: var(--muted, #888);
+  margin-left: 1px;
+}
+
+/* Seletor de especificação (PR12K, CHFU15K, etc.) */
+.trafo-spec-sel {
+  flex: 1;
+  min-width: 72px;
+  max-width: 100px;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 4px;
+  background: var(--bg, #fff);
+  color: var(--fg, #222);
+  cursor: pointer;
+}
+
 /* Botão remover configuração */
 .trafo-remover {
   margin-top: 4px;
