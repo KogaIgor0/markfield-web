@@ -37,6 +37,7 @@ export type PatchPonto = Partial<
     | "numero"
     | "tipo"
     | "observacao"
+    | "equipamentos"
     | "balaoPos"
     | "retirada"
     | "reinstalacao"

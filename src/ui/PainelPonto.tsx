@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { DadosTransformador, LatLng, Ponto, TipoPonto } from "../domain/model";
+import type { DadosTransformador, EquipamentoPosto, LatLng, Ponto, TipoPonto } from "../domain/model";
 import type { PatchPonto } from "../domain/edicao";
 import {
   CHFU_SPECS,
@@ -559,9 +559,17 @@ export function PainelPonto({
         </button>
       </div>
 
-      {/* Seção EQUIPAMENTOS — visível somente em pontos transformador */}
+      {/* Seção EQUIPAMENTOS — transformador: painel completo */}
       {ponto.tipo === "transformador" && (
         <PainelEquipamentosTrafo trafo={ponto.trafo} onEditar={onEditar} />
+      )}
+
+      {/* Seção EQUIPAMENTOS — demais tipos: PR + CHFU + aterramento */}
+      {ponto.tipo !== "transformador" && (
+        <PainelEquipamentosPoste
+          eq={ponto.equipamentos}
+          onEditar={(eq) => onEditar({ equipamentos: eq })}
+        />
       )}
 
       <div className="painel-info">
@@ -574,6 +582,91 @@ export function PainelPonto({
         Excluir ponto
       </button>
     </aside>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Sub-componente: equipamentos simples (non-trafo) — PR, CHFU, aterramento
+// --------------------------------------------------------------------------
+
+interface PropsEqPoste {
+  eq: EquipamentoPosto | undefined;
+  onEditar: (eq: EquipamentoPosto | undefined) => void;
+}
+
+function PainelEquipamentosPoste({ eq, onEditar }: PropsEqPoste) {
+  /** Aplica um patch parcial e limpa o campo inteiro quando tudo for false/vazio. */
+  const patch = (delta: Partial<EquipamentoPosto>) => {
+    const next = { ...eq, ...delta };
+    // Se ficou tudo vazio/false, zera o objeto para não poluir o JSON
+    const algum = next.paraRaio || next.chaveFusivel || next.aterramento;
+    onEditar(algum ? next : undefined);
+  };
+
+  return (
+    <div className="painel-trafo">
+      <div className="painel-sub">Equipamentos</div>
+
+      {/* Para-raio */}
+      <div className="trafo-equip-linha">
+        <label className="trafo-toggle trafo-toggle-inline">
+          <input
+            type="checkbox"
+            checked={eq?.paraRaio ?? false}
+            onChange={(e) => patch({ paraRaio: e.target.checked, paraRaioSpec: eq?.paraRaioSpec })}
+          />
+          <span>Para-raio</span>
+        </label>
+        {eq?.paraRaio && (
+          <select
+            className="trafo-spec-sel"
+            value={eq.paraRaioSpec ?? ""}
+            onChange={(e) => patch({ paraRaioSpec: e.target.value || undefined })}
+            title="Especificação do para-raio"
+          >
+            <option value="">— spec —</option>
+            {PARA_RAIO_SPECS.map((s) => (
+              <option key={s} value={s}>PR{s}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* Chave fusível */}
+      <div className="trafo-equip-linha">
+        <label className="trafo-toggle trafo-toggle-inline">
+          <input
+            type="checkbox"
+            checked={eq?.chaveFusivel ?? false}
+            onChange={(e) => patch({ chaveFusivel: e.target.checked, chaveFusivelSpec: eq?.chaveFusivelSpec })}
+          />
+          <span>Chave fusível</span>
+        </label>
+        {eq?.chaveFusivel && (
+          <select
+            className="trafo-spec-sel"
+            value={eq.chaveFusivelSpec ?? ""}
+            onChange={(e) => patch({ chaveFusivelSpec: e.target.value || undefined })}
+            title="Especificação da chave fusível"
+          >
+            <option value="">— spec —</option>
+            {CHFU_SPECS.map((s) => (
+              <option key={s} value={s}>CHFU{s}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* Aterramento */}
+      <label className="trafo-toggle">
+        <input
+          type="checkbox"
+          checked={eq?.aterramento ?? false}
+          onChange={(e) => patch({ aterramento: e.target.checked })}
+        />
+        Aterramento
+      </label>
+    </div>
   );
 }
 

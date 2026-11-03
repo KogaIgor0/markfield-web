@@ -5,7 +5,7 @@
  * especificações de para-raio e chave fusível.
  * Os elos são valores típicos para 15 kV; o projetista pode sobrescrever.
  */
-import type { DadosTransformador } from "./model";
+import type { DadosTransformador, EquipamentoPosto } from "./model";
 
 // --------------------------------------------------------------------------
 // Tipos e catálogos
@@ -166,6 +166,25 @@ export function textoOblongoTrafo(
 
   // (Compartilhamento omitido do oblongo — somente para projetos específicos)
 
+  return partes.join(" - ");
+}
+
+/**
+ * Linha de equipamentos para postes NÃO-transformador (para-raio, chave fusível,
+ * aterramento). Retorna string vazia se não há nenhum equipamento definido.
+ * Formato: "1PR12K - ATERRAMENTO - 1CHFU15K" (mesma convenção do oblongo trafo).
+ */
+export function textoEquipamentosPoste(eq: EquipamentoPosto): string {
+  const partes: string[] = [];
+  if (eq.paraRaio) {
+    partes.push(`1PR${eq.paraRaioSpec ?? ""}`);
+  }
+  if (eq.aterramento) {
+    partes.push("ATERRAMENTO");
+  }
+  if (eq.chaveFusivel) {
+    partes.push(`1CHFU${eq.chaveFusivelSpec ?? ""}`);
+  }
   return partes.join(" - ");
 }
 

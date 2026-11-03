@@ -20,7 +20,7 @@ import { baixar } from "../io/exportar";
 import { distanciaM } from "../domain/vaos";
 import { espacadoresDoVao } from "../domain/materiais";
 import { PACK_ELEKTRO } from "../packs/elektro";
-import { textoOblongoTrafo, quebrarLinhasOblongo } from "../domain/trafo-catalogo";
+import { textoOblongoTrafo, quebrarLinhasOblongo, textoEquipamentosPoste } from "../domain/trafo-catalogo";
 
 /**
  * Prancha (B6) — a folha de projeto em ESCALA (SVG em mm), com moldura, Norte,
@@ -430,7 +430,16 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   const textoObl = textoOblongoTrafo(alturaM, cargaDaN, estruturaCod, p.trafo);
                   balaoLinhas = quebrarLinhasOblongo(textoObl, 26);
                 } else {
-                  balaoLinhas = textoBalao ? [textoBalao] : [];
+                  // Poste comum: linha estrutural + linha de equipamentos (se houver)
+                  const linhaEq = p.equipamentos
+                    ? textoEquipamentosPoste(p.equipamentos)
+                    : "";
+                  const textoCompleto = linhaEq
+                    ? `${textoBalao} - ${linhaEq}`
+                    : textoBalao;
+                  balaoLinhas = textoCompleto
+                    ? quebrarLinhasOblongo(textoCompleto, 26)
+                    : [];
                 }
 
                 const pos = p.balaoPos ?? 0;

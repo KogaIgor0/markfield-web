@@ -150,6 +150,12 @@ export interface Ponto {
    */
   trafo?: DadosTransformador;
   /**
+   * Equipamentos de proteção/manobra do poste (para-raio, chave fusível,
+   * aterramento). Disponível para TODOS os tipos de ponto. No transformador,
+   * esses dados ficam em `trafo`; nos demais, ficam aqui.
+   */
+  equipamentos?: EquipamentoPosto;
+  /**
    * Posição do balão oblongo na prancha: 0=cima-dir, 1=cima-esq,
    * 2=baixo-dir, 3=baixo-esq. Persiste o ciclo escolhido pelo projetista.
    */
@@ -173,6 +179,25 @@ export interface Ponto {
   estaiInstalado?: boolean;
   /** @deprecated ver `estais` — azimute do estai único dos arquivos antigos. */
   estaiAzimuteManual?: number;
+}
+
+/**
+ * Equipamentos de proteção/manobra que podem estar em QUALQUER tipo de poste
+ * (poste proposto, genérico, transformador com derivação, etc.).
+ * Para o transformador, esses mesmos dados ficam em `DadosTransformador`; este
+ * campo é usado nos demais tipos (onde não há trafo, mas pode haver CHFU/PR).
+ */
+export interface EquipamentoPosto {
+  /** Para-raio instalado. */
+  paraRaio?: boolean;
+  /** Especificação do para-raio (ex.: "12K" → "1PR12K"). */
+  paraRaioSpec?: string;
+  /** Chave fusível instalada. */
+  chaveFusivel?: boolean;
+  /** Especificação da chave fusível (ex.: "15K" → "1CHFU15K"). */
+  chaveFusivelSpec?: string;
+  /** Aterramento instalado. */
+  aterramento?: boolean;
 }
 
 /**
