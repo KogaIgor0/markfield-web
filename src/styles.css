@@ -2468,6 +2468,14 @@ body {
   margin-left: 1px;
 }
 
+.trafo-qtd-label {
+  font-size: 12px;
+  color: var(--muted, #888);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* Seletor de especificação (PR12K, CHFU15K, etc.) */
 .trafo-spec-sel {
   flex: 1;

@@ -172,20 +172,43 @@ export function textoOblongoTrafo(
 /**
  * Linha de equipamentos para postes NÃO-transformador (para-raio, chave fusível,
  * aterramento). Retorna string vazia se não há nenhum equipamento definido.
- * Formato: "1PR12K - ATERRAMENTO - 1CHFU15K" (mesma convenção do oblongo trafo).
+ *
+ * @param eq     Dados do equipamento.
+ * @param qtdAuto Quantidade automática derivada da rede (3 = primária, 1 = demais).
+ *               Usada quando `eq.qtd` é `undefined`.
+ *
+ * Formato: "3PR12K - ATERRAMENTO - 3CHFU15K" (mesma convenção do oblongo trafo).
  */
-export function textoEquipamentosPoste(eq: EquipamentoPosto): string {
+export function textoEquipamentosPoste(eq: EquipamentoPosto, qtdAuto = 1): string {
+  const qtd = eq.qtd ?? qtdAuto;
   const partes: string[] = [];
   if (eq.paraRaio) {
-    partes.push(`1PR${eq.paraRaioSpec ?? ""}`);
+    partes.push(`${qtd}PR${eq.paraRaioSpec ?? ""}`);
   }
   if (eq.aterramento) {
     partes.push("ATERRAMENTO");
   }
   if (eq.chaveFusivel) {
-    partes.push(`1CHFU${eq.chaveFusivelSpec ?? ""}`);
+    partes.push(`${qtd}CHFU${eq.chaveFusivelSpec ?? ""}`);
   }
   return partes.join(" - ");
+}
+
+/**
+ * Calcula a quantidade automática de equipamentos para um poste, baseada na
+ * classe dos trechos conectados a ele.
+ *   - Rede primária (classe "primaria") → 3 (trifásico)
+ *   - Qualquer outra → 1
+ */
+export function qtdAutoEquip(
+  pontoId: string,
+  trechos: ReadonlyArray<{ dePontoId?: string; aPontoId?: string; classe: string }>,
+): number {
+  return trechos.some(
+    (t) => (t.dePontoId === pontoId || t.aPontoId === pontoId) && t.classe === "primaria",
+  )
+    ? 3
+    : 1;
 }
 
 /**

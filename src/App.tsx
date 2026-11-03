@@ -1287,6 +1287,15 @@ export function App() {
           <PainelPonto
             key={`${selecionado.id}:${selecionado.wgs84.lat},${selecionado.wgs84.lng}`}
             ponto={selecionado}
+            qtdAutoEquip={
+              projeto.trechos.some(
+                (t) =>
+                  (t.dePontoId === selecionado.id || t.aPontoId === selecionado.id) &&
+                  t.classe === "primaria",
+              )
+                ? 3
+                : 1
+            }
             papel={posteModelado?.papel}
             deflexaoGraus={posteModelado?.deflexaoGraus}
             estrutura={estruturaSel}

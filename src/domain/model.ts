@@ -190,14 +190,20 @@ export interface Ponto {
 export interface EquipamentoPosto {
   /** Para-raio instalado. */
   paraRaio?: boolean;
-  /** Especificação do para-raio (ex.: "12K" → "1PR12K"). */
+  /** Especificação do para-raio (ex.: "12K" → "NxPR12K"). */
   paraRaioSpec?: string;
   /** Chave fusível instalada. */
   chaveFusivel?: boolean;
-  /** Especificação da chave fusível (ex.: "15K" → "1CHFU15K"). */
+  /** Especificação da chave fusível (ex.: "15K" → "NxCHFU15K"). */
   chaveFusivelSpec?: string;
   /** Aterramento instalado. */
   aterramento?: boolean;
+  /**
+   * Quantidade de unidades de cada equipamento (para-raio + chave fusível).
+   * `undefined` = **automático**: 3 quando o poste está em rede primária, 1 caso contrário.
+   * Defina manualmente (1, 2 ou 3) quando quiser sobrescrever a detecção automática.
+   */
+  qtd?: number;
 }
 
 /**
