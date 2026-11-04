@@ -1,10 +1,10 @@
 /**
- * Cloudflare Worker v6 -- CORS proxy para assets BDGD do GitHub Releases.
+ * Cloudflare Worker v7 -- CORS proxy para assets BDGD do GitHub Releases.
  *
  * Estratégia: redireciona para o CDN do GitHub (objects.githubusercontent.com)
- * em vez de proxiar o corpo. Isso evita timeouts no plano free e é mais rápido.
+ * em vez de proxiar o corpo. Isso evita timeouts/502 no plano free e é mais rápido.
  * O objects.githubusercontent.com já envia Access-Control-Allow-Origin: * para
- * releases públicas, portanto CORS funciona sem proxiar.
+ * releases públicas e suporta Range nativo — CORS + PMTiles funcionam sem proxiar.
  *
  * Roteamento:
  *   /{dist}/{file}  ->  redirect para releases/download/bdgd-{dist}-2024/{file}
@@ -157,29 +157,12 @@ export default {
       );
     }
 
-    // PMTiles precisam de Range -- proxia diretamente para suportar streaming parcial
-    const range = request.headers.get("Range");
-    if (range || (resolvedTarget && resolvedTarget.endsWith(".pmtiles"))) {
-      try {
-        const upstream = await fetch(cdnUrl, {
-          method: request.method,
-          headers: range ? { "Range": range } : {},
-        });
-        const out = new Headers(CORS);
-        for (const h of ["content-type","content-length","content-range","accept-ranges","etag","last-modified","cache-control"]) {
-          const v = upstream.headers.get(h);
-          if (v) out.set(h, v);
-        }
-        return new Response(upstream.body, { status: upstream.status, headers: out });
-      } catch (err) {
-        return new Response(`Erro ao buscar ${cdnUrl}: ${err.message}`, {
-          status: 502, headers: { ...CORS, "Content-Type": "text/plain" },
-        });
-      }
-    }
-
-    // Para GeoJSON e outros: redireciona para o CDN do GitHub.
-    // objects.githubusercontent.com já envia CORS para repos públicos.
-    return Response.redirect(cdnUrl, 302);
+    // Para todos os arquivos (PMTiles, GeoJSON, etc.): redireciona para o CDN do GitHub.
+    // objects.githubusercontent.com suporta CORS (*) e Range nativamente — sem necessidade
+    // de proxy. O fetch() do browser e da lib PMTiles segue o 302 e faz Range direto no CDN.
+    return new Response(null, {
+      status: 302,
+      headers: { ...CORS, "Location": cdnUrl },
+    });
   },
 };
