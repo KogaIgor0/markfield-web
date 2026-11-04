@@ -1,13 +1,18 @@
 /**
- * Cloudflare Worker v7 -- CORS proxy para assets BDGD do GitHub Releases.
+ * Cloudflare Worker v8 -- CORS proxy para assets BDGD do GitHub Releases.
  *
- * Estratégia: redireciona para o CDN do GitHub (objects.githubusercontent.com)
- * em vez de proxiar o corpo. Isso evita timeouts/502 no plano free e é mais rápido.
- * O objects.githubusercontent.com já envia Access-Control-Allow-Origin: * para
- * releases públicas e suporta Range nativo — CORS + PMTiles funcionam sem proxiar.
+ * Estratégia: resolve o CDN real do GitHub (objects.githubusercontent.com)
+ * via HEAD e então PROXIA a resposta com CORS headers próprios.
+ * O redirect (v7) não funciona porque objects.githubusercontent.com não
+ * serve Access-Control-Allow-Origin em todos os contextos — Range requests
+ * cross-origin pelo browser são bloqueadas sem o proxy.
+ *
+ * Range requests (PMTiles): o Worker passa o header Range para o CDN e
+ * retorna a resposta parcial (206). Cada chunk do PMTiles é ~16–512 KB,
+ * dentro dos limites do plano free do Cloudflare.
  *
  * Roteamento:
- *   /{dist}/{file}  ->  redirect para releases/download/bdgd-{dist}-2024/{file}
+ *   /{dist}/{file}  ->  proxy do CDN do releases/download/bdgd-{dist}-2024/{file}
  *                       (trafos-* -> bdgd-{dist}-2024-trafos/{file})
  *                       (linhas-* -> tenta main, -b, -c em sequência)
  *                       (outros   -> tenta {dist}_2024-{file} e depois {file} sem prefixo)
@@ -157,12 +162,34 @@ export default {
       );
     }
 
-    // Para todos os arquivos (PMTiles, GeoJSON, etc.): redireciona para o CDN do GitHub.
-    // objects.githubusercontent.com suporta CORS (*) e Range nativamente — sem necessidade
-    // de proxy. O fetch() do browser e da lib PMTiles segue o 302 e faz Range direto no CDN.
-    return new Response(null, {
-      status: 302,
-      headers: { ...CORS, "Location": cdnUrl },
+    // Proxia a resposta do CDN com CORS headers.
+    // objects.githubusercontent.com não serve CORS headers de forma confiável em
+    // requests cross-origin com Range — o Worker precisa proxiar para adicionar os headers.
+    // PMTiles faz Range requests pequenos (~16 KB por chunk), então não há risco de timeout.
+    const rangeHeader = request.headers.get("Range");
+    const fetchHeaders = {};
+    if (rangeHeader) fetchHeaders["Range"] = rangeHeader;
+
+    let upstream;
+    try {
+      upstream = await fetch(cdnUrl, { headers: fetchHeaders });
+    } catch (e) {
+      return new Response(`Erro ao buscar asset: ${e.message}`, {
+        status: 502,
+        headers: { ...CORS, "Content-Type": "text/plain" },
+      });
+    }
+
+    // Propagar headers úteis do CDN
+    const responseHeaders = new Headers(CORS);
+    for (const h of ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified", "Cache-Control"]) {
+      const v = upstream.headers.get(h);
+      if (v) responseHeaders.set(h, v);
+    }
+
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: responseHeaders,
     });
   },
 };
