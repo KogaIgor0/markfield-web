@@ -11,6 +11,7 @@ import {
   carregarDadosBdgd,
   BDGD_FONTES,
   BDGD_LYR,
+  type BdgdCarregamentoResultado,
 } from "./bdgd";
 
 /**
@@ -194,6 +195,8 @@ interface MapCanvasProps {
   bdgdFonteId?: string | null;
   /** Incrementar para disparar o carregamento dos dados BDGD. */
   bdgdCarregarTrigger?: number;
+  /** Chamado quando o carregamento BDGD termina (sucesso ou erro). */
+  onBdgdCarregado?: (resultado: BdgdCarregamentoResultado) => void;
   /** Estilo da base cartográfica ("satellite" | "streets" | "hybrid"). */
   estiloBase?: EstiloBase;
   /** Mostra a camada vetorial OSM (estradas, edificações, vegetação). */
@@ -257,6 +260,7 @@ export function MapCanvas(props: MapCanvasProps) {
     estiloBase,
     mostrarOsm,
     voarPara,
+    onBdgdCarregado,
   } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -719,10 +723,15 @@ export function MapCanvas(props: MapCanvasProps) {
     if (!map) return;
     const fonte = BDGD_FONTES.find((f) => f.id === bdgdFonteId) ?? null;
     if (!fonte?.urls) return;
+    const run = () => {
+      carregarDadosBdgd(map, fonte).then((resultado) => {
+        propsRef.current.onBdgdCarregado?.(resultado);
+      });
+    };
     if (!prontoRef.current) {
-      map.once("load", () => carregarDadosBdgd(map, fonte));
+      map.once("load", run);
     } else {
-      carregarDadosBdgd(map, fonte);
+      run();
     }
   }, [bdgdCarregarTrigger, bdgdFonteId]);
 

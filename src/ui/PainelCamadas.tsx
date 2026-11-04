@@ -4,13 +4,14 @@ interface Props {
   fonteId: string | null;
   ativas: Set<string>;
   carregando: boolean;
+  erro?: string | null;
   onToggle: (id: string) => void;
   onCarregar: () => void;
   onChangeFonte: (id: string) => void;
   onFechar: () => void;
 }
 
-export function PainelCamadas({ fonteId, ativas, carregando, onToggle, onCarregar, onChangeFonte, onFechar }: Props) {
+export function PainelCamadas({ fonteId, ativas, carregando, erro, onToggle, onCarregar, onChangeFonte, onFechar }: Props) {
   const fonte = BDGD_FONTES.find((f) => f.id === fonteId) ?? BDGD_FONTES[0];
   const temUrls = !!fonte.urls;
 
@@ -64,6 +65,10 @@ export function PainelCamadas({ fonteId, ativas, carregando, onToggle, onCarrega
 
       {!temUrls && (
         <div className="pc-em-breve">⏳ Em breve para esta distribuidora</div>
+      )}
+
+      {erro && (
+        <div className="pc-erro">{erro}</div>
       )}
 
       <button

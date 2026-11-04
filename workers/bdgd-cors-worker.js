@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker v5 -- CORS proxy para assets BDGD do GitHub Releases.
+ * Cloudflare Worker v6 -- CORS proxy para assets BDGD do GitHub Releases.
  *
  * Estratégia: redireciona para o CDN do GitHub (objects.githubusercontent.com)
  * em vez de proxiar o corpo. Isso evita timeouts no plano free e é mais rápido.
@@ -10,8 +10,14 @@
  *   /{dist}/{file}  ->  redirect para releases/download/bdgd-{dist}-2024/{file}
  *                       (trafos-* -> bdgd-{dist}-2024-trafos/{file})
  *                       (linhas-* -> tenta main, -b, -c em sequência)
+ *                       (outros   -> tenta {dist}_2024-{file} e depois {file} sem prefixo)
  *   /{file}         ->  backward compat (elektro, mapeamento legado)
  *   /               ->  lista distribuidoras disponíveis
+ *
+ * Naming convention nas releases: {dist}_2024-{file}
+ *   Ex: elektro_2024-rede-mt.pmtiles, cpfl-paulista_2024-trafos.geojson
+ *   Arquivos per-CTMT (linhas-*, trafos-*) não têm prefixo.
+ *   index.json não tem prefixo.
  *
  * Deploy: npx wrangler deploy workers/bdgd-cors-worker.js --name bdgd-cors --compatibility-date 2024-01-01
  */
@@ -19,6 +25,7 @@
 /** Retorna lista de URLs candidatas em ordem de tentativa. */
 const GITHUB_CANDIDATES = (dist, file) => {
   if (file.startsWith("trafos-")) {
+    // Arquivos per-CTMT: bdgd-{dist}-2024-trafos/{file}
     return [`https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-${dist}-2024-trafos/${file}`];
   }
   if (file.startsWith("linhas-")) {
@@ -29,7 +36,13 @@ const GITHUB_CANDIDATES = (dist, file) => {
       `https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-${dist}-2024-c/${file}`,
     ];
   }
-  return [`https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-${dist}-2024/${file}`];
+  // Arquivos principais (rede-mt.pmtiles, trafos.geojson, index.json):
+  // Naming atual nas releases: {dist}_2024-{file} (ex: elektro_2024-rede-mt.pmtiles)
+  // Fallback para naming futuro sem prefixo.
+  return [
+    `https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-${dist}-2024/${dist}_2024-${file}`,
+    `https://github.com/KogaIgor0/markfield-web/releases/download/bdgd-${dist}-2024/${file}`,
+  ];
 };
 
 const DISTRIBUIDORAS = new Set([

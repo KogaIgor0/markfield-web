@@ -41,7 +41,7 @@ import { PainelMateriais } from "./ui/PainelMateriais";
 import { PainelCamadas } from "./ui/PainelCamadas";
 import { PranchaView } from "./ui/PranchaView";
 import { NovoProjetoModal } from "./ui/NovoProjetoModal";
-import { BDGD_CAMADAS_PADRAO, BDGD_FONTES } from "./map/bdgd";
+import { BDGD_CAMADAS_PADRAO, BDGD_FONTES, type BdgdCarregamentoResultado } from "./map/bdgd";
 import type { FeatureCollection } from "geojson";
 import { comporEstrutura, separarEstrutura } from "./domain/estruturas-catalogo";
 import {
@@ -143,6 +143,7 @@ export function App() {
   const [bdgdFonteId, setBdgdFonteId] = useState("elektro");
   const [carregandoBdgd, setCarregandoBdgd] = useState(false);
   const [bdgdCarregarTrigger, setBdgdCarregarTrigger] = useState(0);
+  const [bdgdErro, setBdgdErro] = useState<string | null>(null);
   const [estiloBase, setEstiloBase] = useState<EstiloBase>("satellite");
   const [mostrarOsm, setMostrarOsm] = useState(false);
   const [voarPara, setVoarPara] = useState<MapAlvo | null>(null);
@@ -302,20 +303,15 @@ export function App() {
 
   const onCarregarBdgd = useCallback(() => {
     setCarregandoBdgd(true);
+    setBdgdErro(null);
     setBdgdCarregarTrigger((t) => t + 1);
-    // Libera o spinner após 3 s (o carregamento é async no MapCanvas).
-    setTimeout(() => setCarregandoBdgd(false), 3000);
-    // Carrega os trafos GeoJSON para busca por atributo
-    const fonte = BDGD_FONTES.find((f) => f.id === bdgdFonteId);
-    if (fonte?.urls?.untrmt) {
-      fetch(fonte.urls.untrmt)
-        .then((r) => r.json())
-        .then((data: FeatureCollection) => setTrafosData(data))
-        .catch(() => setTrafosData(null));
-    } else {
-      setTrafosData(null);
-    }
-  }, [bdgdFonteId]);
+    setTrafosData(null);
+  }, []);
+
+  const onBdgdCarregado = useCallback((resultado: BdgdCarregamentoResultado) => {
+    setCarregandoBdgd(false);
+    if (!resultado.ok) setBdgdErro(resultado.erro ?? "Erro ao carregar BDGD.");
+  }, []);
 
   const atualizar = useCallback((novo: Projeto) => {
     setEstado((e) => ({ ...e, projeto: novo }));
@@ -1180,6 +1176,7 @@ export function App() {
           camadasBdgdVisiveis={camadasBdgdVisiveis}
           bdgdFonteId={bdgdFonteId}
           bdgdCarregarTrigger={bdgdCarregarTrigger}
+          onBdgdCarregado={onBdgdCarregado}
           estiloBase={estiloBase}
           mostrarOsm={mostrarOsm}
           voarPara={voarPara}
@@ -1192,6 +1189,7 @@ export function App() {
             fonteId={bdgdFonteId}
             ativas={camadasBdgdVisiveis}
             carregando={carregandoBdgd}
+            erro={bdgdErro}
             onToggle={onToggleCamada}
             onCarregar={onCarregarBdgd}
             onChangeFonte={setBdgdFonteId}

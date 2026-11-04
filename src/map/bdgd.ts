@@ -123,9 +123,9 @@ export const BDGD_FONTES: BdgdFonte[] = [
     uf: "SP / MS",
     // Processado: BDGD Elektro 2024 (ref. 31/12/2024)
     // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-elektro-2024
+    // Nota: trafos.geojson ~148 MB — não carregado no browser; usar PMTiles quando disponível.
     urls: {
       ssdmt: `${BDGD_CDN}/elektro/rede-mt.pmtiles`,
-      untrmt: `${BDGD_CDN}/elektro/trafos.geojson`,
     },
   },
   {
@@ -136,7 +136,6 @@ export const BDGD_FONTES: BdgdFonte[] = [
     // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-cpfl-paulista-2024
     urls: {
       ssdmt: `${BDGD_CDN}/cpfl-paulista/rede-mt.pmtiles`,
-      untrmt: `${BDGD_CDN}/cpfl-paulista/trafos.geojson`,
     },
   },
   {
@@ -147,7 +146,6 @@ export const BDGD_FONTES: BdgdFonte[] = [
     // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-cpfl-piratininga-2024
     urls: {
       ssdmt: `${BDGD_CDN}/cpfl-piratininga/rede-mt.pmtiles`,
-      untrmt: `${BDGD_CDN}/cpfl-piratininga/trafos.geojson`,
     },
   },
   {
@@ -158,7 +156,6 @@ export const BDGD_FONTES: BdgdFonte[] = [
     // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-enel-sp-2024
     urls: {
       ssdmt: `${BDGD_CDN}/enel-sp/rede-mt.pmtiles`,
-      untrmt: `${BDGD_CDN}/enel-sp/trafos.geojson`,
     },
   },
   // ── MG ────────────────────────────────────────────────────────────────────
@@ -170,7 +167,6 @@ export const BDGD_FONTES: BdgdFonte[] = [
     // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-cemig-2024
     urls: {
       ssdmt: `${BDGD_CDN}/cemig/rede-mt.pmtiles`,
-      untrmt: `${BDGD_CDN}/cemig/trafos.geojson`,
     },
   },
   // ── PR ────────────────────────────────────────────────────────────────────
@@ -182,7 +178,6 @@ export const BDGD_FONTES: BdgdFonte[] = [
     // Release: https://github.com/KogaIgor0/markfield-web/releases/tag/bdgd-copel-2024
     urls: {
       ssdmt: `${BDGD_CDN}/copel/rede-mt.pmtiles`,
-      untrmt: `${BDGD_CDN}/copel/trafos.geojson`,
     },
   },
   // ── BA ────────────────────────────────────────────────────────────────────
@@ -479,14 +474,29 @@ export function aplicarVisibilidadeBdgd(map: maplibregl.Map, ativas: Set<string>
   }
 }
 
+/** Resultado do carregamento BDGD. */
+export interface BdgdCarregamentoResultado {
+  ok: boolean;
+  /** Mensagem de erro legível pelo usuário, se houver. */
+  erro?: string;
+}
+
 /**
  * Carrega os dados de uma BdgdFonte nos sources do mapa.
  * URLs .pmtiles → source vector via protocolo pmtiles://.
- * Demais URLs → GeoJSON via fetch.
+ * Demais URLs → GeoJSON via fetch (somente arquivos pequenos; trafos.geojson
+ * não é incluído pois tem 148–700 MB — grande demais para o browser).
+ *
+ * Retorna { ok, erro } para feedback ao usuário.
  */
-export async function carregarDadosBdgd(map: maplibregl.Map, fonte: BdgdFonte): Promise<void> {
+export async function carregarDadosBdgd(
+  map: maplibregl.Map,
+  fonte: BdgdFonte,
+): Promise<BdgdCarregamentoResultado> {
   const u = fonte.urls;
-  if (!u) return;
+  if (!u) return { ok: false, erro: "Distribuidora sem dados processados." };
+
+  const erros: string[] = [];
 
   const carregarGeoJson = async (srcId: string, url: string | undefined) => {
     if (!url) return;
@@ -497,25 +507,48 @@ export async function carregarDadosBdgd(map: maplibregl.Map, fonte: BdgdFonte): 
       const src = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
       src?.setData(geojson);
     } catch (err) {
-      console.warn(`[BDGD] Falha ao carregar ${url}:`, err);
+      const msg = `Falha ao baixar ${url.split("/").slice(-1)[0]}: ${err}`;
+      console.warn("[BDGD]", msg);
+      erros.push(msg);
     }
   };
 
-  const carregarRedeMtPmTiles = (url: string) => {
-    if (map.getLayer(BDGD_LYR.redeMT)) map.removeLayer(BDGD_LYR.redeMT);
-    if (map.getSource(BDGD_SRC.redeMT)) map.removeSource(BDGD_SRC.redeMT);
+  const carregarRedeMtPmTiles = (url: string): Promise<void> => {
+    return new Promise((resolve) => {
+      if (map.getLayer(BDGD_LYR.redeMT)) map.removeLayer(BDGD_LYR.redeMT);
+      if (map.getSource(BDGD_SRC.redeMT)) map.removeSource(BDGD_SRC.redeMT);
 
-    map.addSource(BDGD_SRC.redeMT, { type: "vector", url: `pmtiles://${url}` });
-    map.addLayer({
-      ...REDE_MT_LAYER_BASE,
-      id: BDGD_LYR.redeMT,
-      source: BDGD_SRC.redeMT,
-      "source-layer": "rede_mt",
-    } as maplibregl.LayerSpecification);
+      map.addSource(BDGD_SRC.redeMT, { type: "vector", url: `pmtiles://${url}` });
+
+      // Ouve erros do source (CDN inacessível, 404, etc.)
+      const onSourceErro = (e: { sourceId?: string; error?: { message?: string } }) => {
+        if (e.sourceId === BDGD_SRC.redeMT) {
+          const msg = `Rede MT: ${e.error?.message ?? "erro desconhecido"}`;
+          console.warn("[BDGD]", msg);
+          erros.push(msg);
+          map.off("error", onSourceErro);
+          resolve();
+        }
+      };
+      map.on("error", onSourceErro);
+
+      map.addLayer({
+        ...REDE_MT_LAYER_BASE,
+        id: BDGD_LYR.redeMT,
+        source: BDGD_SRC.redeMT,
+        "source-layer": "rede_mt",
+      } as maplibregl.LayerSpecification);
+
+      // Resolve após pequeno delay (erros síncronos já foram capturados acima)
+      setTimeout(() => {
+        map.off("error", onSourceErro);
+        resolve();
+      }, 2000);
+    });
   };
 
   if (u.ssdmt?.endsWith(".pmtiles")) {
-    carregarRedeMtPmTiles(u.ssdmt);
+    await carregarRedeMtPmTiles(u.ssdmt);
   } else {
     await carregarGeoJson(BDGD_SRC.redeMT, u.ssdmt);
   }
@@ -525,4 +558,9 @@ export async function carregarDadosBdgd(map: maplibregl.Map, fonte: BdgdFonte): 
     carregarGeoJson(BDGD_SRC.transformadores, u.untrmt),
     carregarGeoJson(BDGD_SRC.postes, u.ponnot),
   ]);
+
+  if (erros.length > 0) {
+    return { ok: false, erro: erros[0] };
+  }
+  return { ok: true };
 }
