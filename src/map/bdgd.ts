@@ -547,6 +547,65 @@ export async function carregarDadosBdgd(
     });
   };
 
+  /**
+   * Carrega transformadores por CTMT — busca trafos-{ctmt}.geojson para cada
+   * circuito visível no viewport atual. Arquivos individuais por circuito (~50–300 KB)
+   * evitam o problema do trafos.geojson consolidado (148–700 MB).
+   */
+  const carregarTrafosPorCtmt = async (): Promise<void> => {
+    // Aguarda tiles da Rede MT renderizarem no viewport (idle = tudo carregado)
+    await new Promise<void>((resolve) => {
+      const done = () => { clearTimeout(timer); resolve(); };
+      const timer = setTimeout(done, 6000); // timeout de segurança
+      if (map.areTilesLoaded()) {
+        done();
+      } else {
+        map.once("idle", done);
+      }
+    });
+
+    // Consulta features da Rede MT visíveis no viewport
+    const features = map.queryRenderedFeatures(undefined, {
+      layers: [BDGD_LYR.redeMT],
+    });
+
+    // Extrai CTMTs únicos (campo CTMT ou COD_CTMT dependendo do pipeline)
+    const ctmts = new Set<string>();
+    for (const f of features) {
+      const ctmt = (f.properties?.["CTMT"] ?? f.properties?.["COD_CTMT"]) as unknown;
+      if (ctmt != null && String(ctmt).trim()) ctmts.add(String(ctmt).trim());
+    }
+
+    if (ctmts.size === 0) {
+      console.warn("[BDGD] Nenhum CTMT visível — tente aproximar o mapa");
+      return;
+    }
+
+    console.log(`[BDGD] Carregando transformadores para ${ctmts.size} CTMT(s):`, [...ctmts]);
+
+    // Busca os arquivos per-CTMT em paralelo
+    const todasFeatures: GeoJSON.Feature[] = [];
+    await Promise.all(
+      [...ctmts].map(async (ctmt) => {
+        try {
+          const url = `${BDGD_CDN}/${fonte.id}/trafos-${ctmt}.geojson`;
+          const res = await fetch(url);
+          if (!res.ok) return; // CTMT sem arquivo de trafos (normal para alguns circuitos)
+          const fc = (await res.json()) as GeoJSON.FeatureCollection;
+          todasFeatures.push(...fc.features);
+        } catch {
+          // silencioso — nem todos os CTMTs têm transformadores no release
+        }
+      }),
+    );
+
+    if (todasFeatures.length > 0) {
+      const src = map.getSource(BDGD_SRC.transformadores) as maplibregl.GeoJSONSource | undefined;
+      src?.setData({ type: "FeatureCollection", features: todasFeatures });
+      console.log(`[BDGD] ${todasFeatures.length} transformadores carregados`);
+    }
+  };
+
   if (u.ssdmt?.endsWith(".pmtiles")) {
     await carregarRedeMtPmTiles(u.ssdmt);
   } else {
@@ -555,7 +614,7 @@ export async function carregarDadosBdgd(
 
   await Promise.all([
     carregarGeoJson(BDGD_SRC.redeBT, u.ssdbt),
-    carregarGeoJson(BDGD_SRC.transformadores, u.untrmt),
+    carregarTrafosPorCtmt(), // per-CTMT em vez do trafos.geojson consolidado (148–700 MB)
     carregarGeoJson(BDGD_SRC.postes, u.ponnot),
   ]);
 
