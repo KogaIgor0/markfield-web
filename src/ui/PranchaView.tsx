@@ -331,12 +331,47 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     />
                   );
                 })}
-                {/* Transformador mais próximo */}
+
+                {/* Postes existentes nos extremos dos segmentos — poste circular
+                    DIS-NOR-012 outline only (sem hachura = existente não a instalar) */}
+                {(() => {
+                  const seen = new Set<string>();
+                  const pts: [number, number][] = [];
+                  for (const seg of contextoRedeExistente.segmentosMT) {
+                    for (const c of [seg.de, seg.ate]) {
+                      const key = `${c.lat.toFixed(5)},${c.lng.toFixed(5)}`;
+                      if (!seen.has(key)) { seen.add(key); pts.push(toSvg(c)); }
+                    }
+                  }
+                  return pts.map(([px, py], i) => (
+                    <g key={`poste-exist-${i}`}>
+                      {/* Fundo branco para não sujar linhas por baixo */}
+                      <circle cx={px} cy={py} r={2.0} fill="#fff" stroke="#888888" strokeWidth={0.4} />
+                      {/* Anel interno (outline only — sem hachura) */}
+                      <circle cx={px} cy={py} r={1.2} fill="none" stroke="#888888" strokeWidth={0.4} />
+                    </g>
+                  ));
+                })()}
+
+                {/* Transformador existente — símbolo DIS-NOR-012 outline only (sem hachura) */}
                 {contextoRedeExistente.trafoProximo && (() => {
                   const [tx, ty] = toSvg(contextoRedeExistente.trafoProximo.wgs84);
+                  // Triângulo apontando para Norte (cima na folha = -y no SVG), H=8mm, B=3mm
+                  const TH = 8, TB = 3;
+                  const bmx = tx, bmy = ty - TH; // base acima (Norte)
+                  const b1x = bmx + TB, b1y = bmy;
+                  const b2x = bmx - TB, b2y = bmy;
                   return (
                     <g key="trafo-exist">
-                      <circle cx={tx} cy={ty} r={2.0} fill="#888888" stroke="#fff" strokeWidth={0.3} />
+                      {/* Triângulo outline only (sem hachura = existente) */}
+                      <polygon
+                        points={`${tx},${ty} ${b1x},${b1y} ${b2x},${b2y}`}
+                        fill="#fff" stroke="#888888" strokeWidth={0.4}
+                      />
+                      {/* Poste circular tubular outline only — centrado no vértice */}
+                      <circle cx={tx} cy={ty} r={2.0} fill="#fff" stroke="#888888" strokeWidth={0.4} />
+                      <circle cx={tx} cy={ty} r={1.2} fill="none" stroke="#888888" strokeWidth={0.4} />
+                      {/* Label COD_ID */}
                       {contextoRedeExistente.trafoProximo.label && (
                         <text x={tx + 2.5} y={ty + 0.8} fontSize={2.2} fill="#888888">
                           {contextoRedeExistente.trafoProximo.label}
@@ -694,23 +729,32 @@ function PainelDireito({
           <line x1={-0.5} y1={-0.8} x2={2.5} y2={-0.8} stroke="#888" strokeWidth={0.6} />
         </SimbLinha>
         <SimbLinha dy={25} label="Trafo existente (BDGD)">
-          <circle cx={1} cy={-0.8} r={0.9} fill="#888" stroke="#fff" strokeWidth={0.25} />
+          {/* Mini DIS-NOR-012 trafo existente: triângulo + duplo círculo, sem hachura, cinza */}
+          <polygon points={`-0.5,-3.5 2.5,-3.5 1,-1.8`} fill="none" stroke="#888" strokeWidth={0.35} />
+          <line x1={1} y1={-1.8} x2={1} y2={-0.1} stroke="#888" strokeWidth={0.3} />
+          <circle cx={1} cy={-0.8} r={0.9} fill="none" stroke="#888" strokeWidth={0.3} />
+          <circle cx={1} cy={-0.8} r={0.55} fill="none" stroke="#888" strokeWidth={0.3} />
         </SimbLinha>
-        <SimbLinha dy={31} label="Estai proposto">
+        <SimbLinha dy={31} label="Poste existente (BDGD)">
+          {/* Mini DIS-NOR-012 poste existente: duplo círculo, sem hachura, cinza */}
+          <circle cx={1} cy={-0.8} r={0.9} fill="none" stroke="#888" strokeWidth={0.35} />
+          <circle cx={1} cy={-0.8} r={0.55} fill="none" stroke="#888" strokeWidth={0.35} />
+        </SimbLinha>
+        <SimbLinha dy={37} label="Estai proposto">
           {/* Linha pontilhada + semicírculo âncora ⊃ */}
           <line x1={-0.5} y1={-0.5} x2={2} y2={-0.5} stroke="#000" strokeWidth={0.35} strokeDasharray="1.5 0.8" />
           <path d={`M 2 ${-0.5-0.8} A 0.8 0.8 0 0 0 2 ${-0.5+0.8}`} fill="none" stroke="#000" strokeWidth={0.35} />
         </SimbLinha>
       </g>
-      <text x={x + 3} y={by + 53} fontSize={1.8} fill="#888">
+      <text x={x + 3} y={by + 59} fontSize={1.8} fill="#888">
         DIS-NOR-012 · Anexo VIII
       </text>
 
       {/* Quadro de materiais */}
-      <text x={x + 3} y={by + 61} fontSize={2.8} fill="#000">
+      <text x={x + 3} y={by + 67} fontSize={2.8} fill="#000">
         Materiais
       </text>
-      <g transform={`translate(${x + 3}, ${by + 65})`}>
+      <g transform={`translate(${x + 3}, ${by + 71})`}>
         {materiais ? (
           <QuadroMateriais w={w - 6} materiais={materiais} />
         ) : (

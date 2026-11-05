@@ -83,7 +83,7 @@ export interface BdgdCamadaMeta {
 }
 
 export const BDGD_CAMADAS: BdgdCamadaMeta[] = [
-  { id: BDGD_LYR.redeMT, label: "Rede MT", cor: "#f59e0b", minZoom: 10 },
+  { id: BDGD_LYR.redeMT, label: "Rede MT", cor: "#94a3b8", minZoom: 10 },
   { id: BDGD_LYR.redeBT, label: "Rede BT", cor: "#94a3b8", minZoom: 12 },
   { id: BDGD_LYR.transformadores, label: "Transformadores", cor: "#ef4444", minZoom: 11 },
   { id: BDGD_LYR.postes, label: "Postes", cor: "#334155", minZoom: 14 },
@@ -376,7 +376,7 @@ const REDE_MT_LAYER_BASE = {
   minzoom: 10,
   layout: { "line-cap": "round" as const, "line-join": "round" as const },
   paint: {
-    "line-color": "#f59e0b",
+    "line-color": "#94a3b8",   // cinza-azulado — diferencia da rede proposta (laranja)
     "line-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 14, 2.5, 18, 4],
     "line-opacity": 0.9,
   },

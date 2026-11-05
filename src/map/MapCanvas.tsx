@@ -818,8 +818,8 @@ export function MapCanvas(props: MapCanvasProps) {
               minD = d;
               const props = f.properties ?? {};
               const label =
-                (props["CTMT"] as string | undefined) ??
                 (props["COD_ID"] as string | undefined) ??
+                (props["CTMT"] as string | undefined) ??
                 (props["PRI_SUB"] as string | undefined);
               trafoProximo = { wgs84: { lat, lng }, label };
             }
