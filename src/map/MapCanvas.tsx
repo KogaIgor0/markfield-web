@@ -756,10 +756,19 @@ export function MapCanvas(props: MapCanvasProps) {
     const callback = propsRef.current.onContextoBdgdCapturado;
     if (!callback) return;
 
-    // Busca segmentos da Rede MT visíveis no viewport
-    const featuresRedeMT = map.queryRenderedFeatures(undefined, {
-      layers: [BDGD_LYR.redeMT],
-    });
+    // IMPORTANTE: usa querySourceFeatures (não queryRenderedFeatures).
+    // queryRenderedFeatures só retorna features VISÍVEIS no viewport renderizado —
+    // quando a prancha abre por cima do mapa, o MapLibre pode pausar o render e
+    // retornar vazio. querySourceFeatures consulta as tiles já cacheadas
+    // independentemente do estado de visibilidade do canvas.
+    const featuresRedeMT = (() => {
+      try {
+        if (!map.getSource(BDGD_SRC.redeMT)) return [];
+        return map.querySourceFeatures(BDGD_SRC.redeMT, { sourceLayer: "rede_mt" });
+      } catch {
+        return [];
+      }
+    })();
 
     // Converte features de linha para segmentos de 2 vértices (apenas vizinhos ao ponto de derivação)
     const segmentosMT: SegmentoMT[] = [];
@@ -781,7 +790,6 @@ export function MapCanvas(props: MapCanvasProps) {
           for (let i = 0; i < coords.length - 1; i++) {
             const de: LatLng = { lat: coords[i][1], lng: coords[i][0] };
             const ate: LatLng = { lat: coords[i + 1][1], lng: coords[i + 1][0] };
-            // Distância do segmento ao ponto de derivação (ponto médio do segmento)
             const midLat = (de.lat + ate.lat) / 2;
             const midLng = (de.lng + ate.lng) / 2;
             const d = distSq({ lat: midLat, lng: midLng }, derivacao);
@@ -797,32 +805,28 @@ export function MapCanvas(props: MapCanvasProps) {
       }
     }
 
-    // Busca transformador mais próximo do ponto de derivação via source GeoJSON
+    // Busca transformador mais próximo via querySourceFeatures no source GeoJSON
     let trafoProximo: ContextoBdgd["trafoProximo"] | undefined;
     if (derivacao) {
       try {
-        const trafSrc = map.getSource(BDGD_SRC.transformadores) as maplibregl.GeoJSONSource & {
-          _data?: GeoJSON.FeatureCollection;
-        } | undefined;
-        // Acessa os dados internos do source GeoJSON (campo privado mas estável)
-        const trafData = (trafSrc as unknown as { _data?: GeoJSON.FeatureCollection })?._data;
-        if (trafData?.features) {
-          let minD = Infinity;
-          for (const f of trafData.features) {
-            if (f.geometry.type !== "Point") continue;
-            const [lng, lat] = f.geometry.coordinates;
-            const dlat = lat - derivacao.lat;
-            const dlng = lng - derivacao.lng;
-            const d = dlat * dlat + dlng * dlng;
-            if (d < minD) {
-              minD = d;
-              const props = f.properties ?? {};
-              const label =
-                (props["COD_ID"] as string | undefined) ??
-                (props["CTMT"] as string | undefined) ??
-                (props["PRI_SUB"] as string | undefined);
-              trafoProximo = { wgs84: { lat, lng }, label };
-            }
+        const trafFeatures = map.getSource(BDGD_SRC.transformadores)
+          ? map.querySourceFeatures(BDGD_SRC.transformadores)
+          : [];
+        let minD = Infinity;
+        for (const f of trafFeatures) {
+          if (f.geometry.type !== "Point") continue;
+          const [lng, lat] = f.geometry.coordinates;
+          const dlat = lat - derivacao.lat;
+          const dlng = lng - derivacao.lng;
+          const d = dlat * dlat + dlng * dlng;
+          if (d < minD) {
+            minD = d;
+            const props = f.properties ?? {};
+            const label =
+              (props["COD_ID"] as string | undefined) ??
+              (props["CTMT"] as string | undefined) ??
+              (props["PRI_SUB"] as string | undefined);
+            trafoProximo = { wgs84: { lat, lng }, label };
           }
         }
       } catch {

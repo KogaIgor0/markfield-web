@@ -313,7 +313,15 @@ export function App() {
 
   const onBdgdCarregado = useCallback((resultado: BdgdCarregamentoResultado) => {
     setCarregandoBdgd(false);
-    if (!resultado.ok) setBdgdErro(resultado.erro ?? "Erro ao carregar BDGD.");
+    if (!resultado.ok) {
+      setBdgdErro(resultado.erro ?? "Erro ao carregar BDGD.");
+    } else {
+      // Captura contexto BDGD assim que carrega — enquanto o mapa está visível
+      // e as tiles acabaram de renderizar. Isso garante que ao abrir a prancha
+      // o dado já está disponível, sem depender do queryRenderedFeatures no momento
+      // em que a prancha cobre o mapa.
+      setCapturarContextoBdgdTrigger((v) => v + 1);
+    }
   }, []);
 
   /** Ponto de derivação (ehFonte=true) — base de busca da rede existente na prancha. */
