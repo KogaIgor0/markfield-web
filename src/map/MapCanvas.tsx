@@ -11,8 +11,10 @@ import {
   carregarDadosBdgd,
   BDGD_FONTES,
   BDGD_LYR,
+  BDGD_SRC,
   type BdgdCarregamentoResultado,
 } from "./bdgd";
+import type { ContextoBdgd, SegmentoMT } from "../domain/prancha";
 
 /**
  * Mapa base + render + EDIÇÃO do projeto (Fase 2).
@@ -203,6 +205,15 @@ interface MapCanvasProps {
   mostrarOsm?: boolean;
   /** Voa para um ponto/bbox no mapa. Trocar o objeto dispara o flyTo. */
   voarPara?: MapAlvo | null;
+  /**
+   * Incrementar para disparar a captura do contexto BDGD (rede existente
+   * próxima ao ponto de derivação). Resultado chega via onContextoBdgdCapturado.
+   */
+  capturarContextoBdgdTrigger?: number;
+  /** Coordenada do ponto de derivação (ehFonte=true) para busca de vizinhos BDGD. */
+  wgs84Derivacao?: LatLng | null;
+  /** Chamado com o contexto BDGD capturado (ou undefined se mapa sem dados). */
+  onContextoBdgdCapturado?: (ctx: ContextoBdgd) => void;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -260,7 +271,7 @@ export function MapCanvas(props: MapCanvasProps) {
     estiloBase,
     mostrarOsm,
     voarPara,
-    onBdgdCarregado,
+    capturarContextoBdgdTrigger,
   } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -734,6 +745,93 @@ export function MapCanvas(props: MapCanvasProps) {
       run();
     }
   }, [bdgdCarregarTrigger, bdgdFonteId]);
+
+  // BDGD — captura contexto (rede existente) para a prancha.
+  useEffect(() => {
+    if (!capturarContextoBdgdTrigger) return;
+    const map = mapRef.current;
+    if (!map || !prontoRef.current) return;
+
+    const derivacao = propsRef.current.wgs84Derivacao;
+    const callback = propsRef.current.onContextoBdgdCapturado;
+    if (!callback) return;
+
+    // Busca segmentos da Rede MT visíveis no viewport
+    const featuresRedeMT = map.queryRenderedFeatures(undefined, {
+      layers: [BDGD_LYR.redeMT],
+    });
+
+    // Converte features de linha para segmentos de 2 vértices (apenas vizinhos ao ponto de derivação)
+    const segmentosMT: SegmentoMT[] = [];
+    if (derivacao && featuresRedeMT.length > 0) {
+      // Calcula distância quadrada entre dois pontos WGS84 (aproximação plana suficiente p/ ~100m)
+      const distSq = (a: LatLng, b: LatLng) => {
+        const dlat = a.lat - b.lat;
+        const dlng = a.lng - b.lng;
+        return dlat * dlat + dlng * dlng;
+      };
+
+      // Para cada feature de linha, pega pares de vértices e calcula dist ao ponto de derivação
+      type Segmento = { de: LatLng; ate: LatLng; distSq: number };
+      const candidatos: Segmento[] = [];
+
+      for (const f of featuresRedeMT) {
+        if (f.geometry.type === "LineString") {
+          const coords = f.geometry.coordinates;
+          for (let i = 0; i < coords.length - 1; i++) {
+            const de: LatLng = { lat: coords[i][1], lng: coords[i][0] };
+            const ate: LatLng = { lat: coords[i + 1][1], lng: coords[i + 1][0] };
+            // Distância do segmento ao ponto de derivação (ponto médio do segmento)
+            const midLat = (de.lat + ate.lat) / 2;
+            const midLng = (de.lng + ate.lng) / 2;
+            const d = distSq({ lat: midLat, lng: midLng }, derivacao);
+            candidatos.push({ de, ate, distSq: d });
+          }
+        }
+      }
+
+      // Ordena por proximidade e pega os 5 mais próximos
+      candidatos.sort((a, b) => a.distSq - b.distSq);
+      for (const c of candidatos.slice(0, 5)) {
+        segmentosMT.push({ de: c.de, ate: c.ate });
+      }
+    }
+
+    // Busca transformador mais próximo do ponto de derivação via source GeoJSON
+    let trafoProximo: ContextoBdgd["trafoProximo"] | undefined;
+    if (derivacao) {
+      try {
+        const trafSrc = map.getSource(BDGD_SRC.transformadores) as maplibregl.GeoJSONSource & {
+          _data?: GeoJSON.FeatureCollection;
+        } | undefined;
+        // Acessa os dados internos do source GeoJSON (campo privado mas estável)
+        const trafData = (trafSrc as unknown as { _data?: GeoJSON.FeatureCollection })?._data;
+        if (trafData?.features) {
+          let minD = Infinity;
+          for (const f of trafData.features) {
+            if (f.geometry.type !== "Point") continue;
+            const [lng, lat] = f.geometry.coordinates;
+            const dlat = lat - derivacao.lat;
+            const dlng = lng - derivacao.lng;
+            const d = dlat * dlat + dlng * dlng;
+            if (d < minD) {
+              minD = d;
+              const props = f.properties ?? {};
+              const label =
+                (props["CTMT"] as string | undefined) ??
+                (props["COD_ID"] as string | undefined) ??
+                (props["PRI_SUB"] as string | undefined);
+              trafoProximo = { wgs84: { lat, lng }, label };
+            }
+          }
+        }
+      } catch {
+        // Silencioso — source pode não existir
+      }
+    }
+
+    callback({ trafoProximo, segmentosMT });
+  }, [capturarContextoBdgdTrigger]);
 
   return <div ref={containerRef} className="map-canvas" />;
 }

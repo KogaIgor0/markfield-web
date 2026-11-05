@@ -6,6 +6,7 @@ import {
   layoutFolha,
   passoEscalaM,
   projecaoNaFolha,
+  type ContextoBdgd,
   type FolhaId,
   type Orientacao,
 } from "../domain/prancha";
@@ -35,13 +36,17 @@ interface ParamsPrancha {
   folha: FolhaId;
   orientacao: Orientacao;
   escala: number;
+  /** Trecho da rede MT existente + transformador mais próximo (BDGD). */
+  contextoRedeExistente?: ContextoBdgd;
 }
 
 // Camadas do DXF da folha.
 const CAM = {
   moldura: { nome: "MF_MOLDURA", cor: 7 },
-  rede: { nome: "MF_REDE", cor: 7 },
-  redeReduzida: { nome: "MF_REDE_REDUZIDA", cor: 4 },
+  rede: { nome: "MF_REDE", cor: 1 },        // Rede proposta — vermelho (cor 1 = red em AutoCAD)
+  redeReduzida: { nome: "MF_REDE_REDUZIDA", cor: 1 }, // idem, traço menor
+  redeExistente: { nome: "MF_REDE_EXISTENTE", cor: 8 }, // Rede existente BDGD — cinza (cor 8)
+  trafoExistente: { nome: "MF_TRAFO_EXISTENTE", cor: 8 }, // Trafo existente BDGD — cinza
   poste: { nome: "MF_POSTE", cor: 7 },
   trafo: { nome: "MF_TRAFO", cor: 5 },
   estai: { nome: "MF_ESTAI", cor: 7 },
@@ -103,7 +108,23 @@ export function gerarDxfPrancha(p: ParamsPrancha): string {
   const porId = new Map(p.projeto.pontos.map((pt) => [pt.id, pt]));
 
   if (bbox) {
-    // Trechos.
+    // Rede existente BDGD (camadas MF_REDE_EXISTENTE / MF_TRAFO_EXISTENTE).
+    if (p.contextoRedeExistente) {
+      for (const seg of p.contextoRedeExistente.segmentosMT) {
+        const [x1, y1] = proj.toXY(seg.de);
+        const [x2, y2] = proj.toXY(seg.ate);
+        line(CAM.redeExistente.nome, x1, y1, x2, y2);
+      }
+      if (p.contextoRedeExistente.trafoProximo) {
+        const [tx, ty] = proj.toXY(p.contextoRedeExistente.trafoProximo.wgs84);
+        circle(CAM.trafoExistente.nome, tx, ty, 2.0);
+        circle(CAM.trafoExistente.nome, tx, ty, 0.8);
+        const lbl = p.contextoRedeExistente.trafoProximo.label;
+        if (lbl) text(CAM.trafoExistente.nome, tx + 2.5, ty, 2.2, lbl);
+      }
+    }
+
+    // Trechos propostos (MF_REDE / MF_REDE_REDUZIDA).
     for (const t of p.projeto.trechos) {
       const caminho =
         t.caminho && t.caminho.length >= 2

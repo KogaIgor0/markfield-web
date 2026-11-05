@@ -41,7 +41,8 @@ import { PainelMateriais } from "./ui/PainelMateriais";
 import { PainelCamadas } from "./ui/PainelCamadas";
 import { PranchaView } from "./ui/PranchaView";
 import { NovoProjetoModal } from "./ui/NovoProjetoModal";
-import { BDGD_CAMADAS_PADRAO, BDGD_FONTES, type BdgdCarregamentoResultado } from "./map/bdgd";
+import { BDGD_CAMADAS_PADRAO, type BdgdCarregamentoResultado } from "./map/bdgd";
+import type { ContextoBdgd } from "./domain/prancha";
 import type { FeatureCollection } from "geojson";
 import { comporEstrutura, separarEstrutura } from "./domain/estruturas-catalogo";
 import {
@@ -148,6 +149,8 @@ export function App() {
   const [mostrarOsm, setMostrarOsm] = useState(false);
   const [voarPara, setVoarPara] = useState<MapAlvo | null>(null);
   const [trafosData, setTrafosData] = useState<FeatureCollection | null>(null);
+  const [contextoBdgd, setContextoBdgd] = useState<ContextoBdgd | null>(null);
+  const [capturarContextoBdgdTrigger, setCapturarContextoBdgdTrigger] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
@@ -312,6 +315,12 @@ export function App() {
     setCarregandoBdgd(false);
     if (!resultado.ok) setBdgdErro(resultado.erro ?? "Erro ao carregar BDGD.");
   }, []);
+
+  /** Ponto de derivação (ehFonte=true) — base de busca da rede existente na prancha. */
+  const wgs84Derivacao = useMemo(
+    () => projeto?.pontos.find((p) => p.ehFonte)?.wgs84 ?? null,
+    [projeto],
+  );
 
   const atualizar = useCallback((novo: Projeto) => {
     setEstado((e) => ({ ...e, projeto: novo }));
@@ -965,6 +974,8 @@ export function App() {
                     selecionarPonto(null);
                     selecionarTrecho(null);
                     setMostrarMateriais(false);
+                    // Dispara captura da rede existente BDGD para incluir na prancha
+                    setCapturarContextoBdgdTrigger((v) => v + 1);
                   }
                 }}
                 title="Gera a prancha do projeto (folha em escala com moldura, carimbo, simbologia e materiais) — imprime em PDF"
@@ -1128,6 +1139,7 @@ export function App() {
                     selecionarPonto(null);
                     selecionarTrecho(null);
                     setMostrarMateriais(false);
+                    setCapturarContextoBdgdTrigger((v) => v + 1);
                   }
                 }}
                 title="Gerar prancha"
@@ -1177,6 +1189,9 @@ export function App() {
           bdgdFonteId={bdgdFonteId}
           bdgdCarregarTrigger={bdgdCarregarTrigger}
           onBdgdCarregado={onBdgdCarregado}
+          capturarContextoBdgdTrigger={capturarContextoBdgdTrigger}
+          wgs84Derivacao={wgs84Derivacao}
+          onContextoBdgdCapturado={setContextoBdgd}
           estiloBase={estiloBase}
           mostrarOsm={mostrarOsm}
           voarPara={voarPara}
@@ -1511,6 +1526,7 @@ export function App() {
           materiais={materiais}
           onFechar={() => setMostrarPrancha(false)}
           onEditarPonto={(id, patch) => atualizar(editarPonto(projeto, id, patch))}
+          contextoRedeExistente={contextoBdgd ?? undefined}
         />
       )}
 

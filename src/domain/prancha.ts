@@ -1,6 +1,27 @@
 import type { LatLng, Projeto } from "./model";
 import { paraUtm } from "../geo/utm";
 
+// --------------------------------------------------------------------------
+// Contexto BDGD (rede existente próxima ao ponto de derivação)
+// --------------------------------------------------------------------------
+
+/** Um segmento da Rede MT existente (dois vértices WGS84). */
+export interface SegmentoMT {
+  de: LatLng;
+  ate: LatLng;
+}
+
+/**
+ * Trecho da rede existente a ser desenhado na prancha junto com a rede proposta.
+ * Capturado via queryRenderedFeatures no MapCanvas antes de abrir a prancha.
+ */
+export interface ContextoBdgd {
+  /** Transformador mais próximo do ponto de derivação (ponto WGS84 + rótulo). */
+  trafoProximo?: { wgs84: LatLng; label?: string };
+  /** Segmentos da Rede MT adjacentes ao ponto de derivação (até ~5). */
+  segmentosMT: SegmentoMT[];
+}
+
 /**
  * Motor de desenho da prancha (B6) — parte determinística e testável.
  *

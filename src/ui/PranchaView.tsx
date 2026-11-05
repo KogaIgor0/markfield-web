@@ -11,6 +11,7 @@ import {
   layoutFolha,
   passoEscalaM,
   projecaoNaFolha,
+  type ContextoBdgd,
   type FolhaId,
   type Orientacao,
 } from "../domain/prancha";
@@ -40,11 +41,13 @@ interface Props {
   onFechar: () => void;
   /** Persiste edições de ponto (ex.: posição do balão) para sobreviver à navegação. */
   onEditarPonto?: (id: string, patch: PatchPonto) => void;
+  /** Trecho da rede MT existente + transformador mais próximo para desenhar na prancha. */
+  contextoRedeExistente?: ContextoBdgd;
 }
 
 type EscalaModo = "auto" | number;
 
-export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, onFechar, onEditarPonto }: Props) {
+export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, onFechar, onEditarPonto, contextoRedeExistente }: Props) {
   const [folha, setFolha] = useState<FolhaId>("A3");
   const [orientacao, setOrientacao] = useState<Orientacao>("paisagem");
   const [escalaModo, setEscalaModo] = useState<EscalaModo>("auto");
@@ -170,7 +173,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   }, [mostrarOsmPrancha, buildTiles, zSat]);
 
   const baixarDxf = () => {
-    const dxf = gerarDxfPrancha({ projeto, esforcos, rotulosEstrutura, materiais, folha, orientacao, escala });
+    const dxf = gerarDxfPrancha({ projeto, esforcos, rotulosEstrutura, materiais, folha, orientacao, escala, contextoRedeExistente });
     const base = (projeto.meta.nome || "projeto").replace(/[^\p{L}\p{N}_-]+/gu, "_");
     baixar(new Blob([dxf], { type: "application/dxf" }), `${base}-prancha.dxf`);
   };
@@ -311,7 +314,41 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
               </text>
             )}
 
-            {/* Trechos — proposto = pontilhado, tração reduzida = traço-ponto menor */}
+            {/* Rede existente BDGD (cinza) — desenhada por baixo da rede proposta */}
+            {bbox && contextoRedeExistente && (
+              <g>
+                {/* Segmentos da Rede MT existente */}
+                {contextoRedeExistente.segmentosMT.map((seg, i) => {
+                  const [x1, y1] = toSvg(seg.de);
+                  const [x2, y2] = toSvg(seg.ate);
+                  return (
+                    <line
+                      key={`seg-exist-${i}`}
+                      x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke="#888888"
+                      strokeWidth={0.6}
+                      strokeLinecap="round"
+                    />
+                  );
+                })}
+                {/* Transformador mais próximo */}
+                {contextoRedeExistente.trafoProximo && (() => {
+                  const [tx, ty] = toSvg(contextoRedeExistente.trafoProximo.wgs84);
+                  return (
+                    <g key="trafo-exist">
+                      <circle cx={tx} cy={ty} r={2.0} fill="#888888" stroke="#fff" strokeWidth={0.3} />
+                      {contextoRedeExistente.trafoProximo.label && (
+                        <text x={tx + 2.5} y={ty + 0.8} fontSize={2.2} fill="#888888">
+                          {contextoRedeExistente.trafoProximo.label}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })()}
+              </g>
+            )}
+
+            {/* Trechos — REDE PROPOSTA em vermelho; proposto = pontilhado, tração reduzida = traço menor */}
             {bbox &&
               projeto.trechos.map((t) => {
                 const caminho =
@@ -329,7 +366,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     key={t.id}
                     points={pts}
                     fill="none"
-                    stroke="#000"
+                    stroke="#cc0000"
                     strokeWidth={0.5}
                     strokeDasharray={dash}
                     strokeLinejoin="round"
@@ -647,27 +684,33 @@ function PainelDireito({
           <circle cx={1} cy={-0.8} r={0.9} fill="none" stroke="#000" strokeWidth={0.3} />
           <circle cx={1} cy={-0.8} r={0.55} fill="none" stroke="#000" strokeWidth={0.3} />
         </SimbLinha>
-        <SimbLinha dy={10} label="Rede compacta">
-          <line x1={-0.5} y1={-0.8} x2={2.5} y2={-0.8} stroke="#000" strokeWidth={0.5} />
+        <SimbLinha dy={10} label="Rede proposta (nova)">
+          <line x1={-0.5} y1={-0.8} x2={2.5} y2={-0.8} stroke="#cc0000" strokeWidth={0.5} strokeDasharray="3 2" />
         </SimbLinha>
-        <SimbLinha dy={15} label="Tração reduzida">
-          <line x1={-0.5} y1={-0.8} x2={2.5} y2={-0.8} stroke="#000" strokeWidth={0.5} strokeDasharray="1 0.8" />
+        <SimbLinha dy={15} label="Tr. reduzida proposta">
+          <line x1={-0.5} y1={-0.8} x2={2.5} y2={-0.8} stroke="#cc0000" strokeWidth={0.5} strokeDasharray="1.5 1.5" />
         </SimbLinha>
-        <SimbLinha dy={20} label="Estai proposto">
+        <SimbLinha dy={20} label="Rede existente (BDGD)">
+          <line x1={-0.5} y1={-0.8} x2={2.5} y2={-0.8} stroke="#888" strokeWidth={0.6} />
+        </SimbLinha>
+        <SimbLinha dy={25} label="Trafo existente (BDGD)">
+          <circle cx={1} cy={-0.8} r={0.9} fill="#888" stroke="#fff" strokeWidth={0.25} />
+        </SimbLinha>
+        <SimbLinha dy={31} label="Estai proposto">
           {/* Linha pontilhada + semicírculo âncora ⊃ */}
           <line x1={-0.5} y1={-0.5} x2={2} y2={-0.5} stroke="#000" strokeWidth={0.35} strokeDasharray="1.5 0.8" />
           <path d={`M 2 ${-0.5-0.8} A 0.8 0.8 0 0 0 2 ${-0.5+0.8}`} fill="none" stroke="#000" strokeWidth={0.35} />
         </SimbLinha>
       </g>
-      <text x={x + 3} y={by + 42} fontSize={1.8} fill="#888">
+      <text x={x + 3} y={by + 53} fontSize={1.8} fill="#888">
         DIS-NOR-012 · Anexo VIII
       </text>
 
       {/* Quadro de materiais */}
-      <text x={x + 3} y={by + 50} fontSize={2.8} fill="#000">
+      <text x={x + 3} y={by + 61} fontSize={2.8} fill="#000">
         Materiais
       </text>
-      <g transform={`translate(${x + 3}, ${by + 54})`}>
+      <g transform={`translate(${x + 3}, ${by + 65})`}>
         {materiais ? (
           <QuadroMateriais w={w - 6} materiais={materiais} />
         ) : (
