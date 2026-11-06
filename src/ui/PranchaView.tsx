@@ -524,16 +524,29 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                         let vaoAngle = Math.atan2(polo.svgY - py, polo.svgX - px) * 180 / Math.PI;
                         if (vaoAngle > 90) vaoAngle -= 180;
                         if (vaoAngle < -90) vaoAngle += 180;
+                        const label = `${Math.round(polo.distM)} m`;
+                        // largura estimada: ~1.3 mm por caractere (fontSize 2.2)
+                        const lw = Math.max(label.length * 1.4 + 2, 10);
+                        const lh = 3.2;
                         return (
+                          // Mesmo estilo que EtiquetaCabo: texto abaixo da linha (+3.5)
+                          // com rect branco de fundo para não sobrepor o traço da rede
                           <g key={i} transform={`rotate(${vaoAngle.toFixed(2)}, ${mx2.toFixed(2)}, ${my2.toFixed(2)})`}>
+                            <rect
+                              x={mx2 - lw / 2} y={my2 + 1.0}
+                              width={lw} height={lh}
+                              rx={0.8} ry={0.8}
+                              fill="#fff" stroke="none"
+                            />
                             <text
-                              x={mx2} y={my2 - 2.5}
+                              x={mx2} y={my2 + 3.5}
                               textAnchor="middle"
                               dominantBaseline="auto"
                               fontSize={2.2}
                               fill="#000"
+                              fontFamily="Arial, sans-serif"
                             >
-                              {Math.round(polo.distM)} m
+                              {label}
                             </text>
                           </g>
                         );
