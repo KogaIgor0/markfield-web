@@ -477,33 +477,63 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     for (const { seg, len } of svgSegsV) { if (len > bLen) { bLen = len; mainSeg = seg; } }
                   }
 
-                  // Polos adjacentes: os dois extremos do segmento principal
+                  // Para cada segmento, o extremo DISTANTE do fonte é o polo adjacente real.
+                  // Coleta extremos distantes (> 5 m), deduplica por proximidade SVG,
+                  // classifica em "frente" / "trás" pelo produto escalar com a direção principal,
+                  // e exibe uma etiqueta de distância por lado — cor preta.
+                  type PoloAdj = { svgX: number; svgY: number; distM: number };
+                  const farCandidates: PoloAdj[] = [];
+                  for (const seg of contextoRedeExistente.segmentosMT) {
+                    const d1 = distanciaM(fonteP.wgs84, seg.de);
+                    const d2 = distanciaM(fonteP.wgs84, seg.ate);
+                    const farPolo = d1 > d2 ? seg.de : seg.ate;
+                    const farDist = Math.max(d1, d2);
+                    if (farDist < 5) continue;
+                    const [fx, fy] = toSvg(farPolo);
+                    // Deduplica: ignora se já existe candidato a < 2 mm no SVG
+                    if (!farCandidates.some((c) => Math.hypot(c.svgX - fx, c.svgY - fy) < 2)) {
+                      farCandidates.push({ svgX: fx, svgY: fy, distM: farDist });
+                    }
+                  }
+
+                  // Direção principal: ao longo do mainSeg, normalizada
+                  const [ms1x, ms1y] = toSvg(mainSeg.de);
+                  const [ms2x, ms2y] = toSvg(mainSeg.ate);
+                  let fdX = ms2x - ms1x, fdY = ms2y - ms1y;
+                  const fdLen = Math.hypot(fdX, fdY);
+                  if (fdLen > 1e-6) { fdX /= fdLen; fdY /= fdLen; }
+
+                  // Separa em frente (dot > 0) e trás (dot ≤ 0) e pega o mais próximo de cada lado
+                  let frontPole: PoloAdj | null = null;
+                  let backPole: PoloAdj | null = null;
+                  for (const c of farCandidates) {
+                    const dot = (c.svgX - px) * fdX + (c.svgY - py) * fdY;
+                    if (dot > 0) {
+                      if (!frontPole || c.distM < frontPole.distM) frontPole = c;
+                    } else {
+                      if (!backPole || c.distM < backPole.distM) backPole = c;
+                    }
+                  }
+
+                  const polosAdj = [frontPole, backPole].filter((p): p is PoloAdj => p !== null);
                   return (
                     <g key="vao-adj">
-                      {([mainSeg.de, mainSeg.ate] as const).map((adjPolo, i) => {
-                        const distM = distanciaM(fonteP.wgs84, adjPolo);
-                        if (distM < 5) return null; // ignora polo coincidente
-
-                        const [ex, ey] = toSvg(adjPolo);
-                        const mx2 = (px + ex) / 2;
-                        const my2 = (py + ey) / 2;
-
-                        // Ângulo do vão no plano SVG, normalizado para texto legível
-                        let vaoAngle = Math.atan2(ey - py, ex - px) * 180 / Math.PI;
+                      {polosAdj.map((polo, i) => {
+                        const mx2 = (px + polo.svgX) / 2;
+                        const my2 = (py + polo.svgY) / 2;
+                        let vaoAngle = Math.atan2(polo.svgY - py, polo.svgX - px) * 180 / Math.PI;
                         if (vaoAngle > 90) vaoAngle -= 180;
                         if (vaoAngle < -90) vaoAngle += 180;
-
                         return (
-                          // Texto rotacionado ao longo do vão, deslocado 2.5 mm acima da linha
                           <g key={i} transform={`rotate(${vaoAngle.toFixed(2)}, ${mx2.toFixed(2)}, ${my2.toFixed(2)})`}>
                             <text
                               x={mx2} y={my2 - 2.5}
                               textAnchor="middle"
                               dominantBaseline="auto"
                               fontSize={2.2}
-                              fill="#3b82f6"
+                              fill="#000"
                             >
-                              {Math.round(distM)} m
+                              {Math.round(polo.distM)} m
                             </text>
                           </g>
                         );
