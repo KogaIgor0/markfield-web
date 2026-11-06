@@ -356,24 +356,45 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                 {/* Transformador existente — símbolo DIS-NOR-012 outline only (sem hachura) */}
                 {contextoRedeExistente.trafoProximo && (() => {
                   const [tx, ty] = toSvg(contextoRedeExistente.trafoProximo.wgs84);
-                  // Triângulo apontando para Norte (cima na folha = -y no SVG), H=8mm, B=3mm
                   const TH = 8, TB = 3;
-                  const bmx = tx, bmy = ty - TH; // base acima (Norte)
-                  const b1x = bmx + TB, b1y = bmy;
-                  const b2x = bmx - TB, b2y = bmy;
+
+                  // Calcula o ângulo do segmento MT mais próximo ao trafo,
+                  // para rotacionar o triângulo de modo que a base fique paralela à linha.
+                  let angleDeg = 0;
+                  if (contextoRedeExistente.segmentosMT.length > 0) {
+                    const nearest = contextoRedeExistente.segmentosMT.reduce((best, seg) => {
+                      const [sx1, sy1] = toSvg(seg.de);
+                      const [sx2, sy2] = toSvg(seg.ate);
+                      const mx = (sx1 + sx2) / 2, my = (sy1 + sy2) / 2;
+                      const d = (mx - tx) ** 2 + (my - ty) ** 2;
+                      const [bx1, by1] = toSvg(best.de);
+                      const [bx2, by2] = toSvg(best.ate);
+                      const bd = ((bx1 + bx2) / 2 - tx) ** 2 + ((by1 + by2) / 2 - ty) ** 2;
+                      return d < bd ? seg : best;
+                    });
+                    const [sx1, sy1] = toSvg(nearest.de);
+                    const [sx2, sy2] = toSvg(nearest.ate);
+                    angleDeg = (Math.atan2(sy2 - sy1, sx2 - sx1) * 180) / Math.PI;
+                  }
+
                   return (
-                    <g key="trafo-exist">
-                      {/* Triângulo outline only (sem hachura = existente) */}
+                    // Rotaciona o grupo inteiro em torno do vértice (ponto de apoio no poste)
+                    <g key="trafo-exist" transform={`rotate(${angleDeg.toFixed(2)}, ${tx.toFixed(2)}, ${ty.toFixed(2)})`}>
+                      {/* Triângulo outline only — base paralela à linha (H=8mm, meia-base=3mm) */}
                       <polygon
-                        points={`${tx},${ty} ${b1x},${b1y} ${b2x},${b2y}`}
+                        points={`${tx},${ty} ${tx - TB},${ty - TH} ${tx + TB},${ty - TH}`}
                         fill="#fff" stroke="#888888" strokeWidth={0.4}
                       />
-                      {/* Poste circular tubular outline only — centrado no vértice */}
+                      {/* Poste circular tubular outline only */}
                       <circle cx={tx} cy={ty} r={2.0} fill="#fff" stroke="#888888" strokeWidth={0.4} />
                       <circle cx={tx} cy={ty} r={1.2} fill="none" stroke="#888888" strokeWidth={0.4} />
-                      {/* Label COD_ID */}
+                      {/* Label acima da base do triângulo, paralelo à linha */}
                       {contextoRedeExistente.trafoProximo.label && (
-                        <text x={tx + 2.5} y={ty + 0.8} fontSize={2.2} fill="#888888">
+                        <text
+                          x={tx} y={ty - TH - 1.5}
+                          textAnchor="middle"
+                          fontSize={2.2} fill="#888888"
+                        >
                           {contextoRedeExistente.trafoProximo.label}
                         </text>
                       )}
