@@ -375,6 +375,12 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     const [sx1, sy1] = toSvg(nearest.de);
                     const [sx2, sy2] = toSvg(nearest.ate);
                     angleDeg = (Math.atan2(sy2 - sy1, sx2 - sx1) * 180) / Math.PI;
+                    // Normaliza para [-90, +90]: garante que a base do triângulo
+                    // fique sempre "acima" do vértice (lado Norte da prancha) e que
+                    // o texto nunca apareça de ponta-cabeça.
+                    // A ordem de/ate no PMTiles é arbitrária, podendo inverter o ângulo.
+                    if (angleDeg > 90) angleDeg -= 180;
+                    if (angleDeg < -90) angleDeg += 180;
                   }
 
                   return (
