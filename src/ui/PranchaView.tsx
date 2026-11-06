@@ -487,9 +487,6 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                         const [ex, ey] = toSvg(adjPolo);
                         const mx2 = (px + ex) / 2;
                         const my2 = (py + ey) / 2;
-                        const spanSvgLen = Math.hypot(ex - px, ey - py);
-                        const rx = spanSvgLen / 2 + 2.5; // meia largura + margem
-                        const ry = 3.5;                  // meia altura fixa
 
                         // Ângulo do vão no plano SVG, normalizado para texto legível
                         let vaoAngle = Math.atan2(ey - py, ex - px) * 180 / Math.PI;
@@ -497,20 +494,12 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                         if (vaoAngle < -90) vaoAngle += 180;
 
                         return (
+                          // Texto rotacionado ao longo do vão, deslocado 2.5 mm acima da linha
                           <g key={i} transform={`rotate(${vaoAngle.toFixed(2)}, ${mx2.toFixed(2)}, ${my2.toFixed(2)})`}>
-                            {/* Elipse de referência visual (azul, sem preenchimento) */}
-                            <ellipse
-                              cx={mx2} cy={my2}
-                              rx={rx.toFixed(2)} ry={ry}
-                              fill="none"
-                              stroke="#3b82f6"
-                              strokeWidth={0.45}
-                            />
-                            {/* Distância em metros, centralizada na elipse */}
                             <text
-                              x={mx2} y={my2 + 0.6}
+                              x={mx2} y={my2 - 2.5}
                               textAnchor="middle"
-                              dominantBaseline="middle"
+                              dominantBaseline="auto"
                               fontSize={2.2}
                               fill="#3b82f6"
                             >
