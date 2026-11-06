@@ -437,6 +437,91 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     </g>
                   );
                 })()}
+
+                {/* Medidas dos vãos adjacentes ao ponto de derivação
+                    Quando um poste proposto é inserido na rede existente,
+                    desenha uma elipse azul (referência visual) + distância em metros
+                    para cada polo adjacente do segmento MT principal. */}
+                {(() => {
+                  const fonteP = projeto.pontos.find((p) => p.ehFonte);
+                  if (!fonteP || contextoRedeExistente.segmentosMT.length === 0) return null;
+
+                  const [px, py] = toSvg(fonteP.wgs84);
+
+                  // Mesmo algoritmo de seleção do segmento principal do trafo
+                  const svgSegsV = contextoRedeExistente.segmentosMT.map((seg) => {
+                    const [sx1, sy1] = toSvg(seg.de);
+                    const [sx2, sy2] = toSvg(seg.ate);
+                    return { seg, sx1, sy1, sx2, sy2, len: Math.hypot(sx2 - sx1, sy2 - sy1) };
+                  });
+
+                  let mainSeg = contextoRedeExistente.segmentosMT[0];
+
+                  if (contextoRedeExistente.trafoProximo) {
+                    const [trafoX, trafoY] = toSvg(contextoRedeExistente.trafoProximo.wgs84);
+                    const dirX = trafoX - px, dirY = trafoY - py;
+                    const dirLen = Math.hypot(dirX, dirY);
+                    if (dirLen > 0.1) {
+                      let best = -Infinity;
+                      for (const { seg, sx1, sy1, sx2, sy2, len } of svgSegsV) {
+                        if (len < 1e-6) continue;
+                        const s = Math.abs(((sx2 - sx1) * dirX + (sy2 - sy1) * dirY) / (len * dirLen));
+                        if (s > best) { best = s; mainSeg = seg; }
+                      }
+                    } else {
+                      let bLen = -1;
+                      for (const { seg, len } of svgSegsV) { if (len > bLen) { bLen = len; mainSeg = seg; } }
+                    }
+                  } else {
+                    let bLen = -1;
+                    for (const { seg, len } of svgSegsV) { if (len > bLen) { bLen = len; mainSeg = seg; } }
+                  }
+
+                  // Polos adjacentes: os dois extremos do segmento principal
+                  return (
+                    <g key="vao-adj">
+                      {([mainSeg.de, mainSeg.ate] as const).map((adjPolo, i) => {
+                        const distM = distanciaM(fonteP.wgs84, adjPolo);
+                        if (distM < 5) return null; // ignora polo coincidente
+
+                        const [ex, ey] = toSvg(adjPolo);
+                        const mx2 = (px + ex) / 2;
+                        const my2 = (py + ey) / 2;
+                        const spanSvgLen = Math.hypot(ex - px, ey - py);
+                        const rx = spanSvgLen / 2 + 2.5; // meia largura + margem
+                        const ry = 3.5;                  // meia altura fixa
+
+                        // Ângulo do vão no plano SVG, normalizado para texto legível
+                        let vaoAngle = Math.atan2(ey - py, ex - px) * 180 / Math.PI;
+                        if (vaoAngle > 90) vaoAngle -= 180;
+                        if (vaoAngle < -90) vaoAngle += 180;
+
+                        return (
+                          <g key={i} transform={`rotate(${vaoAngle.toFixed(2)}, ${mx2.toFixed(2)}, ${my2.toFixed(2)})`}>
+                            {/* Elipse de referência visual (azul, sem preenchimento) */}
+                            <ellipse
+                              cx={mx2} cy={my2}
+                              rx={rx.toFixed(2)} ry={ry}
+                              fill="none"
+                              stroke="#3b82f6"
+                              strokeWidth={0.45}
+                            />
+                            {/* Distância em metros, centralizada na elipse */}
+                            <text
+                              x={mx2} y={my2 + 0.6}
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              fontSize={2.2}
+                              fill="#3b82f6"
+                            >
+                              {Math.round(distM)} m
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </g>
+                  );
+                })()}
               </g>
             )}
 
