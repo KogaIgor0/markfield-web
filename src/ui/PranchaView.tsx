@@ -358,27 +358,57 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   const [tx, ty] = toSvg(contextoRedeExistente.trafoProximo.wgs84);
                   const TH = 8, TB = 3;
 
-                  // Calcula o ângulo do segmento MT mais próximo ao trafo,
-                  // para rotacionar o triângulo de modo que a base fique paralela à linha.
+                  // Calcula o ângulo do segmento MT para rotacionar o triângulo
+                  // de modo que a base fique paralela à linha da rede existente.
+                  //
+                  // Estratégia: prefere o segmento mais alinhado com a direção
+                  // fonte→trafo. Isso discrimina corretamente entre a linha principal
+                  // (alinhada com a chegada) e ramais perpendiculares que poderiam
+                  // "ganhar" num critério simples de distância de ponto médio.
+                  // Se fonte e trafo estão no mesmo poste (dirLen ≈ 0), usa o
+                  // segmento mais longo como proxy da linha principal.
                   let angleDeg = 0;
                   if (contextoRedeExistente.segmentosMT.length > 0) {
-                    const nearest = contextoRedeExistente.segmentosMT.reduce((best, seg) => {
+                    // Pré-calcula coordenadas SVG de cada segmento candidato
+                    const svgSegs = contextoRedeExistente.segmentosMT.map((seg) => {
                       const [sx1, sy1] = toSvg(seg.de);
                       const [sx2, sy2] = toSvg(seg.ate);
-                      const mx = (sx1 + sx2) / 2, my = (sy1 + sy2) / 2;
-                      const d = (mx - tx) ** 2 + (my - ty) ** 2;
-                      const [bx1, by1] = toSvg(best.de);
-                      const [bx2, by2] = toSvg(best.ate);
-                      const bd = ((bx1 + bx2) / 2 - tx) ** 2 + ((by1 + by2) / 2 - ty) ** 2;
-                      return d < bd ? seg : best;
+                      return { seg, sx1, sy1, sx2, sy2, len: Math.hypot(sx2 - sx1, sy2 - sy1) };
                     });
-                    const [sx1, sy1] = toSvg(nearest.de);
-                    const [sx2, sy2] = toSvg(nearest.ate);
+
+                    let bestSeg = contextoRedeExistente.segmentosMT[0];
+                    const fonteP = projeto.pontos.find((p) => p.ehFonte);
+
+                    if (fonteP) {
+                      const [fdx, fdy] = toSvg(fonteP.wgs84);
+                      const dirX = tx - fdx, dirY = ty - fdy;
+                      const dirLen = Math.hypot(dirX, dirY);
+
+                      if (dirLen > 0.1) {
+                        // Fonte e trafo em postos distintos: escolhe o segmento
+                        // com maior alinhamento (produto escalar normalizado) com a
+                        // direção de chegada. abs() porque o sentido de/ate é arbitrário.
+                        let bestScore = -Infinity;
+                        for (const { seg, sx1, sy1, sx2, sy2, len } of svgSegs) {
+                          if (len < 1e-6) continue;
+                          const score = Math.abs(((sx2 - sx1) * dirX + (sy2 - sy1) * dirY) / (len * dirLen));
+                          if (score > bestScore) { bestScore = score; bestSeg = seg; }
+                        }
+                      } else {
+                        // Fonte e trafo no mesmo poste: usa o segmento mais longo
+                        // (a linha principal tende a ser mais extensa que ramais)
+                        let bestLen = -1;
+                        for (const { seg, len } of svgSegs) {
+                          if (len > bestLen) { bestLen = len; bestSeg = seg; }
+                        }
+                      }
+                    }
+
+                    const [sx1, sy1] = toSvg(bestSeg.de);
+                    const [sx2, sy2] = toSvg(bestSeg.ate);
                     angleDeg = (Math.atan2(sy2 - sy1, sx2 - sx1) * 180) / Math.PI;
-                    // Normaliza para [-90, +90]: garante que a base do triângulo
-                    // fique sempre "acima" do vértice (lado Norte da prancha) e que
-                    // o texto nunca apareça de ponta-cabeça.
-                    // A ordem de/ate no PMTiles é arbitrária, podendo inverter o ângulo.
+                    // Normaliza para [-90, +90]: base do triângulo nunca fica
+                    // de ponta-cabeça; a ordem de/ate no PMTiles é arbitrária.
                     if (angleDeg > 90) angleDeg -= 180;
                     if (angleDeg < -90) angleDeg += 180;
                   }
