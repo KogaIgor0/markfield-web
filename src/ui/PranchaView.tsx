@@ -354,9 +354,15 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   if (angle < -90) angle += 180;
                   const { tipo, secaoMm2, tensaoKv } = bestSeg.cabo!;
                   const parts: string[] = [];
-                  if (tipo) parts.push(tipo);
-                  if (secaoMm2 != null) parts.push(`${secaoMm2} mm²`);
-                  if (tensaoKv != null) parts.push(`${tensaoKv} kV`);
+                  // TIP_CND pode vir como código numérico interno (ex: "37843") —
+                  // só exibe se parecer um nome de condutor (contém letra)
+                  if (tipo && /[A-Za-z]/.test(tipo)) parts.push(tipo.toUpperCase());
+                  if (secaoMm2 != null) parts.push(`${Math.round(secaoMm2)} mm²`);
+                  // TEN_OPE pode vir em V (13800) ou kV (13.8) — normaliza para kV
+                  const kvVal = tensaoKv != null
+                    ? (tensaoKv > 1000 ? tensaoKv / 1000 : tensaoKv)
+                    : null;
+                  if (kvVal != null) parts.push(`${kvVal.toFixed(1).replace(".", ",")} kV`);
                   const label = parts.join(" · ");
                   if (!label) return null;
                   const bw = Math.max(label.length * 1.4 + 2, 12);
