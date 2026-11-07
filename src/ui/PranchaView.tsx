@@ -335,12 +335,17 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                 {/* Postes existentes nos extremos dos segmentos — poste circular
                     DIS-NOR-012 outline only (sem hachura = existente não a instalar) */}
                 {(() => {
-                  const seen = new Set<string>();
+                  // Deduplicação por proximidade SVG (< 3 mm ≈ 3–4 m real):
+                  // funde os dois nós de chave fusível que o cadastro da
+                  // Neoenergia registra como dois pequenos segmentos adjacentes,
+                  // evitando postes "encavaldados" na prancha.
                   const pts: [number, number][] = [];
                   for (const seg of contextoRedeExistente.segmentosMT) {
                     for (const c of [seg.de, seg.ate]) {
-                      const key = `${c.lat.toFixed(5)},${c.lng.toFixed(5)}`;
-                      if (!seen.has(key)) { seen.add(key); pts.push(toSvg(c)); }
+                      const [sx, sy] = toSvg(c);
+                      if (!pts.some(([px, py]) => Math.hypot(px - sx, py - sy) < 3)) {
+                        pts.push([sx, sy]);
+                      }
                     }
                   }
                   return pts.map(([px, py], i) => (
@@ -527,21 +532,22 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                         const label = `${Math.round(polo.distM)} m`;
                         // largura estimada: ~1.3 mm por caractere (fontSize 2.2)
                         const lw = Math.max(label.length * 1.4 + 2, 10);
-                        const lh = 3.2;
+                        const lh = 3.0;
                         return (
-                          // Mesmo estilo que EtiquetaCabo: texto abaixo da linha (+3.5)
-                          // com rect branco de fundo para não sobrepor o traço da rede
+                          // Cota de desenho técnico: texto centralizado exatamente
+                          // no ponto médio do vão, COM rect branco que apaga o traço
+                          // da rede MT por baixo — sem deslocamento perpendicular.
                           <g key={i} transform={`rotate(${vaoAngle.toFixed(2)}, ${mx2.toFixed(2)}, ${my2.toFixed(2)})`}>
                             <rect
-                              x={mx2 - lw / 2} y={my2 + 1.0}
+                              x={mx2 - lw / 2} y={my2 - lh / 2}
                               width={lw} height={lh}
-                              rx={0.8} ry={0.8}
+                              rx={0.6} ry={0.6}
                               fill="#fff" stroke="none"
                             />
                             <text
-                              x={mx2} y={my2 + 3.5}
+                              x={mx2} y={my2}
                               textAnchor="middle"
-                              dominantBaseline="auto"
+                              dominantBaseline="middle"
                               fontSize={2.2}
                               fill="#000"
                               fontFamily="Arial, sans-serif"
