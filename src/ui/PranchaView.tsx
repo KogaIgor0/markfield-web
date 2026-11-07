@@ -332,6 +332,54 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   );
                 })}
 
+                {/* Etiqueta do cabo existente — no segmento mais longo com atributos SSDMT */}
+                {(() => {
+                  // Encontra o segmento com cabo mais longo (na tela) que tenha atributos
+                  let bestSeg: (typeof contextoRedeExistente.segmentosMT)[0] | null = null;
+                  let bestLen = 0;
+                  for (const seg of contextoRedeExistente.segmentosMT) {
+                    if (!seg.cabo?.tipo && seg.cabo?.secaoMm2 == null) continue;
+                    const [x1, y1] = toSvg(seg.de);
+                    const [x2, y2] = toSvg(seg.ate);
+                    const len = Math.hypot(x2 - x1, y2 - y1);
+                    if (len > bestLen) { bestLen = len; bestSeg = seg; }
+                  }
+                  if (!bestSeg) return null;
+                  const [x1, y1] = toSvg(bestSeg.de);
+                  const [x2, y2] = toSvg(bestSeg.ate);
+                  const mx = (x1 + x2) / 2;
+                  const my = (y1 + y2) / 2;
+                  let angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+                  if (angle > 90) angle -= 180;
+                  if (angle < -90) angle += 180;
+                  const { tipo, secaoMm2, tensaoKv } = bestSeg.cabo!;
+                  const parts: string[] = [];
+                  if (tipo) parts.push(tipo);
+                  if (secaoMm2 != null) parts.push(`${secaoMm2} mm²`);
+                  if (tensaoKv != null) parts.push(`${tensaoKv} kV`);
+                  const label = parts.join(" · ");
+                  if (!label) return null;
+                  const bw = Math.max(label.length * 1.4 + 2, 12);
+                  const bh = 2.8;
+                  return (
+                    <g key="cabo-exist" transform={`rotate(${angle.toFixed(2)}, ${mx.toFixed(2)}, ${my.toFixed(2)})`}>
+                      <rect
+                        x={mx - bw / 2} y={my - 3 - bh}
+                        width={bw} height={bh}
+                        rx={0.7} ry={0.7}
+                        fill="#fff" stroke="#888" strokeWidth={0.3}
+                      />
+                      <text
+                        x={mx} y={my - 3 - bh / 2 + 0.75}
+                        fontSize={1.8} textAnchor="middle"
+                        fill="#666" fontFamily="Arial, sans-serif"
+                      >
+                        {label}
+                      </text>
+                    </g>
+                  );
+                })()}
+
                 {/* Postes existentes nos extremos dos segmentos — poste circular
                     DIS-NOR-012 outline only (sem hachura = existente não a instalar) */}
                 {(() => {

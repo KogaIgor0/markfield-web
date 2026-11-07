@@ -5,10 +5,22 @@ import { paraUtm } from "../geo/utm";
 // Contexto BDGD (rede existente próxima ao ponto de derivação)
 // --------------------------------------------------------------------------
 
+/** Atributos do condutor conforme SSDMT (disponíveis quando exportados via PMTiles). */
+export interface CaboMT {
+  /** Tipo/material do condutor (TIP_CND no SSDMT, ex.: "CA", "ACSR", "CU"). */
+  tipo?: string;
+  /** Seção nominal em mm² (CRS_CND no SSDMT, ex.: 50, 70, 95, 120). */
+  secaoMm2?: number;
+  /** Tensão de operação em kV (TEN_OPE no SSDMT, ex.: 13.8, 34.5). */
+  tensaoKv?: number;
+}
+
 /** Um segmento da Rede MT existente (dois vértices WGS84). */
 export interface SegmentoMT {
   de: LatLng;
   ate: LatLng;
+  /** Atributos do condutor — disponíveis quando os campos SSDMT estão no PMTiles. */
+  cabo?: CaboMT;
 }
 
 /**

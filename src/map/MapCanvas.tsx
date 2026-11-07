@@ -781,19 +781,24 @@ export function MapCanvas(props: MapCanvasProps) {
       };
 
       // Para cada feature de linha, pega pares de vértices e calcula dist ao ponto de derivação
-      type Segmento = { de: LatLng; ate: LatLng; distSq: number };
+      type Segmento = {
+        de: LatLng; ate: LatLng; distSq: number;
+        // Atributos SSDMT — presentes quando o PMTiles foi gerado com esses campos
+        props: Record<string, unknown>;
+      };
       const candidatos: Segmento[] = [];
 
       for (const f of featuresRedeMT) {
         if (f.geometry.type === "LineString") {
           const coords = f.geometry.coordinates;
+          const props = (f.properties ?? {}) as Record<string, unknown>;
           for (let i = 0; i < coords.length - 1; i++) {
             const de: LatLng = { lat: coords[i][1], lng: coords[i][0] };
             const ate: LatLng = { lat: coords[i + 1][1], lng: coords[i + 1][0] };
             const midLat = (de.lat + ate.lat) / 2;
             const midLng = (de.lng + ate.lng) / 2;
             const d = distSq({ lat: midLat, lng: midLng }, derivacao);
-            candidatos.push({ de, ate, distSq: d });
+            candidatos.push({ de, ate, distSq: d, props });
           }
         }
       }
@@ -801,7 +806,20 @@ export function MapCanvas(props: MapCanvasProps) {
       // Ordena por proximidade e pega os 5 mais próximos
       candidatos.sort((a, b) => a.distSq - b.distSq);
       for (const c of candidatos.slice(0, 5)) {
-        segmentosMT.push({ de: c.de, ate: c.ate });
+        // Extrai atributos do cabo do SSDMT (gracioso se ausentes no PMTiles)
+        const p = c.props;
+        const toStr = (v: unknown) =>
+          typeof v === "string" ? v.trim() || undefined : undefined;
+        const toNum = (v: unknown) =>
+          typeof v === "number" ? v :
+          typeof v === "string" ? (parseFloat(v) || undefined) : undefined;
+        const tipo = toStr(p["TIP_CND"]);
+        const secaoMm2 = toNum(p["CRS_CND"]);
+        const tensaoKv = toNum(p["TEN_OPE"]);
+        const cabo = (tipo != null || secaoMm2 != null || tensaoKv != null)
+          ? { tipo, secaoMm2, tensaoKv }
+          : undefined;
+        segmentosMT.push({ de: c.de, ate: c.ate, ...(cabo ? { cabo } : {}) });
       }
     }
 
