@@ -578,26 +578,15 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                         if (vaoAngle > 90) vaoAngle -= 180;
                         if (vaoAngle < -90) vaoAngle += 180;
                         const label = `${Math.round(polo.distM)} m`;
-                        // largura estimada: ~1.3 mm por caractere (fontSize 2.2)
-                        const lw = Math.max(label.length * 1.4 + 2, 10);
-                        const lh = 3.0;
                         return (
-                          // Cota de desenho técnico: texto centralizado exatamente
-                          // no ponto médio do vão, COM rect branco que apaga o traço
-                          // da rede MT por baixo — sem deslocamento perpendicular.
+                          // Mesma regra do TrechoVao: texto abaixo do midpoint
+                          // após rotação (y+3.5), alinhado com a linha do vão.
                           <g key={i} transform={`rotate(${vaoAngle.toFixed(2)}, ${mx2.toFixed(2)}, ${my2.toFixed(2)})`}>
-                            <rect
-                              x={mx2 - lw / 2} y={my2 - lh / 2}
-                              width={lw} height={lh}
-                              rx={0.6} ry={0.6}
-                              fill="#fff" stroke="none"
-                            />
                             <text
-                              x={mx2} y={my2}
+                              x={mx2} y={my2 + 3.5}
                               textAnchor="middle"
-                              dominantBaseline="middle"
-                              fontSize={2.2}
-                              fill="#000"
+                              fontSize={1.7}
+                              fill="#444"
                               fontFamily="Arial, sans-serif"
                             >
                               {label}
