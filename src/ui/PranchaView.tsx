@@ -332,19 +332,20 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   );
                 })}
 
-                {/* Etiqueta do cabo existente — no segmento mais longo com atributos SSDMT */}
+                {/* Etiqueta do cabo existente — no segmento mais longo.
+                    Quando os atributos SSDMT estiverem disponíveis mostra
+                    "CA · 70 mm² · 13,8 kV"; caso contrário mostra "Rede MT". */}
                 {(() => {
-                  // Encontra o segmento com cabo mais longo (na tela) que tenha atributos
-                  let bestSeg: (typeof contextoRedeExistente.segmentosMT)[0] | null = null;
+                  if (contextoRedeExistente.segmentosMT.length === 0) return null;
+                  // Pega o segmento mais longo na tela (sem filtrar por atributos)
+                  let bestSeg = contextoRedeExistente.segmentosMT[0];
                   let bestLen = 0;
                   for (const seg of contextoRedeExistente.segmentosMT) {
-                    if (!seg.cabo?.tipo && seg.cabo?.secaoMm2 == null) continue;
                     const [x1, y1] = toSvg(seg.de);
                     const [x2, y2] = toSvg(seg.ate);
                     const len = Math.hypot(x2 - x1, y2 - y1);
                     if (len > bestLen) { bestLen = len; bestSeg = seg; }
                   }
-                  if (!bestSeg) return null;
                   const [x1, y1] = toSvg(bestSeg.de);
                   const [x2, y2] = toSvg(bestSeg.ate);
                   const mx = (x1 + x2) / 2;
@@ -352,19 +353,22 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   let angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
                   if (angle > 90) angle -= 180;
                   if (angle < -90) angle += 180;
-                  const { tipo, secaoMm2, tensaoKv } = bestSeg.cabo!;
+                  // Monta a etiqueta a partir dos atributos SSDMT
                   const parts: string[] = [];
-                  // TIP_CND pode vir como código numérico interno (ex: "37843") —
-                  // só exibe se parecer um nome de condutor (contém letra)
-                  if (tipo && /[A-Za-z]/.test(tipo)) parts.push(tipo.toUpperCase());
-                  if (secaoMm2 != null) parts.push(`${Math.round(secaoMm2)} mm²`);
-                  // TEN_OPE pode vir em V (13800) ou kV (13.8) — normaliza para kV
-                  const kvVal = tensaoKv != null
-                    ? (tensaoKv > 1000 ? tensaoKv / 1000 : tensaoKv)
-                    : null;
-                  if (kvVal != null) parts.push(`${kvVal.toFixed(1).replace(".", ",")} kV`);
-                  const label = parts.join(" · ");
-                  if (!label) return null;
+                  const cab = bestSeg.cabo;
+                  if (cab) {
+                    // TIP_CND pode vir como código numérico interno (ex: "37843") —
+                    // só exibe se parecer um nome de condutor (contém letra)
+                    if (cab.tipo && /[A-Za-z]/.test(cab.tipo)) parts.push(cab.tipo.toUpperCase());
+                    if (cab.secaoMm2 != null) parts.push(`${Math.round(cab.secaoMm2)} mm²`);
+                    // TEN_OPE pode vir em V (13800) ou kV (13.8) — normaliza para kV
+                    const kvVal = cab.tensaoKv != null
+                      ? (cab.tensaoKv > 1000 ? cab.tensaoKv / 1000 : cab.tensaoKv)
+                      : null;
+                    if (kvVal != null) parts.push(`${kvVal.toFixed(1).replace(".", ",")} kV`);
+                  }
+                  // Fallback quando os atributos SSDMT não estão disponíveis nos PMTiles
+                  const label = parts.length > 0 ? parts.join(" · ") : "Rede MT";
                   const bw = Math.max(label.length * 1.4 + 2, 12);
                   const bh = 2.8;
                   return (
@@ -580,24 +584,21 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                       {polosAdj.map((polo, i) => {
                         const mx2 = (px + polo.svgX) / 2;
                         const my2 = (py + polo.svgY) / 2;
-                        let vaoAngle = Math.atan2(polo.svgY - py, polo.svgX - px) * 180 / Math.PI;
-                        if (vaoAngle > 90) vaoAngle -= 180;
-                        if (vaoAngle < -90) vaoAngle += 180;
                         const label = `${Math.round(polo.distM)} m`;
+                        // Texto horizontal com offset fixo para baixo (+3.5 mm SVG = sul
+                        // no desenho). Sem rotação para manter posição consistente
+                        // independente do ângulo de cada vão.
                         return (
-                          // Mesma regra do TrechoVao: texto abaixo do midpoint
-                          // após rotação (y+3.5), alinhado com a linha do vão.
-                          <g key={i} transform={`rotate(${vaoAngle.toFixed(2)}, ${mx2.toFixed(2)}, ${my2.toFixed(2)})`}>
-                            <text
-                              x={mx2} y={my2 + 3.5}
-                              textAnchor="middle"
-                              fontSize={1.7}
-                              fill="#444"
-                              fontFamily="Arial, sans-serif"
-                            >
-                              {label}
-                            </text>
-                          </g>
+                          <text
+                            key={i}
+                            x={mx2} y={my2 + 3.5}
+                            textAnchor="middle"
+                            fontSize={1.7}
+                            fill="#444"
+                            fontFamily="Arial, sans-serif"
+                          >
+                            {label}
+                          </text>
                         );
                       })}
                     </g>
