@@ -367,8 +367,9 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                       : null;
                     if (kvVal != null) parts.push(`${kvVal.toFixed(1).replace(".", ",")} kV`);
                   }
-                  // Fallback quando os atributos SSDMT não estão disponíveis nos PMTiles
-                  const label = parts.length > 0 ? parts.join(" · ") : "Rede MT";
+                  // Só exibe se houver atributos reais — sem dados = sem etiqueta
+                  const label = parts.join(" · ");
+                  if (!label) return null;
                   const bw = Math.max(label.length * 1.4 + 2, 12);
                   const bh = 2.8;
                   return (
