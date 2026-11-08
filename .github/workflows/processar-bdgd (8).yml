@@ -74,8 +74,24 @@ jobs:
                 TMP="out/ssdmt_tmp.geojson"
                 OUT="out/${{ inputs.prefixo }}-rede-mt.pmtiles"
                 echo "Convertendo SSDMT para GeoJSON intermediario..."
-                ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES "$TMP" "$GDB" SSDMT 2>/dev/null
+                # OGR_FGDB_RESOLVE_CODED_DOMAINS: expande domínios codificados do GDB
+                # (ex: TIP_CND 37843 → "CA"). A flag -sql seleciona apenas os campos
+                # usados pelo Markfield (PMTiles) e pelo app (linhas-CTMT.geojson).
+                ogr2ogr \
+                  --config OGR_FGDB_RESOLVE_CODED_DOMAINS YES \
+                  -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES \
+                  -sql "SELECT COD_ID, CTMT, TIP_CND, CRS_CND, TEN_OPE, COMP_3 FROM SSDMT" \
+                  "$TMP" "$GDB" 2>/dev/null
                 ls -lh "$TMP"
+                echo "Amostra de atributos SSDMT (3 primeiros segmentos):"
+                python3 -c "
+import json
+with open('$TMP') as f:
+    fc = json.load(f)
+for feat in fc['features'][:3]:
+    p = feat['properties']
+    print(f\"  TIP_CND={p.get('TIP_CND')!r}  CRS_CND={p.get('CRS_CND')!r}  TEN_OPE={p.get('TEN_OPE')!r}\")
+" || true
                 echo "Gerando PMTiles..."
                 tippecanoe --output="$OUT" --minimum-zoom=11 --maximum-zoom=16 \
                     --simplification=10 --drop-densest-as-needed \
