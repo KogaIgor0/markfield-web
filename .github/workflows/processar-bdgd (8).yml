@@ -84,17 +84,7 @@ jobs:
                   "$TMP" "$GDB" 2>/dev/null
                 ls -lh "$TMP"
                 echo "Amostra de atributos SSDMT (3 primeiros segmentos):"
-                python3 << 'PYEOF'
-                import json
-                with open("out/ssdmt_tmp.geojson") as f:
-                    fc = json.load(f)
-                for feat in fc["features"][:3]:
-                    p = feat["properties"]
-                    tip = p.get("TIP_CND")
-                    crs = p.get("CRS_CND")
-                    ten = p.get("TEN_OPE")
-                    print(f"  TIP_CND={tip!r}  CRS_CND={crs!r}  TEN_OPE={ten!r}")
-                PYEOF
+                python3 -c "import json; fc=json.load(open('out/ssdmt_tmp.geojson')); [print('  TIP_CND=%r  CRS_CND=%r  TEN_OPE=%r'%(p.get('TIP_CND'),p.get('CRS_CND'),p.get('TEN_OPE'))) for feat in fc['features'][:3] for p in [feat['properties']]]" || true
                 echo "Gerando PMTiles..."
                 tippecanoe --output="$OUT" --minimum-zoom=11 --maximum-zoom=16 \
                     --simplification=10 --drop-densest-as-needed \
