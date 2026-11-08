@@ -752,107 +752,130 @@ export function MapCanvas(props: MapCanvasProps) {
     const map = mapRef.current;
     if (!map || !prontoRef.current) return;
 
-    const derivacao = propsRef.current.wgs84Derivacao;
-    const callback = propsRef.current.onContextoBdgdCapturado;
-    if (!callback) return;
+    let cancelado = false;
 
-    // IMPORTANTE: usa querySourceFeatures (não queryRenderedFeatures).
-    // queryRenderedFeatures só retorna features VISÍVEIS no viewport renderizado —
-    // quando a prancha abre por cima do mapa, o MapLibre pode pausar o render e
-    // retornar vazio. querySourceFeatures consulta as tiles já cacheadas
-    // independentemente do estado de visibilidade do canvas.
-    const featuresRedeMT = (() => {
-      try {
-        if (!map.getSource(BDGD_SRC.redeMT)) return [];
-        return map.querySourceFeatures(BDGD_SRC.redeMT, { sourceLayer: "rede_mt" });
-      } catch {
-        return [];
-      }
-    })();
+    /** Executa a captura imediatamente (tiles devem estar no cache). */
+    const fazerCaptura = () => {
+      if (cancelado) return;
 
-    // Converte features de linha para segmentos de 2 vértices (apenas vizinhos ao ponto de derivação)
-    const segmentosMT: SegmentoMT[] = [];
-    if (derivacao && featuresRedeMT.length > 0) {
-      // Calcula distância quadrada entre dois pontos WGS84 (aproximação plana suficiente p/ ~100m)
-      const distSq = (a: LatLng, b: LatLng) => {
-        const dlat = a.lat - b.lat;
-        const dlng = a.lng - b.lng;
-        return dlat * dlat + dlng * dlng;
-      };
+      const derivacao = propsRef.current.wgs84Derivacao;
+      const callback = propsRef.current.onContextoBdgdCapturado;
+      if (!callback) return;
 
-      // Para cada feature de linha, pega pares de vértices e calcula dist ao ponto de derivação
-      type Segmento = {
-        de: LatLng; ate: LatLng; distSq: number;
-        // Atributos SSDMT — presentes quando o PMTiles foi gerado com esses campos
-        props: Record<string, unknown>;
-      };
-      const candidatos: Segmento[] = [];
+      // IMPORTANTE: usa querySourceFeatures (não queryRenderedFeatures).
+      // queryRenderedFeatures só retorna features VISÍVEIS no viewport renderizado —
+      // quando a prancha abre por cima do mapa, o MapLibre pode pausar o render e
+      // retornar vazio. querySourceFeatures consulta as tiles já cacheadas
+      // independentemente do estado de visibilidade do canvas.
+      const featuresRedeMT = (() => {
+        try {
+          if (!map.getSource(BDGD_SRC.redeMT)) return [];
+          return map.querySourceFeatures(BDGD_SRC.redeMT, { sourceLayer: "rede_mt" });
+        } catch {
+          return [];
+        }
+      })();
 
-      for (const f of featuresRedeMT) {
-        if (f.geometry.type === "LineString") {
-          const coords = f.geometry.coordinates;
-          const props = (f.properties ?? {}) as Record<string, unknown>;
-          for (let i = 0; i < coords.length - 1; i++) {
-            const de: LatLng = { lat: coords[i][1], lng: coords[i][0] };
-            const ate: LatLng = { lat: coords[i + 1][1], lng: coords[i + 1][0] };
-            const midLat = (de.lat + ate.lat) / 2;
-            const midLng = (de.lng + ate.lng) / 2;
-            const d = distSq({ lat: midLat, lng: midLng }, derivacao);
-            candidatos.push({ de, ate, distSq: d, props });
+      // Converte features de linha para segmentos de 2 vértices (apenas vizinhos ao ponto de derivação)
+      const segmentosMT: SegmentoMT[] = [];
+      if (derivacao && featuresRedeMT.length > 0) {
+        // Calcula distância quadrada entre dois pontos WGS84 (aproximação plana suficiente p/ ~100m)
+        const distSq = (a: LatLng, b: LatLng) => {
+          const dlat = a.lat - b.lat;
+          const dlng = a.lng - b.lng;
+          return dlat * dlat + dlng * dlng;
+        };
+
+        // Para cada feature de linha, pega pares de vértices e calcula dist ao ponto de derivação
+        type Segmento = {
+          de: LatLng; ate: LatLng; distSq: number;
+          // Atributos SSDMT — presentes quando o PMTiles foi gerado com esses campos
+          props: Record<string, unknown>;
+        };
+        const candidatos: Segmento[] = [];
+
+        for (const f of featuresRedeMT) {
+          if (f.geometry.type === "LineString") {
+            const coords = f.geometry.coordinates;
+            const props = (f.properties ?? {}) as Record<string, unknown>;
+            for (let i = 0; i < coords.length - 1; i++) {
+              const de: LatLng = { lat: coords[i][1], lng: coords[i][0] };
+              const ate: LatLng = { lat: coords[i + 1][1], lng: coords[i + 1][0] };
+              const midLat = (de.lat + ate.lat) / 2;
+              const midLng = (de.lng + ate.lng) / 2;
+              const d = distSq({ lat: midLat, lng: midLng }, derivacao);
+              candidatos.push({ de, ate, distSq: d, props });
+            }
           }
+        }
+
+        // Ordena por proximidade e pega os 5 mais próximos
+        candidatos.sort((a, b) => a.distSq - b.distSq);
+        for (const c of candidatos.slice(0, 5)) {
+          // Extrai atributos do cabo do SSDMT (gracioso se ausentes no PMTiles)
+          const p = c.props;
+          const toStr = (v: unknown) =>
+            typeof v === "string" ? v.trim() || undefined : undefined;
+          const toNum = (v: unknown) =>
+            typeof v === "number" ? v :
+            typeof v === "string" ? (parseFloat(v) || undefined) : undefined;
+          const tipo = toStr(p["TIP_CND"]);
+          const secaoMm2 = toNum(p["CRS_CND"]);
+          const tensaoKv = toNum(p["TEN_OPE"]);
+          const cabo = (tipo != null || secaoMm2 != null || tensaoKv != null)
+            ? { tipo, secaoMm2, tensaoKv }
+            : undefined;
+          segmentosMT.push({ de: c.de, ate: c.ate, ...(cabo ? { cabo } : {}) });
         }
       }
 
-      // Ordena por proximidade e pega os 5 mais próximos
-      candidatos.sort((a, b) => a.distSq - b.distSq);
-      for (const c of candidatos.slice(0, 5)) {
-        // Extrai atributos do cabo do SSDMT (gracioso se ausentes no PMTiles)
-        const p = c.props;
-        const toStr = (v: unknown) =>
-          typeof v === "string" ? v.trim() || undefined : undefined;
-        const toNum = (v: unknown) =>
-          typeof v === "number" ? v :
-          typeof v === "string" ? (parseFloat(v) || undefined) : undefined;
-        const tipo = toStr(p["TIP_CND"]);
-        const secaoMm2 = toNum(p["CRS_CND"]);
-        const tensaoKv = toNum(p["TEN_OPE"]);
-        const cabo = (tipo != null || secaoMm2 != null || tensaoKv != null)
-          ? { tipo, secaoMm2, tensaoKv }
-          : undefined;
-        segmentosMT.push({ de: c.de, ate: c.ate, ...(cabo ? { cabo } : {}) });
-      }
-    }
-
-    // Busca transformador mais próximo via querySourceFeatures no source GeoJSON
-    let trafoProximo: ContextoBdgd["trafoProximo"] | undefined;
-    if (derivacao) {
-      try {
-        const trafFeatures = map.getSource(BDGD_SRC.transformadores)
-          ? map.querySourceFeatures(BDGD_SRC.transformadores)
-          : [];
-        let minD = Infinity;
-        for (const f of trafFeatures) {
-          if (f.geometry.type !== "Point") continue;
-          const [lng, lat] = f.geometry.coordinates;
-          const dlat = lat - derivacao.lat;
-          const dlng = lng - derivacao.lng;
-          const d = dlat * dlat + dlng * dlng;
-          if (d < minD) {
-            minD = d;
-            const props = f.properties ?? {};
-            const label =
-              (props["COD_ID"] as string | undefined) ??
-              (props["CTMT"] as string | undefined) ??
-              (props["PRI_SUB"] as string | undefined);
-            trafoProximo = { wgs84: { lat, lng }, label };
+      // Busca transformador mais próximo via querySourceFeatures no source GeoJSON
+      let trafoProximo: ContextoBdgd["trafoProximo"] | undefined;
+      if (derivacao) {
+        try {
+          const trafFeatures = map.getSource(BDGD_SRC.transformadores)
+            ? map.querySourceFeatures(BDGD_SRC.transformadores)
+            : [];
+          let minD = Infinity;
+          for (const f of trafFeatures) {
+            if (f.geometry.type !== "Point") continue;
+            const [lng, lat] = f.geometry.coordinates;
+            const dlat = lat - derivacao.lat;
+            const dlng = lng - derivacao.lng;
+            const d = dlat * dlat + dlng * dlng;
+            if (d < minD) {
+              minD = d;
+              const props = f.properties ?? {};
+              const label =
+                (props["COD_ID"] as string | undefined) ??
+                (props["CTMT"] as string | undefined) ??
+                (props["PRI_SUB"] as string | undefined);
+              trafoProximo = { wgs84: { lat, lng }, label };
+            }
           }
+        } catch {
+          // Silencioso — source pode não existir
         }
-      } catch {
-        // Silencioso — source pode não existir
       }
+
+      callback({ trafoProximo, segmentosMT });
+    };
+
+    // Se as tiles da Rede MT ainda não estão no cache, aguarda o evento idle
+    // (disparado quando todas as tiles do viewport terminam de carregar).
+    // PMTiles via Worker pode levar 5–15 s no primeiro carregamento — sem esta
+    // espera, querySourceFeatures retorna vazio e a prancha não exibe a rede.
+    const temFonteMT = !!map.getSource(BDGD_SRC.redeMT);
+    if (temFonteMT && !map.areTilesLoaded()) {
+      const onIdle = () => { clearTimeout(fallbackTimer); fazerCaptura(); };
+      // Timeout de segurança: após 15 s captura o que estiver disponível
+      const fallbackTimer = setTimeout(() => { map.off("idle", onIdle); fazerCaptura(); }, 15000);
+      map.once("idle", onIdle);
+      return () => { cancelado = true; clearTimeout(fallbackTimer); map.off("idle", onIdle); };
     }
 
-    callback({ trafoProximo, segmentosMT });
+    fazerCaptura();
+    return () => { cancelado = true; };
   }, [capturarContextoBdgdTrigger]);
 
   return <div ref={containerRef} className="map-canvas" />;
