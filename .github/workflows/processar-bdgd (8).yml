@@ -74,14 +74,12 @@ jobs:
                 TMP="out/ssdmt_tmp.geojson"
                 OUT="out/${{ inputs.prefixo }}-rede-mt.pmtiles"
                 echo "Convertendo SSDMT para GeoJSON intermediario..."
-                # OGR_FGDB_RESOLVE_CODED_DOMAINS: expande domínios codificados do GDB
-                # (ex: TIP_CND 37843 → "CA"). A flag -sql seleciona apenas os campos
-                # usados pelo Markfield (PMTiles) e pelo app (linhas-CTMT.geojson).
+                # OGR_FGDB_RESOLVE_CODED_DOMAINS expande domínios codificados do GDB
+                # (ex: TIP_CND código numérico → texto como "CA").
                 ogr2ogr \
                   --config OGR_FGDB_RESOLVE_CODED_DOMAINS YES \
                   -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES \
-                  -sql "SELECT COD_ID, CTMT, TIP_CND, CRS_CND, TEN_OPE, COMP_3 FROM SSDMT" \
-                  "$TMP" "$GDB" 2>/dev/null
+                  "$TMP" "$GDB" SSDMT 2>/dev/null
                 ls -lh "$TMP"
                 echo "Amostra de atributos SSDMT (3 primeiros segmentos):"
                 python3 -c "import json; fc=json.load(open('out/ssdmt_tmp.geojson')); [print('  TIP_CND=%r  CRS_CND=%r  TEN_OPE=%r'%(p.get('TIP_CND'),p.get('CRS_CND'),p.get('TEN_OPE'))) for feat in fc['features'][:3] for p in [feat['properties']]]" || true
