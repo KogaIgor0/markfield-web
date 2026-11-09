@@ -83,61 +83,61 @@ jobs:
                 ls -lh "$TMP"
                 echo "Expandindo domínio TIP_CND via ogrinfo..."
                 python3 - "$GDB" "$TMP" << 'PYEOF'
-import subprocess, re, json, sys
-
-gdb, geojson_path = sys.argv[1], sys.argv[2]
-
-# Extrai domínio TIP_CND do GDB via ogrinfo
-result = subprocess.run(
-    ["ogrinfo", "-al", "-so", "-ro", gdb, "SSDMT"],
-    capture_output=True, text=True
-)
-output = result.stdout + result.stderr
-
-# Mapeia código → texto a partir de linhas como "    37843: CA"
-domain_map = {}
-in_tip_cnd = False
-for line in output.splitlines():
-    if "TIP_CND" in line:
-        in_tip_cnd = True
-    if in_tip_cnd:
-        m = re.match(r"\s+(\d+):\s+(.+)", line)
-        if m:
-            domain_map[m.group(1).strip()] = m.group(2).strip()
-        elif line.strip() and not re.match(r"\s*\d+:", line) and "TIP_CND" not in line and in_tip_cnd and domain_map:
-            in_tip_cnd = False  # fim do bloco do domínio
-
-if domain_map:
-    print(f"Domínio TIP_CND: {len(domain_map)} entradas")
-    sample = list(domain_map.items())[:5]
-    for k, v in sample:
-        print(f"  {k} → {v}")
-else:
-    print("Domínio TIP_CND não encontrado via ogrinfo — TIP_CND permanecerá como código")
-
-# Aplica expansão no GeoJSON
-if domain_map:
-    with open(geojson_path) as f:
-        fc = json.load(f)
-    expanded = 0
-    for feat in fc.get("features", []):
-        props = feat.get("properties") or {}
-        raw = str(props.get("TIP_CND", ""))
-        if raw in domain_map:
-            props["TIP_CND"] = domain_map[raw]
-            expanded += 1
-    with open(geojson_path, "w") as f:
-        json.dump(fc, f, separators=(",", ":"))
-    print(f"TIP_CND expandido em {expanded} features")
-
-# Amostra final
-with open(geojson_path) as f:
-    fc = json.load(f)
-print("Amostra TIP_CND após expansão:")
-for feat in fc["features"][:3]:
-    p = feat["properties"]
-    print(f"  TIP_CND={p.get('TIP_CND')!r}  CTMT={p.get('CTMT')!r}")
-PYEOF
+          import subprocess, re, json, sys
+          
+          gdb, geojson_path = sys.argv[1], sys.argv[2]
+          
+          # Extrai domínio TIP_CND do GDB via ogrinfo
+          result = subprocess.run(
+              ["ogrinfo", "-al", "-so", "-ro", gdb, "SSDMT"],
+              capture_output=True, text=True
+          )
+          output = result.stdout + result.stderr
+          
+          # Mapeia código → texto a partir de linhas como "    37843: CA"
+          domain_map = {}
+          in_tip_cnd = False
+          for line in output.splitlines():
+              if "TIP_CND" in line:
+                  in_tip_cnd = True
+              if in_tip_cnd:
+                  m = re.match(r"\s+(\d+):\s+(.+)", line)
+                  if m:
+                      domain_map[m.group(1).strip()] = m.group(2).strip()
+                  elif line.strip() and not re.match(r"\s*\d+:", line) and "TIP_CND" not in line and in_tip_cnd and domain_map:
+                      in_tip_cnd = False  # fim do bloco do domínio
+          
+          if domain_map:
+              print(f"Domínio TIP_CND: {len(domain_map)} entradas")
+              sample = list(domain_map.items())[:5]
+              for k, v in sample:
+                  print(f"  {k} → {v}")
+          else:
+              print("Domínio TIP_CND não encontrado via ogrinfo — TIP_CND permanecerá como código")
+          
+          # Aplica expansão no GeoJSON
+          if domain_map:
+              with open(geojson_path) as f:
+                  fc = json.load(f)
+              expanded = 0
+              for feat in fc.get("features", []):
+                  props = feat.get("properties") or {}
+                  raw = str(props.get("TIP_CND", ""))
+                  if raw in domain_map:
+                      props["TIP_CND"] = domain_map[raw]
+                      expanded += 1
+              with open(geojson_path, "w") as f:
+                  json.dump(fc, f, separators=(",", ":"))
+              print(f"TIP_CND expandido em {expanded} features")
+          
+          # Amostra final
+          with open(geojson_path) as f:
+              fc = json.load(f)
+          print("Amostra TIP_CND após expansão:")
+          for feat in fc["features"][:3]:
+              p = feat["properties"]
+              print(f"  TIP_CND={p.get('TIP_CND')!r}  CTMT={p.get('CTMT')!r}")
+          PYEOF
                 echo "Gerando PMTiles..."
                 tippecanoe --output="$OUT" --minimum-zoom=11 --maximum-zoom=16 \
                     --simplification=10 --drop-densest-as-needed \
