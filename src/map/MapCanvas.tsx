@@ -861,20 +861,27 @@ export function MapCanvas(props: MapCanvasProps) {
       callback({ trafoProximo, segmentosMT });
     };
 
-    // Se as tiles da Rede MT ainda não estão no cache, aguarda o evento idle
-    // (disparado quando todas as tiles do viewport terminam de carregar).
-    // PMTiles via Worker pode levar 5–15 s no primeiro carregamento — sem esta
-    // espera, querySourceFeatures retorna vazio e a prancha não exibe a rede.
+    // Captura em dois momentos para cobrir a race condition de tiles PMTiles:
+    //
+    // 1) Captura imediata — funciona se os tiles já estão no cache (ex: prancha
+    //    aberta depois que o mapa ficou idle por um tempo).
+    //
+    // 2) Captura no próximo idle — cobre o caso em que areTilesLoaded() retornou
+    //    true prematuramente logo após a source PMTiles ser adicionada (antes do
+    //    MapLibre despachar os tile requests). O idle dispara quando os tiles
+    //    terminam de carregar e garante querySourceFeatures com dados reais.
+    //    Fallback de 15 s caso idle não dispare (ex: área sem tiles).
+    fazerCaptura();
+
     const temFonteMT = !!map.getSource(BDGD_SRC.redeMT);
-    if (temFonteMT && !map.areTilesLoaded()) {
+    if (temFonteMT) {
       const onIdle = () => { clearTimeout(fallbackTimer); fazerCaptura(); };
-      // Timeout de segurança: após 15 s captura o que estiver disponível
-      const fallbackTimer = setTimeout(() => { map.off("idle", onIdle); fazerCaptura(); }, 15000);
+      // Timeout de segurança: após 15 s encerra a espera
+      const fallbackTimer = setTimeout(() => { map.off("idle", onIdle); }, 15000);
       map.once("idle", onIdle);
       return () => { cancelado = true; clearTimeout(fallbackTimer); map.off("idle", onIdle); };
     }
 
-    fazerCaptura();
     return () => { cancelado = true; };
   }, [capturarContextoBdgdTrigger]);
 
