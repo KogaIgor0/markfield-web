@@ -111,7 +111,7 @@ export interface BdgdFonte {
     ssdmt?: string; // Segmentos MT  (.pmtiles)
     ssdbt?: string; // Segmentos BT  (.pmtiles, opcional)
     untrmt?: string; // Transformadores (.geojson)
-    ponnot?: string; // Postes (.geojson, opcional)
+    ponnot?: string; // Postes (.geojson ou .pmtiles, opcional)
   };
 }
 
@@ -126,6 +126,7 @@ export const BDGD_FONTES: BdgdFonte[] = [
     // Nota: trafos.geojson ~148 MB — não carregado no browser; usar PMTiles quando disponível.
     urls: {
       ssdmt: `${BDGD_CDN}/elektro/rede-mt.pmtiles`,
+      ponnot: `${BDGD_CDN}/elektro/postes.pmtiles`,
     },
   },
   {
@@ -606,16 +607,58 @@ export async function carregarDadosBdgd(
     }
   };
 
+  const carregarPostesPmTiles = (url: string): Promise<void> => {
+    return new Promise((resolve) => {
+      if (map.getLayer(BDGD_LYR.postes)) map.removeLayer(BDGD_LYR.postes);
+      if (map.getSource(BDGD_SRC.postes)) map.removeSource(BDGD_SRC.postes);
+
+      map.addSource(BDGD_SRC.postes, { type: "vector", url: `pmtiles://${url}` });
+
+      const onSourceErro = (e: { sourceId?: string; error?: { message?: string } }) => {
+        if (e.sourceId === BDGD_SRC.postes) {
+          console.warn("[BDGD] Postes:", e.error?.message ?? "erro desconhecido");
+          map.off("error", onSourceErro);
+          resolve();
+        }
+      };
+      map.on("error", onSourceErro);
+
+      map.addLayer({
+        id: BDGD_LYR.postes,
+        type: "circle",
+        source: BDGD_SRC.postes,
+        "source-layer": "postes",
+        minzoom: 14,
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 14, 2, 17, 5],
+          "circle-color": "#334155",
+          "circle-stroke-width": 1,
+          "circle-stroke-color": "#fff",
+          "circle-opacity": 0.85,
+        },
+      } as maplibregl.LayerSpecification);
+
+      setTimeout(() => {
+        map.off("error", onSourceErro);
+        resolve();
+      }, 2000);
+    });
+  };
+
   if (u.ssdmt?.endsWith(".pmtiles")) {
     await carregarRedeMtPmTiles(u.ssdmt);
   } else {
     await carregarGeoJson(BDGD_SRC.redeMT, u.ssdmt);
   }
 
+  const carregarPostes = u.ponnot?.endsWith(".pmtiles")
+    ? carregarPostesPmTiles(u.ponnot)
+    : carregarGeoJson(BDGD_SRC.postes, u.ponnot);
+
   await Promise.all([
     carregarGeoJson(BDGD_SRC.redeBT, u.ssdbt),
     carregarTrafosPorCtmt(), // per-CTMT em vez do trafos.geojson consolidado (148–700 MB)
-    carregarGeoJson(BDGD_SRC.postes, u.ponnot),
+    carregarPostes,
   ]);
 
   if (erros.length > 0) {
