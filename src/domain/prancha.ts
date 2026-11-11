@@ -24,6 +24,30 @@ export interface SegmentoMT {
 }
 
 /**
+ * Poste real da BDGD (camada PONNOT).
+ * Capturado via querySourceFeatures na source postes (PMTiles).
+ */
+export interface PosteBdgd {
+  /** Posição WGS84 do poste. */
+  wgs84: LatLng;
+  /**
+   * Tipo de estrutura (TIP_EST).
+   * Código ANEEL: 1=Madeira, 2=Concreto, 3=Metálico, 4=Fibra de vidro.
+   * Pode vir como número ou string dependendo do pipeline.
+   */
+  tipEst?: string | number;
+  /** Altura da estrutura em metros (ALT_EST), ex.: 9, 11, 13. */
+  altEst?: number;
+  /**
+   * Tipo de operação (TIP_OPE).
+   * Código ANEEL: 1=Derivação, 2=Passagem, 3=Término, 4=Ancoragem.
+   */
+  tipOpe?: string | number;
+  /** Identificador único do registro (COD_ID). */
+  codId?: string;
+}
+
+/**
  * Trecho da rede existente a ser desenhado na prancha junto com a rede proposta.
  * Capturado via queryRenderedFeatures no MapCanvas antes de abrir a prancha.
  */
@@ -32,6 +56,12 @@ export interface ContextoBdgd {
   trafoProximo?: { wgs84: LatLng; label?: string };
   /** Segmentos da Rede MT adjacentes ao ponto de derivação (até ~5). */
   segmentosMT: SegmentoMT[];
+  /**
+   * Postes BDGD (PONNOT) próximos ao ponto de derivação.
+   * Capturados do PMTiles quando disponíveis (minzoom 13).
+   * Lista vazia quando a camada não foi carregada ou não há postes no viewport.
+   */
+  postesBdgd: PosteBdgd[];
 }
 
 /**

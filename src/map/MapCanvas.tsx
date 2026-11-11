@@ -14,7 +14,7 @@ import {
   BDGD_SRC,
   type BdgdCarregamentoResultado,
 } from "./bdgd";
-import type { ContextoBdgd, SegmentoMT } from "../domain/prancha";
+import type { ContextoBdgd, PosteBdgd, SegmentoMT } from "../domain/prancha";
 
 /**
  * Mapa base + render + EDIÇÃO do projeto (Fase 2).
@@ -858,7 +858,42 @@ export function MapCanvas(props: MapCanvasProps) {
         }
       }
 
-      callback({ trafoProximo, segmentosMT });
+      // Captura postes BDGD (PONNOT) próximos — via querySourceFeatures na source PMTiles.
+      // Filtra num raio de ~300 m em torno do ponto de derivação para não sobrecarregar a prancha.
+      const postesBdgd: PosteBdgd[] = [];
+      try {
+        if (map.getSource(BDGD_SRC.postes)) {
+          const postesFeatures = map.querySourceFeatures(BDGD_SRC.postes, { sourceLayer: "postes" });
+          const RAIO_GD = 0.003; // ~300 m em graus (aprox.)
+          for (const f of postesFeatures) {
+            if (f.geometry.type !== "Point") continue;
+            const [lng, lat] = f.geometry.coordinates;
+            if (derivacao) {
+              const dlat = Math.abs(lat - derivacao.lat);
+              const dlng = Math.abs(lng - derivacao.lng);
+              if (dlat > RAIO_GD || dlng > RAIO_GD) continue;
+            }
+            const p = (f.properties ?? {}) as Record<string, unknown>;
+            const toStr = (v: unknown) =>
+              typeof v === "string" ? v.trim() || undefined :
+              typeof v === "number" ? String(v) : undefined;
+            const toNum = (v: unknown) =>
+              typeof v === "number" ? v :
+              typeof v === "string" ? (parseFloat(v) || undefined) : undefined;
+            postesBdgd.push({
+              wgs84: { lat, lng },
+              tipEst: toStr(p["TIP_EST"]) ?? (p["TIP_EST"] != null ? p["TIP_EST"] as string | number : undefined),
+              altEst: toNum(p["ALT_EST"]),
+              tipOpe: toStr(p["TIP_OPE"]) ?? (p["TIP_OPE"] != null ? p["TIP_OPE"] as string | number : undefined),
+              codId: toStr(p["COD_ID"]),
+            });
+          }
+        }
+      } catch {
+        // Silencioso — source pode não ter sido carregada ainda
+      }
+
+      callback({ trafoProximo, segmentosMT, postesBdgd });
     };
 
     // Captura em dois momentos para cobrir a race condition de tiles PMTiles:

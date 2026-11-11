@@ -391,31 +391,29 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   );
                 })()}
 
-                {/* Postes existentes nos extremos dos segmentos — poste circular
-                    DIS-NOR-012 outline only (sem hachura = existente não a instalar) */}
-                {(() => {
-                  // Deduplicação por proximidade SVG (< 3 mm ≈ 3–4 m real):
-                  // funde os dois nós de chave fusível que o cadastro da
-                  // Neoenergia registra como dois pequenos segmentos adjacentes,
-                  // evitando postes "encavaldados" na prancha.
-                  const pts: [number, number][] = [];
-                  for (const seg of contextoRedeExistente.segmentosMT) {
-                    for (const c of [seg.de, seg.ate]) {
-                      const [sx, sy] = toSvg(c);
-                      if (!pts.some(([px, py]) => Math.hypot(px - sx, py - sy) < 3)) {
-                        pts.push([sx, sy]);
-                      }
-                    }
-                  }
-                  return pts.map(([px, py], i) => (
-                    <g key={`poste-exist-${i}`}>
+                {/* Postes reais do BDGD (PONNOT) — símbolo DIS-NOR-012 existente
+                    (duplo círculo, sem hachura). Exibe ALT_EST quando disponível. */}
+                {contextoRedeExistente.postesBdgd.map((poste, i) => {
+                  const [px, py] = toSvg(poste.wgs84);
+                  const altLabel = poste.altEst != null ? `${poste.altEst}m` : null;
+                  return (
+                    <g key={`poste-bdgd-${i}`}>
                       {/* Fundo branco para não sujar linhas por baixo */}
                       <circle cx={px} cy={py} r={2.0} fill="#fff" stroke="#888888" strokeWidth={0.4} />
-                      {/* Anel interno (outline only — sem hachura) */}
+                      {/* Anel interno (outline only — sem hachura = existente) */}
                       <circle cx={px} cy={py} r={1.2} fill="none" stroke="#888888" strokeWidth={0.4} />
+                      {/* Altura do poste (opcional) */}
+                      {altLabel && (
+                        <text
+                          x={px + 2.4} y={py - 2.4}
+                          fontSize={1.6} fill="#888888" fontFamily="Arial, sans-serif"
+                        >
+                          {altLabel}
+                        </text>
+                      )}
                     </g>
-                  ));
-                })()}
+                  );
+                })}
 
                 {/* Transformador existente — símbolo DIS-NOR-012 outline only (sem hachura) */}
                 {contextoRedeExistente.trafoProximo && (() => {
