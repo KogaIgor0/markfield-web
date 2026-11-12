@@ -357,9 +357,8 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   const parts: string[] = [];
                   const cab = bestSeg.cabo;
                   if (cab) {
-                    // TIP_CND pode vir como código numérico interno (ex: "37843") —
-                    // só exibe se parecer um nome de condutor (contém letra)
-                    if (cab.tipo && /[A-Za-z]/.test(cab.tipo)) parts.push(cab.tipo.toUpperCase());
+                    // TIP_CND: exibe como veio (expandido "CA" ou código "37843")
+                    if (cab.tipo) parts.push(cab.tipo.toUpperCase());
                     if (cab.secaoMm2 != null) parts.push(`${Math.round(cab.secaoMm2)} mm²`);
                     // TEN_OPE pode vir em V (13800) ou kV (13.8) — normaliza para kV
                     const kvVal = cab.tensaoKv != null
@@ -367,9 +366,8 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                       : null;
                     if (kvVal != null) parts.push(`${kvVal.toFixed(1).replace(".", ",")} kV`);
                   }
-                  // Só exibe se houver atributos reais — sem dados = sem etiqueta
-                  const label = parts.join(" · ");
-                  if (!label) return null;
+                  // Sem atributos SSDMT: exibe "Rede MT" como fallback genérico
+                  const label = parts.length > 0 ? parts.join(" · ") : "Rede MT";
                   const bw = Math.max(label.length * 1.4 + 2, 12);
                   const bh = 2.8;
                   return (
@@ -395,20 +393,26 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     (duplo círculo, sem hachura). Exibe ALT_EST quando disponível. */}
                 {contextoRedeExistente.postesBdgd.map((poste, i) => {
                   const [px, py] = toSvg(poste.wgs84);
-                  const altLabel = poste.altEst != null ? `${poste.altEst}m` : null;
+                  // Rótulo: prefere "11m" (ALT_EST) ou o código TIP_EST como fallback
+                  const TIP_EST_NOME: Record<string, string> = { "1": "Mad", "2": "Conc", "3": "Met", "4": "Fibra" };
+                  const tipStr = poste.tipEst != null
+                    ? (TIP_EST_NOME[String(poste.tipEst)] ?? `T${poste.tipEst}`)
+                    : null;
+                  const altStr = poste.altEst != null ? `${poste.altEst}m` : null;
+                  const infoLabel = [altStr, tipStr].filter(Boolean).join("/") || null;
                   return (
                     <g key={`poste-bdgd-${i}`}>
                       {/* Fundo branco para não sujar linhas por baixo */}
                       <circle cx={px} cy={py} r={2.0} fill="#fff" stroke="#888888" strokeWidth={0.4} />
                       {/* Anel interno (outline only — sem hachura = existente) */}
                       <circle cx={px} cy={py} r={1.2} fill="none" stroke="#888888" strokeWidth={0.4} />
-                      {/* Altura do poste (opcional) */}
-                      {altLabel && (
+                      {/* Altura / tipo do poste */}
+                      {infoLabel && (
                         <text
                           x={px + 2.4} y={py - 2.4}
                           fontSize={1.6} fill="#888888" fontFamily="Arial, sans-serif"
                         >
-                          {altLabel}
+                          {infoLabel}
                         </text>
                       )}
                     </g>

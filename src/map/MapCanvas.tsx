@@ -858,12 +858,30 @@ export function MapCanvas(props: MapCanvasProps) {
         }
       }
 
+      // Log de diagnóstico — SSDMT (primeiros 2 segmentos)
+      if (segmentosMT.length > 0) {
+        const rawMT = (() => {
+          try { return map.querySourceFeatures(BDGD_SRC.redeMT, { sourceLayer: "rede_mt" }); } catch { return []; }
+        })();
+        if (rawMT.length > 0) {
+          console.log("[BDGD] SSDMT props[0]:", JSON.stringify(rawMT[0].properties));
+          if (rawMT.length > 1) console.log("[BDGD] SSDMT props[1]:", JSON.stringify(rawMT[1].properties));
+        }
+      }
+
       // Captura postes BDGD (PONNOT) próximos — via querySourceFeatures na source PMTiles.
       // Filtra num raio de ~300 m em torno do ponto de derivação para não sobrecarregar a prancha.
       const postesBdgd: PosteBdgd[] = [];
       try {
         if (map.getSource(BDGD_SRC.postes)) {
           const postesFeatures = map.querySourceFeatures(BDGD_SRC.postes, { sourceLayer: "postes" });
+          // Log de diagnóstico — primeiros 2 postes
+          if (postesFeatures.length > 0) {
+            console.log("[BDGD] PONNOT props[0]:", JSON.stringify(postesFeatures[0].properties));
+            if (postesFeatures.length > 1) console.log("[BDGD] PONNOT props[1]:", JSON.stringify(postesFeatures[1].properties));
+          } else {
+            console.log("[BDGD] PONNOT: querySourceFeatures retornou 0 features");
+          }
           const RAIO_GD = 0.003; // ~300 m em graus (aprox.)
           for (const f of postesFeatures) {
             if (f.geometry.type !== "Point") continue;
