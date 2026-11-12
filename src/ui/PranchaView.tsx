@@ -394,9 +394,13 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                 {contextoRedeExistente.postesBdgd.map((poste, i) => {
                   const [px, py] = toSvg(poste.wgs84);
                   // Rótulo: prefere "11m" (ALT_EST) ou o código TIP_EST como fallback
-                  const TIP_EST_NOME: Record<string, string> = { "1": "Mad", "2": "Conc", "3": "Met", "4": "Fibra" };
+                  // Aceita tanto código numérico ("1","2"…) quanto texto do workflow expandido ("Madeira","Concreto"…)
+                  const TIP_EST_NOME: Record<string, string> = {
+                    "1": "Mad", "2": "Conc", "3": "Met", "4": "Fibra",
+                    "Madeira": "Mad", "Concreto": "Conc", "Metalico": "Met", "Fibra": "Fibra",
+                  };
                   const tipStr = poste.tipEst != null
-                    ? (TIP_EST_NOME[String(poste.tipEst)] ?? `T${poste.tipEst}`)
+                    ? (TIP_EST_NOME[String(poste.tipEst)] ?? String(poste.tipEst).slice(0, 4))
                     : null;
                   const altStr = poste.altEst != null ? `${poste.altEst}m` : null;
                   const infoLabel = [altStr, tipStr].filter(Boolean).join("/") || null;

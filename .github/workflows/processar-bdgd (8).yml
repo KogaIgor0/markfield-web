@@ -22,7 +22,7 @@ on:
 
 jobs:
   processar:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
       contents: write
@@ -34,7 +34,7 @@ jobs:
       - name: Instalar dependencias
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends gdal-bin tippecanoe unzip python3
+          sudo apt-get install -y --no-install-recommends gdal-bin tippecanoe unzip python3 python3-gdal
           echo "GDAL $(ogr2ogr --version)"
           echo "tippecanoe $(tippecanoe --version)"
 
@@ -81,39 +81,45 @@ jobs:
                   -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES \
                   "$TMP" "$GDB" SSDMT 2>/dev/null
                 ls -lh "$TMP"
-                echo "Expandindo domínio TIP_CND via ogrinfo..."
+                echo "Expandindo domínio TIP_CND via Python GDAL API (GDAL 3.3+)..."
                 python3 - "$GDB" "$TMP" << 'PYEOF'
-          import subprocess, re, json, sys
-          
+          import json, sys
+          from osgeo import ogr
+
           gdb, geojson_path = sys.argv[1], sys.argv[2]
-          
-          # Extrai domínio TIP_CND do GDB via ogrinfo
-          result = subprocess.run(
-              ["ogrinfo", "-al", "-so", "-ro", gdb, "SSDMT"],
-              capture_output=True, text=True
-          )
-          output = result.stdout + result.stderr
-          
-          # Mapeia código → texto a partir de linhas como "    37843: CA"
+
+          # Extrai domínio TIP_CND via GDAL Python API (OpenFileGDB GDAL 3.3+)
           domain_map = {}
-          in_tip_cnd = False
-          for line in output.splitlines():
-              if "TIP_CND" in line:
-                  in_tip_cnd = True
-              if in_tip_cnd:
-                  m = re.match(r"\s+(\d+):\s+(.+)", line)
-                  if m:
-                      domain_map[m.group(1).strip()] = m.group(2).strip()
-                  elif line.strip() and not re.match(r"\s*\d+:", line) and "TIP_CND" not in line and in_tip_cnd and domain_map:
-                      in_tip_cnd = False  # fim do bloco do domínio
-          
+          try:
+              ds = ogr.Open(gdb)
+              if ds:
+                  layer = ds.GetLayerByName("SSDMT")
+                  if layer:
+                      defn = layer.GetLayerDefn()
+                      for i in range(defn.GetFieldCount()):
+                          fld = defn.GetFieldDefn(i)
+                          if fld.GetName() == "TIP_CND":
+                              dname = fld.GetDomainName()
+                              print(f"TIP_CND: domainName={dname!r}")
+                              if dname:
+                                  domain = ds.GetFieldDomain(dname)
+                                  if domain:
+                                      enum = domain.GetEnumeration()
+                                      if isinstance(enum, dict):
+                                          domain_map = {str(k): str(v) for k, v in enum.items()}
+                                      else:
+                                          print(f"GetEnumeration() retornou {type(enum).__name__}")
+                              break
+                  ds = None
+          except Exception as e:
+              print(f"Erro GDAL API: {e}")
+
           if domain_map:
               print(f"Domínio TIP_CND: {len(domain_map)} entradas")
-              sample = list(domain_map.items())[:5]
-              for k, v in sample:
-                  print(f"  {k} → {v}")
+              for k, v in list(domain_map.items())[:5]:
+                  print(f"  {k!r} → {v!r}")
           else:
-              print("Domínio TIP_CND não encontrado via ogrinfo — TIP_CND permanecerá como código")
+              print("Domínio TIP_CND não encontrado via GDAL — TIP_CND permanecerá como código")
           
           # Aplica expansão no GeoJSON
           if domain_map:
@@ -162,6 +168,53 @@ jobs:
               PONNOT)
                 TMP="out/${{ inputs.prefixo }}-postes.geojson"
                 ogr2ogr -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES "$TMP" "$GDB" PONNOT 2>/dev/null
+                echo "Diagnosticando e expandindo domínios PONNOT..."
+                python3 - "$TMP" << 'PYEOF'
+          import json, sys
+
+          geojson_path = sys.argv[1]
+          with open(geojson_path) as f:
+              fc = json.load(f)
+
+          total = len(fc.get("features", []))
+          print(f"PONNOT: {total} features")
+
+          if total > 0:
+              p0 = fc["features"][0].get("properties", {})
+              print(f"Campos disponíveis: {list(p0.keys())}")
+              for feat in fc["features"][:3]:
+                  p = feat["properties"]
+                  print(f"  TIP_EST={p.get('TIP_EST')!r}  ALT_EST={p.get('ALT_EST')!r}  TIP_OPE={p.get('TIP_OPE')!r}  CTMT={p.get('CTMT')!r}")
+
+          # Mapas de domínio ANEEL PONNOT módulo 10 — valores padronizados 1–4
+          TIP_EST_MAP = {"1": "Madeira", "2": "Concreto", "3": "Metalico", "4": "Fibra"}
+          TIP_OPE_MAP = {"1": "Derivacao", "2": "Passagem", "3": "Termino", "4": "Ancoragem"}
+
+          expanded_est, expanded_ope = 0, 0
+          for feat in fc.get("features", []):
+              props = feat.get("properties") or {}
+              v = props.get("TIP_EST")
+              if v is not None:
+                  mapped = TIP_EST_MAP.get(str(v))
+                  if mapped:
+                      props["TIP_EST"] = mapped
+                      expanded_est += 1
+              v = props.get("TIP_OPE")
+              if v is not None:
+                  mapped = TIP_OPE_MAP.get(str(v))
+                  if mapped:
+                      props["TIP_OPE"] = mapped
+                      expanded_ope += 1
+
+          with open(geojson_path, "w") as f:
+              json.dump(fc, f, separators=(",", ":"))
+          print(f"TIP_EST expandido: {expanded_est}  |  TIP_OPE expandido: {expanded_ope}")
+
+          if total > 0:
+              for feat in fc["features"][:2]:
+                  p = feat["properties"]
+                  print(f"  → TIP_EST={p.get('TIP_EST')!r}  ALT_EST={p.get('ALT_EST')!r}  TIP_OPE={p.get('TIP_OPE')!r}")
+          PYEOF
                 SIZE=$(stat -c%s "$TMP")
                 if [ "$SIZE" -gt 30000000 ]; then
                   OUT="out/${{ inputs.prefixo }}-postes.pmtiles"
