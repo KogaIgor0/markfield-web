@@ -394,32 +394,38 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     (duplo círculo, sem hachura). Exibe ALT_EST quando disponível. */}
                 {contextoRedeExistente.postesBdgd.map((poste, i) => {
                   const [px, py] = toSvg(poste.wgs84);
-                  // Rótulo: prefere "11m" (ALT_EST) ou o código TIP_EST como fallback
+                  // Rótulo: prefere "11m/Conc" (ALT_EST + TIP_EST); fallback para TIP_OPE; último recurso "Exist."
                   // Aceita tanto código numérico ("1","2"…) quanto texto do workflow expandido ("Madeira","Concreto"…)
                   const TIP_EST_NOME: Record<string, string> = {
                     "1": "Mad", "2": "Conc", "3": "Met", "4": "Fibra",
                     "Madeira": "Mad", "Concreto": "Conc", "Metalico": "Met", "Fibra": "Fibra",
                   };
+                  const TIP_OPE_NOME: Record<string, string> = {
+                    "1": "Der", "2": "Pas", "3": "Ter", "4": "Anc",
+                    "Derivacao": "Der", "Passagem": "Pas", "Termino": "Ter", "Ancoragem": "Anc",
+                  };
                   const tipStr = poste.tipEst != null
                     ? (TIP_EST_NOME[String(poste.tipEst)] ?? String(poste.tipEst).slice(0, 4))
                     : null;
                   const altStr = poste.altEst != null ? `${poste.altEst}m` : null;
-                  const infoLabel = [altStr, tipStr].filter(Boolean).join("/") || null;
+                  const opeStr = poste.tipOpe != null
+                    ? (TIP_OPE_NOME[String(poste.tipOpe)] ?? String(poste.tipOpe).slice(0, 4))
+                    : null;
+                  // Preferência: altura+material → operação → "Exist."
+                  const infoLabel = [altStr, tipStr].filter(Boolean).join("/") || opeStr || "Exist.";
                   return (
                     <g key={`poste-bdgd-${i}`}>
                       {/* Fundo branco para não sujar linhas por baixo */}
                       <circle cx={px} cy={py} r={2.0} fill="#fff" stroke="#888888" strokeWidth={0.4} />
                       {/* Anel interno (outline only — sem hachura = existente) */}
                       <circle cx={px} cy={py} r={1.2} fill="none" stroke="#888888" strokeWidth={0.4} />
-                      {/* Altura / tipo do poste */}
-                      {infoLabel && (
-                        <text
-                          x={px + 2.4} y={py - 2.4}
-                          fontSize={1.6} fill="#888888" fontFamily="Arial, sans-serif"
-                        >
-                          {infoLabel}
-                        </text>
-                      )}
+                      {/* Altura / tipo do poste — sempre renderiza (mínimo "Exist.") */}
+                      <text
+                        x={px + 2.4} y={py - 2.4}
+                        fontSize={1.6} fill="#888888" fontFamily="Arial, sans-serif"
+                      >
+                        {infoLabel}
+                      </text>
                     </g>
                   );
                 })}
