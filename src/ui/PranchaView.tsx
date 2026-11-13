@@ -357,8 +357,9 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   const parts: string[] = [];
                   const cab = bestSeg.cabo;
                   if (cab) {
-                    // TIP_CND: exibe como veio (expandido "CA" ou código "37843")
-                    if (cab.tipo) parts.push(cab.tipo.toUpperCase());
+                    // Só mostra TIP_CND se for texto legível (ex: "CA", "ACSR")
+                    // — ignora código numérico puro (ex: "37843") que não expandiu
+                    if (cab.tipo && !/^\d+$/.test(cab.tipo)) parts.push(cab.tipo.toUpperCase());
                     if (cab.secaoMm2 != null) parts.push(`${Math.round(cab.secaoMm2)} mm²`);
                     // TEN_OPE pode vir em V (13800) ou kV (13.8) — normaliza para kV
                     const kvVal = cab.tensaoKv != null
@@ -366,7 +367,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                       : null;
                     if (kvVal != null) parts.push(`${kvVal.toFixed(1).replace(".", ",")} kV`);
                   }
-                  // Sem atributos SSDMT: exibe "Rede MT" como fallback genérico
+                  // Sem atributos SSDMT legíveis: exibe "Rede MT" como fallback
                   const label = parts.length > 0 ? parts.join(" · ") : "Rede MT";
                   const bw = Math.max(label.length * 1.4 + 2, 12);
                   const bh = 2.8;
