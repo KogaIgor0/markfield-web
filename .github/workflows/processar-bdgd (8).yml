@@ -81,106 +81,87 @@ jobs:
                   -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES \
                   "$TMP" "$GDB" SSDMT 2>/dev/null
                 ls -lh "$TMP"
-                echo "Expandindo domínio TIP_CND via Python GDAL API (GDAL 3.3+)..."
-                python3 - "$GDB" "$TMP" << 'PYEOF'
-          import json, sys
+                echo "Diagnosticando TIP_CND via ogrinfo + Python GDAL..."
+                python3 -I - "$GDB" "$TMP" << 'PYEOF'
+          import json, sys, subprocess
           from osgeo import ogr
 
           gdb, geojson_path = sys.argv[1], sys.argv[2]
-
           domain_map = {}
+
+          # --- PARTE A: schema + feature direta via Python GDAL ---
           try:
               ds = ogr.Open(gdb)
-              if not ds:
-                  print("ERRO: ogr.Open retornou None")
-                  sys.exit(0)
-
-              # 1) Lista TODOS os domínios disponíveis no GDB
-              all_domains = ds.GetFieldDomainNames() or []
-              print(f"Domínios no GDB ({len(all_domains)} total): {all_domains[:20]}")
-
-              layer = ds.GetLayerByName("SSDMT")
-              if not layer:
-                  print("ERRO: camada SSDMT não encontrada")
-                  sys.exit(0)
-
-              # 2) Lista todos os campos e seus domínios
-              defn = layer.GetLayerDefn()
-              print("Campos SSDMT e domínios:")
-              for i in range(defn.GetFieldCount()):
-                  fld = defn.GetFieldDefn(i)
-                  dn = fld.GetDomainName()
-                  if dn:
-                      print(f"  {fld.GetName()} → domínio={dn!r}")
-
-              # 3) Lê feature real e compara GetField vs GeoJSON
-              feat = layer.GetNextFeature()
-              if feat:
-                  direct_val = feat.GetField("TIP_CND")
-                  direct_crs = feat.GetField("CRS_CND")
-                  direct_ten = feat.GetField("TEN_OPE")
-                  print(f"TIP_CND via GetField() (feature direta): {direct_val!r}")
-                  print(f"CRS_CND via GetField() (feature direta): {direct_crs!r}")
-                  print(f"TEN_OPE via GetField() (feature direta): {direct_ten!r}")
-
-              # 4) Tenta GetFieldDomain para TIP_CND
-              for i in range(defn.GetFieldCount()):
-                  fld = defn.GetFieldDefn(i)
-                  if fld.GetName() == "TIP_CND":
-                      dname = fld.GetDomainName()
-                      print(f"TIP_CND: domainName={dname!r}")
-                      if dname:
-                          domain = ds.GetFieldDomain(dname)
-                          if domain:
-                              enum = domain.GetEnumeration()
-                              if isinstance(enum, dict):
-                                  domain_map = {str(k): str(v) for k, v in enum.items()}
-                              else:
-                                  print(f"GetEnumeration() retornou {type(enum).__name__}: {enum!r}")
-                          else:
-                              print(f"GetFieldDomain({dname!r}) retornou None")
-                      break
-
-              # 5) Se GetFieldDomain falhou mas GetField retornou texto ≠ código GeoJSON,
-              #    constrói mapa iterando primeiras 500 features (amostra de domínio)
-              if not domain_map:
-                  print("GetFieldDomain falhou — tentando construir mapa via iteração de features...")
-                  with open(geojson_path) as f:
-                      fc_sample = json.load(f)
-                  geojson_vals = {str(feat["properties"].get("TIP_CND",""))
-                                  for feat in fc_sample.get("features",[])[:500]
-                                  if feat.get("properties",{}).get("TIP_CND") is not None}
-                  print(f"Valores únicos TIP_CND no GeoJSON (amostra 500): {geojson_vals}")
-                  # Reinicia layer e itera
-                  layer.ResetReading()
-                  candidate_map = {}
-                  checked = 0
-                  for feat in layer:
-                      if checked >= 500: break
-                      raw_code = feat.GetField("TIP_CND")
-                      if raw_code is not None:
-                          candidate_map[str(raw_code)] = str(raw_code)
-                      checked += 1
-                  gdal_vals = set(candidate_map.keys())
-                  print(f"Valores únicos TIP_CND via GetField (amostra 500): {gdal_vals}")
-                  if gdal_vals != geojson_vals:
-                      print("DIFERENÇA detectada — GetField retorna texto expandido!")
-                      # Nesse caso teríamos que re-converter; por ora só reporta
-                  else:
-                      print("GetField = GeoJSON: domínio NÃO expandido nem via GetField")
-
-              ds = None
+              layer = ds.GetLayerByName("SSDMT") if ds else None
+              if layer:
+                  defn = layer.GetLayerDefn()
+                  # Campos com domínio
+                  for i in range(defn.GetFieldCount()):
+                      fld = defn.GetFieldDefn(i)
+                      try:
+                          dn = fld.GetDomainName()
+                          if dn:
+                              print(f"Campo {fld.GetName()} → domínio={dn!r}")
+                      except Exception:
+                          pass
+                  # Valor real de uma feature
+                  feat = layer.GetNextFeature()
+                  if feat:
+                      for campo in ["TIP_CND", "CRS_CND", "TEN_OPE"]:
+                          try:
+                              print(f"GetField({campo!r}) = {feat.GetField(campo)!r}")
+                          except Exception as ex:
+                              print(f"GetField({campo!r}) falhou: {ex}")
+                  # GetFieldDomain para TIP_CND
+                  for i in range(defn.GetFieldCount()):
+                      fld = defn.GetFieldDefn(i)
+                      if fld.GetName() == "TIP_CND":
+                          try:
+                              dname = fld.GetDomainName()
+                              print(f"TIP_CND domainName={dname!r}")
+                              if dname:
+                                  dom = ds.GetFieldDomain(dname)
+                                  if dom:
+                                      enum = dom.GetEnumeration()
+                                      if isinstance(enum, dict):
+                                          domain_map = {str(k): str(v) for k, v in enum.items()}
+                                      else:
+                                          print(f"GetEnumeration() = {type(enum).__name__}: {enum!r}")
+                                  else:
+                                      print(f"GetFieldDomain({dname!r}) → None")
+                          except AttributeError as e:
+                              print(f"GetFieldDomain indisponível: {e}")
+                          break
+              if ds: ds = None
           except Exception as e:
-              import traceback
-              print(f"Erro GDAL API: {e}")
-              traceback.print_exc()
+              import traceback; traceback.print_exc()
 
+          # --- PARTE B: ogrinfo sem -so para ver valores reais de features ---
+          print("--- ogrinfo feature dump (primeiras 2 features) ---")
+          try:
+              r = subprocess.run(
+                  ["ogrinfo", "-ro", "-nomd", "-al", gdb, "SSDMT", "-limit", "2"],
+                  capture_output=True, text=True, timeout=120
+              )
+              for line in r.stdout.splitlines():
+                  if any(k in line for k in ["TIP_CND", "CRS_CND", "TEN_OPE", "TIP_FAS", "CTMT"]):
+                      print(f"  {line.strip()}")
+          except Exception as e:
+              print(f"ogrinfo falhou: {e}")
+
+          # --- PARTE C: valores únicos TIP_CND no GeoJSON já gerado ---
+          with open(geojson_path) as f:
+              fc = json.load(f)
+          geojson_unicos = sorted({str(ft["properties"].get("TIP_CND",""))
+                                   for ft in fc.get("features",[])[:2000]
+                                   if ft.get("properties",{}).get("TIP_CND") is not None})
+          print(f"Valores únicos TIP_CND no GeoJSON (amostra 2000): {geojson_unicos}")
+
+          # --- PARTE D: aplica domain_map se encontrado ---
           if domain_map:
-              print(f"Domínio TIP_CND: {len(domain_map)} entradas")
+              print(f"Domínio encontrado: {len(domain_map)} entradas")
               for k, v in list(domain_map.items())[:5]:
                   print(f"  {k!r} → {v!r}")
-              with open(geojson_path) as f:
-                  fc = json.load(f)
               expanded = 0
               for feat in fc.get("features", []):
                   props = feat.get("properties") or {}
@@ -190,14 +171,11 @@ jobs:
                       expanded += 1
               with open(geojson_path, "w") as f:
                   json.dump(fc, f, separators=(",", ":"))
-              print(f"TIP_CND expandido em {expanded} features")
+              print(f"TIP_CND expandido em {expanded}/{len(fc['features'])} features")
           else:
-              print("Domínio TIP_CND não encontrado — TIP_CND permanecerá como código numérico")
+              print("domain_map vazio — TIP_CND permanece como código numérico no PMTiles")
 
-          # Amostra final
-          with open(geojson_path) as f:
-              fc = json.load(f)
-          print("Amostra TIP_CND após expansão:")
+          print("Amostra final:")
           for feat in fc["features"][:3]:
               p = feat["properties"]
               print(f"  TIP_CND={p.get('TIP_CND')!r}  CTMT={p.get('CTMT')!r}")
