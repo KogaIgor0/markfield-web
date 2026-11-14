@@ -81,127 +81,69 @@ jobs:
                   -t_srs EPSG:4326 -f GeoJSON -lco RFC7946=YES \
                   "$TMP" "$GDB" SSDMT 2>/dev/null
                 ls -lh "$TMP"
-                echo "Diagnosticando TIP_CND via ogrinfo + Python GDAL..."
+                echo "Expandindo TIP_CND via tabela SEGCON do GDB..."
                 python3 -I - "$GDB" "$TMP" << 'PYEOF'
-          import json, sys, subprocess
+          import json, sys
           from osgeo import ogr
 
           gdb, geojson_path = sys.argv[1], sys.argv[2]
-          domain_map = {}
+          segcon_map = {}
 
-          # --- PARTE A: schema + feature direta via Python GDAL ---
+          # --- Lê SEGCON para montar lookup TIP_CND (CATE code) → descrição condutor ---
+          # TIP_CND em SSDMT é FK para COD_ID em SEGCON; R_REGUL tem a descrição
           try:
               ds = ogr.Open(gdb)
-              layer = ds.GetLayerByName("SSDMT") if ds else None
-              if layer:
-                  defn = layer.GetLayerDefn()
-                  # Campos com domínio
-                  for i in range(defn.GetFieldCount()):
-                      fld = defn.GetFieldDefn(i)
-                      try:
-                          dn = fld.GetDomainName()
-                          if dn:
-                              print(f"Campo {fld.GetName()} → domínio={dn!r}")
-                      except Exception:
-                          pass
-                  # Valor real de uma feature
-                  feat = layer.GetNextFeature()
-                  if feat:
-                      for campo in ["TIP_CND", "CRS_CND", "TEN_OPE"]:
+              if ds:
+                  segcon = ds.GetLayerByName("SEGCON")
+                  if segcon:
+                      count = 0
+                      for feat in segcon:
                           try:
-                              print(f"GetField({campo!r}) = {feat.GetField(campo)!r}")
-                          except Exception as ex:
-                              print(f"GetField({campo!r}) falhou: {ex}")
-                  # GetFieldDomain para TIP_CND
-                  for i in range(defn.GetFieldCount()):
-                      fld = defn.GetFieldDefn(i)
-                      if fld.GetName() == "TIP_CND":
-                          try:
-                              dname = fld.GetDomainName()
-                              print(f"TIP_CND domainName={dname!r}")
-                              if dname:
-                                  dom = ds.GetFieldDomain(dname)
-                                  if dom:
-                                      enum = dom.GetEnumeration()
-                                      if isinstance(enum, dict):
-                                          domain_map = {str(k): str(v) for k, v in enum.items()}
-                                      else:
-                                          print(f"GetEnumeration() = {type(enum).__name__}: {enum!r}")
-                                  else:
-                                      print(f"GetFieldDomain({dname!r}) → None")
-                          except AttributeError as e:
-                              print(f"GetFieldDomain indisponível: {e}")
-                          break
-              if ds: ds = None
-          except Exception as e:
-              import traceback; traceback.print_exc()
-
-          # --- PARTE B: lista layers do GDB + tenta GDB_Items (domínios como XML) ---
-          try:
-              ds2 = ogr.Open(gdb)
-              if ds2:
-                  n = ds2.GetLayerCount()
-                  names = [ds2.GetLayerByIndex(i).GetName() for i in range(n)]
-                  print(f"Layers no GDB ({n}): {names}")
-                  # Tenta ler GDB_Items — onde ESRI armazena domínios como XML
-                  items_lyr = ds2.GetLayerByName("GDB_Items")
-                  if items_lyr:
-                      print("GDB_Items encontrado — procurando domínios TIP_CND...")
-                      for feat in items_lyr:
-                          try:
-                              name = str(feat.GetField("Name") or "")
-                              defn = str(feat.GetField("Definition") or "")
-                              if "TIP_CND" in defn or "TIP_CND" in name:
-                                  print(f"  Item={name!r}  Defn[:500]={defn[:500]!r}")
+                              cod = feat.GetField("COD_ID")
+                              desc = None
+                              for campo in ["R_REGUL", "DES_CND", "TIP_CND", "NOM_CND"]:
+                                  try:
+                                      v = feat.GetField(campo)
+                                      if v:
+                                          desc = str(v)
+                                          break
+                                  except Exception:
+                                      pass
+                              if cod and desc:
+                                  segcon_map[str(cod)] = desc
+                                  count += 1
                           except Exception:
                               pass
+                      print(f"SEGCON: {count} condutores carregados")
+                      for k, v in list(segcon_map.items())[:5]:
+                          print(f"  {k!r} → {v!r}")
                   else:
-                      print("GDB_Items não acessível via OpenFileGDB")
-                  ds2 = None
+                      print("SEGCON não encontrado no GDB — TIP_CND ficará numérico")
+                  ds = None
           except Exception as e:
               import traceback; traceback.print_exc()
 
-          # --- PARTE B2: ogrinfo -so (só schema) para ver fields reais ---
-          print("--- ogrinfo schema SSDMT ---")
-          try:
-              r = subprocess.run(
-                  ["ogrinfo", "-ro", "-nomd", "-so", gdb, "SSDMT"],
-                  capture_output=True, text=True, timeout=60
-              )
-              # Imprime tudo (schema é pequeno)
-              for line in (r.stdout + r.stderr).splitlines()[:60]:
-                  print(f"  {line}")
-          except Exception as e:
-              print(f"ogrinfo -so falhou: {e}")
-
-          # --- PARTE C: valores únicos TIP_CND no GeoJSON já gerado ---
+          # --- Aplica lookup ao GeoJSON SSDMT ---
           with open(geojson_path) as f:
               fc = json.load(f)
-          geojson_unicos = sorted({str(ft["properties"].get("TIP_CND",""))
-                                   for ft in fc.get("features",[])[:2000]
-                                   if ft.get("properties",{}).get("TIP_CND") is not None})
-          print(f"Valores únicos TIP_CND no GeoJSON (amostra 2000): {geojson_unicos}")
+          print(f"SSDMT: {len(fc.get('features', []))} features")
 
-          # --- PARTE D: aplica domain_map se encontrado ---
-          if domain_map:
-              print(f"Domínio encontrado: {len(domain_map)} entradas")
-              for k, v in list(domain_map.items())[:5]:
-                  print(f"  {k!r} → {v!r}")
+          if segcon_map:
               expanded = 0
               for feat in fc.get("features", []):
                   props = feat.get("properties") or {}
-                  raw = str(props.get("TIP_CND", ""))
-                  if raw in domain_map:
-                      props["TIP_CND"] = domain_map[raw]
+                  raw = str(props.get("TIP_CND", "")) if props.get("TIP_CND") is not None else ""
+                  if raw and raw in segcon_map:
+                      props["TIP_CND"] = segcon_map[raw]
                       expanded += 1
               with open(geojson_path, "w") as f:
                   json.dump(fc, f, separators=(",", ":"))
-              print(f"TIP_CND expandido em {expanded}/{len(fc['features'])} features")
+              print(f"TIP_CND expandido: {expanded}/{len(fc['features'])} features")
           else:
-              print("domain_map vazio — TIP_CND permanece como código numérico no PMTiles")
+              print("Sem mapa SEGCON — TIP_CND permanece numérico")
 
           print("Amostra final:")
-          for feat in fc["features"][:3]:
+          for feat in fc.get("features", [])[:3]:
               p = feat["properties"]
               print(f"  TIP_CND={p.get('TIP_CND')!r}  CTMT={p.get('CTMT')!r}")
           PYEOF
@@ -438,6 +380,7 @@ jobs:
             out/index.json
           make_latest: false
           fail_on_unmatched_files: false
+          overwrite: true
 
       - name: Upload linhas por CTMT
         continue-on-error: true
