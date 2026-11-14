@@ -136,18 +136,43 @@ jobs:
           except Exception as e:
               import traceback; traceback.print_exc()
 
-          # --- PARTE B: ogrinfo sem -so para ver valores reais de features ---
-          print("--- ogrinfo feature dump (primeiras 2 features) ---")
+          # --- PARTE B: lista layers do GDB + tenta GDB_Items (domínios como XML) ---
+          try:
+              ds2 = ogr.Open(gdb)
+              if ds2:
+                  n = ds2.GetLayerCount()
+                  names = [ds2.GetLayerByIndex(i).GetName() for i in range(n)]
+                  print(f"Layers no GDB ({n}): {names}")
+                  # Tenta ler GDB_Items — onde ESRI armazena domínios como XML
+                  items_lyr = ds2.GetLayerByName("GDB_Items")
+                  if items_lyr:
+                      print("GDB_Items encontrado — procurando domínios TIP_CND...")
+                      for feat in items_lyr:
+                          try:
+                              name = str(feat.GetField("Name") or "")
+                              defn = str(feat.GetField("Definition") or "")
+                              if "TIP_CND" in defn or "TIP_CND" in name:
+                                  print(f"  Item={name!r}  Defn[:500]={defn[:500]!r}")
+                          except Exception:
+                              pass
+                  else:
+                      print("GDB_Items não acessível via OpenFileGDB")
+                  ds2 = None
+          except Exception as e:
+              import traceback; traceback.print_exc()
+
+          # --- PARTE B2: ogrinfo -so (só schema) para ver fields reais ---
+          print("--- ogrinfo schema SSDMT ---")
           try:
               r = subprocess.run(
-                  ["ogrinfo", "-ro", "-nomd", "-al", gdb, "SSDMT", "-limit", "2"],
-                  capture_output=True, text=True, timeout=120
+                  ["ogrinfo", "-ro", "-nomd", "-so", gdb, "SSDMT"],
+                  capture_output=True, text=True, timeout=60
               )
-              for line in r.stdout.splitlines():
-                  if any(k in line for k in ["TIP_CND", "CRS_CND", "TEN_OPE", "TIP_FAS", "CTMT"]):
-                      print(f"  {line.strip()}")
+              # Imprime tudo (schema é pequeno)
+              for line in (r.stdout + r.stderr).splitlines()[:60]:
+                  print(f"  {line}")
           except Exception as e:
-              print(f"ogrinfo falhou: {e}")
+              print(f"ogrinfo -so falhou: {e}")
 
           # --- PARTE C: valores únicos TIP_CND no GeoJSON já gerado ---
           with open(geojson_path) as f:
