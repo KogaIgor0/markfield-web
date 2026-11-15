@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LatLng, Projeto } from "../domain/model";
 import type { PatchPonto } from "../domain/edicao";
 import type { RedeEsforcos } from "../domain/esforco";
@@ -6,7 +6,6 @@ import type { ResumoMateriais } from "../domain/materiais";
 import { ESRI_MAXZOOM } from "../config";
 import {
   bboxProjeto,
-  escalaParaCaber,
   ESCALAS_PADRAO,
   layoutFolha,
   passoEscalaM,
@@ -57,6 +56,54 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   const [mostrarTrechos, setMostrarTrechos] = useState(true);
   const [mostrarSatelite, setMostrarSatelite] = useState(false);
   const [mostrarOsmPrancha, setMostrarOsmPrancha] = useState(false);
+
+  // ── Zoom / pan interativo ────────────────────────────────────────────────
+  const [zoomPrancha, setZoomPrancha] = useState(1.0);
+  const [panPrancha, setPanPrancha] = useState({ x: 0, y: 0 });
+  const viewportRef = useRef<HTMLDivElement>(null);
+  // Refs para acesso sem re-render dentro dos event listeners nativos
+  const zoomRef = useRef(1.0);
+  const panRef  = useRef({ x: 0, y: 0 });
+  zoomRef.current = zoomPrancha;
+  panRef.current  = panPrancha;
+  const dragRef = useRef<{ mouseX: number; mouseY: number; panX: number; panY: number } | null>(null);
+
+  // Wheel não-passivo para permitir preventDefault (evita scroll da página)
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = vp.getBoundingClientRect();
+      const cx = e.clientX - rect.left - rect.width  / 2;
+      const cy = e.clientY - rect.top  - rect.height / 2;
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const prevZoom = zoomRef.current;
+      const newZoom  = Math.max(0.05, Math.min(20, prevZoom * factor));
+      const dInv = 1 / newZoom - 1 / prevZoom;
+      setZoomPrancha(newZoom);
+      setPanPrancha({ x: panRef.current.x + cx * dInv, y: panRef.current.y + cy * dInv });
+    };
+    vp.addEventListener("wheel", handler, { passive: false });
+    return () => vp.removeEventListener("wheel", handler);
+  }, []); // refs garantem valores atuais sem re-registrar
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    dragRef.current = { mouseX: e.clientX, mouseY: e.clientY, panX: panRef.current.x, panY: panRef.current.y };
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.mouseX;
+    const dy = e.clientY - dragRef.current.mouseY;
+    setPanPrancha({ x: dragRef.current.panX + dx / zoomRef.current, y: dragRef.current.panY + dy / zoomRef.current });
+  }, []);
+
+  const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
+  // ── fim zoom / pan ───────────────────────────────────────────────────────
+
   // posição do balão: lida de p.balaoPos (persiste no modelo)
 
   // Layout da folha (mm) — o mesmo do DXF (domain/prancha.ts).
@@ -65,10 +112,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
 
   const bbox = useMemo(() => bboxProjeto(projeto), [projeto]);
 
-  const escalaAuto = useMemo(
-    () => (bbox ? escalaParaCaber(bbox, desenho.w, desenho.h, 0.12) : 1000),
-    [bbox, desenho.w, desenho.h],
-  );
+  const escalaAuto = 1000; // 1:1000 padrão DIS-NOR para redes de distribuição
   const escala = escalaModo === "auto" ? escalaAuto : escalaModo;
 
   // Projeção compartilhada (conteúdo centralizado na área de desenho).
@@ -260,6 +304,12 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
           <input type="checkbox" checked={mostrarOsmPrancha} onChange={(e) => setMostrarOsmPrancha(e.target.checked)} />
           🌿 OSM
         </label>
+        {/* Zoom / pan */}
+        <span className="prancha-barra-sep" />
+        <button className="btn btn-mini" title="Zoom −" onClick={() => setZoomPrancha(z => Math.max(0.05, z / 1.5))}>−</button>
+        <span className="prancha-zoom-pct" title="Zoom atual">{Math.round(zoomPrancha * 100)}%</span>
+        <button className="btn btn-mini" title="Zoom +" onClick={() => setZoomPrancha(z => Math.min(20, z * 1.5))}>+</button>
+        <button className="btn btn-mini" title="Encaixar desenho" onClick={() => { setZoomPrancha(1); setPanPrancha({ x: 0, y: 0 }); }}>Fit</button>
         <span className="prancha-barra-sep" />
         <button className="btn" onClick={baixarDxf} title="Baixa a prancha em DXF (a folha em mm), como pede a norma junto do PDF">
           Baixar DXF
@@ -272,7 +322,18 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
         </button>
       </div>
 
-      <div className="prancha-papel">
+      <div
+        className="prancha-papel"
+        ref={viewportRef}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        <div
+          className="prancha-transform"
+          style={{ transform: `scale(${zoomPrancha}) translate(${panPrancha.x}px, ${panPrancha.y}px)` }}
+        >
         <svg
           className="prancha-svg"
           viewBox={`0 0 ${W} ${H}`}
@@ -877,7 +938,8 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
           {/* --- Carimbo (provisório) --- */}
           <Carimbo x={carimbo.x} y={carimbo.y} w={carimbo.w} h={carimbo.h} projeto={projeto} escala={escala} />
         </svg>
-      </div>
+        </div>{/* prancha-transform */}
+      </div>{/* prancha-papel */}
     </div>
   );
 }

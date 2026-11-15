@@ -1193,18 +1193,37 @@ body {
 
 .prancha-papel {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;        /* viewport de pan/zoom */
   display: flex;
   justify-content: center;
-  align-items: flex-start;
-  padding: 24px;
+  align-items: center;
+  cursor: grab;
+  user-select: none;       /* evita selecionar texto durante drag */
+}
+.prancha-papel:active {
+  cursor: grabbing;
+}
+
+/* Wrapper de transformação — escala + translação aplicadas aqui */
+.prancha-transform {
+  transform-origin: center center;
+  flex-shrink: 0;
+  line-height: 0;          /* evita espaço extra abaixo do SVG inline */
 }
 
 .prancha-svg {
-  width: min(1200px, 96%);
+  width: min(1200px, 96vw);
   height: auto;
   background: #fff;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+}
+
+/* Percentual de zoom na barra */
+.prancha-zoom-pct {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 36px;
+  text-align: center;
 }
 
 @media print {
@@ -1223,6 +1242,11 @@ body {
     overflow: visible !important;
     padding: 0 !important;
     display: block !important;
+    cursor: default !important;
+  }
+  /* Resetar zoom/pan para impressão — saída sempre em escala real */
+  .prancha-transform {
+    transform: none !important;
   }
   .prancha-svg {
     box-shadow: none !important;
