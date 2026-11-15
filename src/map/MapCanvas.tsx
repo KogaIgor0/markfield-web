@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Feature, FeatureCollection, Point } from "geojson";
+import type { Feature, FeatureCollection, Geometry, Point } from "geojson";
 import type { LatLng, Projeto, TipoPonto } from "../domain/model";
 import { fotosGeoJson, linhasGeoJson, pontosGeoJson } from "./geojson";
 import { BASE_MAPA, ESRI_MAXZOOM, MAPTILER_KEY } from "../config";
@@ -239,6 +239,12 @@ interface MapCanvasProps {
   modoBdgdCorrigir?: boolean;
   /** Chamado com a posição escolhida pelo usuário no modo de correção BDGD. */
   onCorrigirPosicaoEscolhida?: (wgs84: LatLng) => void;
+  /**
+   * Delta a aplicar VISUALMENTE nas sources BDGD do mapa.
+   * Muda (seq incrementa) cada vez que uma correção é confirmada.
+   * dLat/dLng: graus a somar em todas as features BDGD do viewport.
+   */
+  bdgdDeltaAplicado?: { dLat: number; dLng: number; seq: number } | null;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -1137,6 +1143,85 @@ export function MapCanvas(props: MapCanvasProps) {
 
     return () => { cancelado = true; };
   }, [capturarContextoBdgdTrigger]);
+
+  // BDGD — aplica visualmente o delta de correção nas sources do mapa.
+  // GeoJSON (redeMT, trafos): querySourceFeatures devolve TODOS os features → setData corrigido.
+  // PMTiles/vetor (postes Elektro): cria source GeoJSON de sobreposição com postes visíveis corrigidos
+  // e oculta o layer original, evitando duplicação.
+  useEffect(() => {
+    const map = mapRef.current;
+    const delta = props.bdgdDeltaAplicado;
+    if (!map || !delta) return;
+    const { dLat, dLng } = delta;
+
+    const shiftGeom = (geom: Geometry): Geometry => {
+      if (geom.type === "Point") {
+        const [lng, lat] = geom.coordinates as [number, number];
+        return { type: "Point", coordinates: [lng + dLng, lat + dLat] };
+      }
+      if (geom.type === "LineString") {
+        return {
+          type: "LineString",
+          coordinates: (geom.coordinates as [number, number][]).map(
+            ([lng, lat]) => [lng + dLng, lat + dLat],
+          ),
+        };
+      }
+      return geom;
+    };
+
+    const deslocarSourceGeoJson = (srcId: string): void => {
+      const src = map.getSource(srcId);
+      if (!src || src.type !== "geojson") return;
+      const feats = map.querySourceFeatures(srcId);
+      (src as maplibregl.GeoJSONSource).setData({
+        type: "FeatureCollection",
+        features: feats.map((f) => ({ ...f, geometry: shiftGeom(f.geometry) })) as Feature[],
+      });
+    };
+
+    deslocarSourceGeoJson(BDGD_SRC.redeMT);
+    deslocarSourceGeoJson(BDGD_SRC.redeBT);
+    deslocarSourceGeoJson(BDGD_SRC.transformadores);
+
+    // Postes: GeoJSON ou PMTiles (vector)
+    const postesSrc = map.getSource(BDGD_SRC.postes);
+    if (!postesSrc) return;
+
+    if (postesSrc.type === "geojson") {
+      deslocarSourceGeoJson(BDGD_SRC.postes);
+    } else {
+      // PMTiles: cria/atualiza uma source GeoJSON de sobreposição com as features visíveis corrigidas.
+      const OVR_SRC = BDGD_SRC.postes + "-corr";
+      const OVR_LYR = BDGD_LYR.postes + "-corr";
+      const feats = map.querySourceFeatures(BDGD_SRC.postes, { sourceLayer: "postes" });
+      const correctedFC: FeatureCollection = {
+        type: "FeatureCollection",
+        features: feats.map((f) => ({ ...f, geometry: shiftGeom(f.geometry) })) as Feature[],
+      };
+      if (!map.getSource(OVR_SRC)) {
+        map.addSource(OVR_SRC, { type: "geojson", data: correctedFC });
+        map.addLayer({
+          id: OVR_LYR,
+          type: "circle",
+          source: OVR_SRC,
+          minzoom: 14,
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 14, 2, 17, 5] as maplibregl.ExpressionSpecification,
+            "circle-color": "#334155",
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "#94a3b8",
+          },
+        });
+      } else {
+        (map.getSource(OVR_SRC) as maplibregl.GeoJSONSource).setData(correctedFC);
+      }
+      // Ocultar layer PMTiles original para evitar duplicação visual
+      if (map.getLayer(BDGD_LYR.postes)) {
+        map.setLayoutProperty(BDGD_LYR.postes, "visibility", "none");
+      }
+    }
+  }, [props.bdgdDeltaAplicado]);
 
   return <div ref={containerRef} className="map-canvas" />;
 }

@@ -168,6 +168,13 @@ export function App() {
   const [bdgdDeltaPendente, setBdgdDeltaPendente] = useState<{
     dLat: number; dLng: number; distM: number;
   } | null>(null);
+  /**
+   * Último delta confirmado — passado ao MapCanvas para atualizar VISUALMENTE as sources BDGD.
+   * seq incrementa a cada confirmação; dLat/dLng é o delta daquela correção específica.
+   */
+  const [bdgdDeltaAplicado, setBdgdDeltaAplicado] = useState<{
+    dLat: number; dLng: number; seq: number;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
@@ -428,6 +435,12 @@ export function App() {
     );
     setContextoBdgd(ctxCorrigido);
     atualizar({ ...projeto, contextoRedeExistente: ctxCorrigido } as unknown as Projeto);
+    // Aciona atualização visual das sources BDGD no MapCanvas
+    setBdgdDeltaAplicado((prev) => ({
+      dLat: bdgdDeltaPendente.dLat,
+      dLng: bdgdDeltaPendente.dLng,
+      seq: (prev?.seq ?? 0) + 1,
+    }));
     setBdgdSelecionado(null);
     setBdgdDeltaPendente(null);
   }, [bdgdDeltaPendente, contextoBdgd, projeto, atualizar]);
@@ -628,6 +641,7 @@ export function App() {
     setModo("selecionar");
     setChaveEnq((c) => c + 1);
     setContextoBdgd(null);
+    setBdgdDeltaAplicado(null);
     onCancelarBdgd();
   }, [salvo, onCancelarBdgd]);
 
@@ -1337,6 +1351,7 @@ export function App() {
           onBdgdElementoClicado={onBdgdElementoClicado}
           modoBdgdCorrigir={modoBdgdCorrigir}
           onCorrigirPosicaoEscolhida={onCorrigirPosicaoEscolhida}
+          bdgdDeltaAplicado={bdgdDeltaAplicado}
         />
 
         {/* BarraFerramentas movida para a topbar */}
