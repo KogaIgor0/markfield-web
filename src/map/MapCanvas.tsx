@@ -14,6 +14,12 @@ import {
   BDGD_SRC,
   type BdgdCarregamentoResultado,
 } from "./bdgd";
+import {
+  inicializarCamadaKmlRede,
+  carregarKmlRede,
+  limparKmlRede,
+  setVisibilidadeKmlRede,
+} from "./kmlRedeLayer";
 import type { ContextoBdgd, PosteBdgd, SegmentoMT } from "../domain/prancha";
 
 /**
@@ -214,6 +220,10 @@ interface MapCanvasProps {
   wgs84Derivacao?: LatLng | null;
   /** Chamado com o contexto BDGD capturado (ou undefined se mapa sem dados). */
   onContextoBdgdCapturado?: (ctx: ContextoBdgd) => void;
+  /** GeoJSON da rede KML importada pelo usuário (null = limpar). */
+  kmlRedeGeojson?: GeoJSON.FeatureCollection | null;
+  /** Se a camada de rede KML deve estar visível. */
+  kmlRedeVisivel?: boolean;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -272,6 +282,8 @@ export function MapCanvas(props: MapCanvasProps) {
     mostrarOsm,
     voarPara,
     capturarContextoBdgdTrigger,
+    kmlRedeGeojson,
+    kmlRedeVisivel,
   } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -304,6 +316,7 @@ export function MapCanvas(props: MapCanvasProps) {
       prontoRef.current = true;
       inicializarCamadasOsmVec(map);
       inicializarCamadasBdgd(map);
+      inicializarCamadaKmlRede(map);
       // Aplica estilo inicial (pode ter sido alterado antes do load)
       aplicarEstiloBase(map, propsRef.current.estiloBase ?? "satellite");
       // Aplica visibilidade OSM inicial
@@ -697,6 +710,24 @@ export function MapCanvas(props: MapCanvasProps) {
     if (!map || !prontoRef.current || !camadasBdgdVisiveis) return;
     aplicarVisibilidadeBdgd(map, camadasBdgdVisiveis);
   }, [camadasBdgdVisiveis]);
+
+  // KML Rede — atualiza dados quando o GeoJSON muda.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const run = () => {
+      if (kmlRedeGeojson) carregarKmlRede(map, kmlRedeGeojson);
+      else limparKmlRede(map);
+    };
+    if (prontoRef.current) run(); else map.once("load", run);
+  }, [kmlRedeGeojson]);
+
+  // KML Rede — visibilidade.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !prontoRef.current) return;
+    setVisibilidadeKmlRede(map, kmlRedeVisivel ?? true);
+  }, [kmlRedeVisivel]);
 
   // Estilo de mapa base
   useEffect(() => {

@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { BDGD_CAMADAS, BDGD_FONTES, BDGD_FONTES_DISPONIVEIS } from "../map/bdgd";
 
 interface Props {
@@ -9,9 +10,19 @@ interface Props {
   onCarregar: () => void;
   onChangeFonte: (id: string) => void;
   onFechar: () => void;
+  /** Nome do arquivo KML/KMZ carregado (undefined = nenhum). */
+  kmlRedeNome?: string;
+  kmlRedeVisivel?: boolean;
+  onAbrirKmlRede?: (file: File) => void;
+  onToggleKmlRede?: () => void;
+  onLimparKmlRede?: () => void;
 }
 
-export function PainelCamadas({ fonteId, ativas, carregando, erro, onToggle, onCarregar, onChangeFonte, onFechar }: Props) {
+export function PainelCamadas({
+  fonteId, ativas, carregando, erro, onToggle, onCarregar, onChangeFonte, onFechar,
+  kmlRedeNome, kmlRedeVisivel, onAbrirKmlRede, onToggleKmlRede, onLimparKmlRede,
+}: Props) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const fonte = BDGD_FONTES.find((f) => f.id === fonteId) ?? BDGD_FONTES[0];
   const temUrls = !!fonte.urls;
 
@@ -78,6 +89,44 @@ export function PainelCamadas({ fonteId, ativas, carregando, erro, onToggle, onC
       >
         {carregando ? "Carregando…" : "Carregar rede nesta área"}
       </button>
+
+      {/* ── Rede própria (KML / KMZ) ── */}
+      <div className="pc-divisor" />
+      <div className="pc-kml-titulo">Rede própria (KML / KMZ)</div>
+
+      {kmlRedeNome ? (
+        <div className="pc-kml-carregado">
+          <label className="pc-toggle">
+            <span className="pc-bolinha" style={{ background: "#3b82f6" }} />
+            <span className="pc-label pc-kml-nome" title={kmlRedeNome}>{kmlRedeNome}</span>
+            <input
+              type="checkbox"
+              checked={kmlRedeVisivel ?? true}
+              onChange={onToggleKmlRede}
+            />
+          </label>
+          <button className="pc-kml-limpar" onClick={onLimparKmlRede} title="Remover">✕</button>
+        </div>
+      ) : (
+        <button
+          className="pc-carregar-btn pc-kml-btn"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          📂 Abrir KML / KMZ
+        </button>
+      )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".kml,.kmz"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onAbrirKmlRede?.(f);
+          e.target.value = "";
+        }}
+      />
     </div>
   );
 }

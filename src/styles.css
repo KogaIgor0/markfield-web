@@ -1428,6 +1428,49 @@ body {
   cursor: not-allowed;
 }
 
+/* KML de rede própria */
+.pc-divisor {
+  margin: 10px 0 8px;
+  border: none;
+  border-top: 1px solid rgba(100,116,139,0.25);
+}
+.pc-kml-titulo {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--pc-muted, #94a3b8);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  padding: 0 2px;
+}
+.pc-kml-btn {
+  background: rgba(59,130,246,0.15);
+  color: #3b82f6;
+}
+.pc-kml-btn:hover:not(:disabled) { background: rgba(59,130,246,0.25); }
+.pc-kml-carregado {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pc-kml-nome {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pc-kml-limpar {
+  background: none;
+  border: none;
+  color: var(--pc-muted, #94a3b8);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.pc-kml-limpar:hover { color: #ef4444; }
+
 /* ============================================================
    BARRA DE FERRAMENTAS (style switcher + busca)
    ============================================================ */

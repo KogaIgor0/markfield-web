@@ -5,6 +5,7 @@ import { SplashScreen } from "./ui/SplashScreen";
 import { PainelPonto } from "./ui/PainelPonto";
 import { PainelTrecho } from "./ui/PainelTrecho";
 import { importarKml, importarMkf, importarPacote, type RelatorioImport } from "./io/pacote";
+import { parseKmlRede } from "./io/kmlRede";
 import { mesclarProjetos, type RelatorioMerge } from "./domain/merge";
 import { direcoesDePonto, ehErro, estenderPonto, inserirNoVao } from "./domain/inserir";
 import { PainelInserir, type EspecInsercao } from "./ui/PainelInserir";
@@ -145,6 +146,10 @@ export function App() {
   const [carregandoBdgd, setCarregandoBdgd] = useState(false);
   const [bdgdCarregarTrigger, setBdgdCarregarTrigger] = useState(0);
   const [bdgdErro, setBdgdErro] = useState<string | null>(null);
+  // KML de rede própria
+  const [kmlRedeGeojson, setKmlRedeGeojson] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [kmlRedeNome, setKmlRedeNome] = useState<string | undefined>(undefined);
+  const [kmlRedeVisivel, setKmlRedeVisivel] = useState(true);
   const [estiloBase, setEstiloBase] = useState<EstiloBase>("satellite");
   const [mostrarOsm, setMostrarOsm] = useState(false);
   const [voarPara, setVoarPara] = useState<MapAlvo | null>(null);
@@ -309,6 +314,23 @@ export function App() {
     setBdgdErro(null);
     setBdgdCarregarTrigger((t) => t + 1);
     setTrafosData(null);
+  }, []);
+
+  const onAbrirKmlRede = useCallback(async (file: File) => {
+    try {
+      const resultado = await parseKmlRede(file);
+      setKmlRedeGeojson(resultado.geojson);
+      setKmlRedeNome(resultado.nomeArquivo);
+      setKmlRedeVisivel(true);
+    } catch (err) {
+      alert(`Erro ao abrir ${file.name}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, []);
+
+  const onLimparKmlRede = useCallback(() => {
+    setKmlRedeGeojson(null);
+    setKmlRedeNome(undefined);
+    setKmlRedeVisivel(true);
   }, []);
 
   const onBdgdCarregado = useCallback((resultado: BdgdCarregamentoResultado) => {
@@ -1203,6 +1225,8 @@ export function App() {
           estiloBase={estiloBase}
           mostrarOsm={mostrarOsm}
           voarPara={voarPara}
+          kmlRedeGeojson={kmlRedeGeojson}
+          kmlRedeVisivel={kmlRedeVisivel}
         />
 
         {/* BarraFerramentas movida para a topbar */}
@@ -1217,6 +1241,11 @@ export function App() {
             onCarregar={onCarregarBdgd}
             onChangeFonte={setBdgdFonteId}
             onFechar={() => setMostrarCamadas(false)}
+            kmlRedeNome={kmlRedeNome}
+            kmlRedeVisivel={kmlRedeVisivel}
+            onAbrirKmlRede={onAbrirKmlRede}
+            onToggleKmlRede={() => setKmlRedeVisivel((v) => !v)}
+            onLimparKmlRede={onLimparKmlRede}
           />
         )}
 
