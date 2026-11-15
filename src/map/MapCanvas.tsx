@@ -224,6 +224,12 @@ interface MapCanvasProps {
   kmlRedeGeojson?: GeoJSON.FeatureCollection | null;
   /** Se a camada de rede KML deve estar visível. */
   kmlRedeVisivel?: boolean;
+  /** Ativa modo de seleção de área para captura BDGD da prancha. */
+  modoSelecaoPrancha?: boolean;
+  /** Bbox confirmado pelo usuário para filtrar a captura BDGD (minLng, minLat, maxLng, maxLat). */
+  capturaBbox?: [number, number, number, number] | null;
+  /** Chamado quando o usuário confirma o retângulo no modo seleção de área. */
+  onBboxPranchaConfirmado?: (bbox: [number, number, number, number]) => void;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -298,6 +304,10 @@ export function MapCanvas(props: MapCanvasProps) {
   const propsRef = useRef(props);
   propsRef.current = props;
 
+  // Ref que guarda o bbox de captura atual — acessível dentro dos closures do useEffect.
+  const capturaBboxRef = useRef<[number, number, number, number] | null>(null);
+  capturaBboxRef.current = props.capturaBbox ?? null;
+
   // Cria o mapa e registra os handlers de interação uma única vez.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -355,6 +365,7 @@ export function MapCanvas(props: MapCanvasProps) {
       if (id && arrastou) propsRef.current.onMoverPonto?.(id, { lat: e.lngLat.lat, lng: e.lngLat.lng });
     };
     map.on("mousedown", LYR.pontos, (e) => {
+      if (propsRef.current.modoSelecaoPrancha) return; // bbox drawing mode — ignore
       const id = e.features?.[0]?.properties?.id as string | undefined;
       if (!id) return;
       if (emModoLigar() || emModoInserir()) {
@@ -395,6 +406,7 @@ export function MapCanvas(props: MapCanvasProps) {
 
     // Selecionar um trecho (só no modo selecionar).
     map.on("click", LYR.linhas, (e) => {
+      if (propsRef.current.modoSelecaoPrancha) return;
       if (emModoLigar() || emModoAdicionar() || emModoInserir()) return;
       const id = e.features?.[0]?.properties?.id as string | undefined;
       if (!id) return;
@@ -486,6 +498,7 @@ export function MapCanvas(props: MapCanvasProps) {
 
     // Clique geral: adicionar (modo adicionar) ou desmarcar (clique no vazio).
     map.on("click", (e) => {
+      if (propsRef.current.modoSelecaoPrancha) return;
       const m = propsRef.current.modo;
       if (m === "medir") {
         propsRef.current.onMedirPonto?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });
@@ -777,6 +790,80 @@ export function MapCanvas(props: MapCanvasProps) {
     }
   }, [bdgdCarregarTrigger, bdgdFonteId]);
 
+  // Modo seleção de área para prancha: desenha retângulo de captura BDGD.
+  const { modoSelecaoPrancha } = props;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !prontoRef.current) return;
+    if (!modoSelecaoPrancha) return;
+
+    const BBOX_SRC = "mkf-bbox-sel-src";
+    const BBOX_FILL = "mkf-bbox-sel-fill";
+    const BBOX_LINE = "mkf-bbox-sel-line";
+
+    if (!map.getSource(BBOX_SRC)) {
+      map.addSource(BBOX_SRC, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      map.addLayer({ id: BBOX_FILL, type: "fill", source: BBOX_SRC,
+        paint: { "fill-color": "#3b82f6", "fill-opacity": 0.18 } });
+      map.addLayer({ id: BBOX_LINE, type: "line", source: BBOX_SRC,
+        paint: { "line-color": "#3b82f6", "line-width": 2, "line-dasharray": [5, 3] } });
+    }
+
+    const canvas = map.getCanvas();
+    canvas.style.cursor = "crosshair";
+    map.dragPan.disable();
+
+    let startLng: number | null = null;
+    let startLat: number | null = null;
+    let arrastando = false;
+
+    const onDown = (e: maplibregl.MapMouseEvent) => {
+      startLng = e.lngLat.lng;
+      startLat = e.lngLat.lat;
+      arrastando = true;
+    };
+    const onMove = (e: maplibregl.MapMouseEvent) => {
+      if (!arrastando || startLng === null || startLat === null) return;
+      const minLng = Math.min(startLng, e.lngLat.lng);
+      const maxLng = Math.max(startLng, e.lngLat.lng);
+      const minLat = Math.min(startLat, e.lngLat.lat);
+      const maxLat = Math.max(startLat, e.lngLat.lat);
+      (map.getSource(BBOX_SRC) as maplibregl.GeoJSONSource).setData({
+        type: "FeatureCollection",
+        features: [{ type: "Feature", geometry: { type: "Polygon",
+          coordinates: [[[minLng, minLat], [maxLng, minLat], [maxLng, maxLat], [minLng, maxLat], [minLng, minLat]]] },
+          properties: {} }],
+      });
+    };
+    const onUp = (e: maplibregl.MapMouseEvent) => {
+      if (!arrastando || startLng === null || startLat === null) return;
+      arrastando = false;
+      const minLng = Math.min(startLng, e.lngLat.lng);
+      const maxLng = Math.max(startLng, e.lngLat.lng);
+      const minLat = Math.min(startLat, e.lngLat.lat);
+      const maxLat = Math.max(startLat, e.lngLat.lat);
+      // Exige área mínima (~10 m) para evitar clique acidental
+      if (maxLng - minLng > 0.0001 && maxLat - minLat > 0.0001) {
+        propsRef.current.onBboxPranchaConfirmado?.([minLng, minLat, maxLng, maxLat]);
+      }
+    };
+
+    map.on("mousedown", onDown);
+    map.on("mousemove", onMove);
+    map.on("mouseup", onUp);
+
+    return () => {
+      map.off("mousedown", onDown);
+      map.off("mousemove", onMove);
+      map.off("mouseup", onUp);
+      canvas.style.cursor = "";
+      map.dragPan.enable();
+      if (map.getLayer(BBOX_FILL)) map.removeLayer(BBOX_FILL);
+      if (map.getLayer(BBOX_LINE)) map.removeLayer(BBOX_LINE);
+      if (map.getSource(BBOX_SRC)) map.removeSource(BBOX_SRC);
+    };
+  }, [modoSelecaoPrancha]);
+
   // BDGD — captura contexto (rede existente) para a prancha.
   useEffect(() => {
     if (!capturarContextoBdgdTrigger) return;
@@ -809,7 +896,8 @@ export function MapCanvas(props: MapCanvasProps) {
 
       // Converte features de linha para segmentos de 2 vértices (apenas vizinhos ao ponto de derivação)
       const segmentosMT: SegmentoMT[] = [];
-      if (derivacao && featuresRedeMT.length > 0) {
+      const bboxMT = capturaBboxRef.current;
+      if (featuresRedeMT.length > 0 && (derivacao || bboxMT)) {
         // Calcula distância quadrada entre dois pontos WGS84 (aproximação plana suficiente p/ ~100m)
         const distSq = (a: LatLng, b: LatLng) => {
           const dlat = a.lat - b.lat;
@@ -834,15 +922,26 @@ export function MapCanvas(props: MapCanvasProps) {
               const ate: LatLng = { lat: coords[i + 1][1], lng: coords[i + 1][0] };
               const midLat = (de.lat + ate.lat) / 2;
               const midLng = (de.lng + ate.lng) / 2;
-              const d = distSq({ lat: midLat, lng: midLng }, derivacao);
+              // Filtro por bbox quando disponível; senão filtra por distância no sort abaixo
+              if (bboxMT) {
+                const dentroDeAlg = (
+                  (de.lng >= bboxMT[0] && de.lng <= bboxMT[2] && de.lat >= bboxMT[1] && de.lat <= bboxMT[3]) ||
+                  (ate.lng >= bboxMT[0] && ate.lng <= bboxMT[2] && ate.lat >= bboxMT[1] && ate.lat <= bboxMT[3]) ||
+                  (midLng >= bboxMT[0] && midLng <= bboxMT[2] && midLat >= bboxMT[1] && midLat <= bboxMT[3])
+                );
+                if (!dentroDeAlg) continue;
+              }
+              const d = derivacao ? distSq({ lat: midLat, lng: midLng }, derivacao) : 0;
               candidatos.push({ de, ate, distSq: d, props });
             }
           }
         }
 
-        // Ordena por proximidade e pega os 5 mais próximos
+        // Com bbox: inclui até 20 segmentos mais próximos do derivacao (ou todos se não há derivacao).
+        // Sem bbox: pega os 5 mais próximos do ponto de derivação.
+        const limite = bboxMT ? 20 : 5;
         candidatos.sort((a, b) => a.distSq - b.distSq);
-        for (const c of candidatos.slice(0, 5)) {
+        for (const c of candidatos.slice(0, limite)) {
           // Extrai atributos do cabo do SSDMT (gracioso se ausentes no PMTiles)
           const p = c.props;
           const toStr = (v: unknown) =>
@@ -860,9 +959,10 @@ export function MapCanvas(props: MapCanvasProps) {
         }
       }
 
-      // Busca transformador mais próximo via querySourceFeatures no source GeoJSON
+      // Busca transformador(es) via querySourceFeatures no source GeoJSON
       let trafoProximo: ContextoBdgd["trafoProximo"] | undefined;
-      if (derivacao) {
+      const bboxTraf = capturaBboxRef.current;
+      if (derivacao || bboxTraf) {
         try {
           const trafFeatures = map.getSource(BDGD_SRC.transformadores)
             ? map.querySourceFeatures(BDGD_SRC.transformadores)
@@ -871,8 +971,12 @@ export function MapCanvas(props: MapCanvasProps) {
           for (const f of trafFeatures) {
             if (f.geometry.type !== "Point") continue;
             const [lng, lat] = f.geometry.coordinates;
-            const dlat = lat - derivacao.lat;
-            const dlng = lng - derivacao.lng;
+            // Com bbox: só considera trafos dentro da área selecionada
+            if (bboxTraf) {
+              if (lng < bboxTraf[0] || lng > bboxTraf[2] || lat < bboxTraf[1] || lat > bboxTraf[3]) continue;
+            }
+            const dlat = lat - (derivacao?.lat ?? lat);
+            const dlng = lng - (derivacao?.lng ?? lng);
             const d = dlat * dlat + dlng * dlng;
             if (d < minD) {
               minD = d;
@@ -914,10 +1018,14 @@ export function MapCanvas(props: MapCanvasProps) {
             console.log("[BDGD] PONNOT: querySourceFeatures retornou 0 features");
           }
           const RAIO_GD = 0.003; // ~300 m em graus (aprox.)
+          const bbox = capturaBboxRef.current;
           for (const f of postesFeatures) {
             if (f.geometry.type !== "Point") continue;
             const [lng, lat] = f.geometry.coordinates;
-            if (derivacao) {
+            if (bbox) {
+              // Bbox definido pelo usuário — filtra dentro da área selecionada
+              if (lng < bbox[0] || lng > bbox[2] || lat < bbox[1] || lat > bbox[3]) continue;
+            } else if (derivacao) {
               const dlat = Math.abs(lat - derivacao.lat);
               const dlng = Math.abs(lng - derivacao.lng);
               if (dlat > RAIO_GD || dlng > RAIO_GD) continue;

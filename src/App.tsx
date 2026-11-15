@@ -150,6 +150,10 @@ export function App() {
   const [kmlRedeGeojson, setKmlRedeGeojson] = useState<GeoJSON.FeatureCollection | null>(null);
   const [kmlRedeNome, setKmlRedeNome] = useState<string | undefined>(undefined);
   const [kmlRedeVisivel, setKmlRedeVisivel] = useState(true);
+  // Seleção de área para captura BDGD da prancha
+  const [modoSelecaoPrancha, setModoSelecaoPrancha] = useState(false);
+  const [capturaBboxPrancha, setCapturaBboxPrancha] = useState<[number,number,number,number] | null>(null);
+  const [bdgdCarregado, setBdgdCarregado] = useState(false);
   const [estiloBase, setEstiloBase] = useState<EstiloBase>("satellite");
   const [mostrarOsm, setMostrarOsm] = useState(false);
   const [voarPara, setVoarPara] = useState<MapAlvo | null>(null);
@@ -338,12 +342,25 @@ export function App() {
     if (!resultado.ok) {
       setBdgdErro(resultado.erro ?? "Erro ao carregar BDGD.");
     } else {
+      setBdgdCarregado(true);
       // Captura contexto BDGD assim que carrega — enquanto o mapa está visível
       // e as tiles acabaram de renderizar. Isso garante que ao abrir a prancha
       // o dado já está disponível, sem depender do queryRenderedFeatures no momento
       // em que a prancha cobre o mapa.
       setCapturarContextoBdgdTrigger((v) => v + 1);
     }
+  }, []);
+
+  /** Bbox confirmado pelo usuário para filtrar a captura BDGD da prancha. */
+  const onBboxPranchaConfirmado = useCallback((bbox: [number,number,number,number]) => {
+    setCapturaBboxPrancha(bbox);
+    setModoSelecaoPrancha(false);
+    setCapturarContextoBdgdTrigger((v) => v + 1);
+    // Abre a prancha depois da captura
+    setSelecionadoId(null);
+    setSelecionadoTrechoId(null);
+    setMostrarMateriais(false);
+    setMostrarPrancha(true);
   }, []);
 
   /** Ponto de derivação (ehFonte=true) — base de busca da rede existente na prancha. */
@@ -751,6 +768,7 @@ export function App() {
         setMostrarCamadas(false);
         setSelecionadoId(null);
         setSelecionadoTrechoId(null);
+        setModoSelecaoPrancha(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -996,19 +1014,23 @@ export function App() {
                 Materiais
               </button>
               <button
-                className={`btn${mostrarPrancha ? " btn-ativo" : ""}`}
+                className={`btn${mostrarPrancha || modoSelecaoPrancha ? " btn-ativo" : ""}`}
                 onClick={() => {
-                  const abrir = !mostrarPrancha;
-                  setMostrarPrancha(abrir);
-                  if (abrir) {
-                    selecionarPonto(null);
-                    selecionarTrecho(null);
-                    setMostrarMateriais(false);
-                    // Dispara captura da rede existente BDGD para incluir na prancha
+                  if (modoSelecaoPrancha) { setModoSelecaoPrancha(false); return; }
+                  if (mostrarPrancha) { setMostrarPrancha(false); return; }
+                  selecionarPonto(null);
+                  selecionarTrecho(null);
+                  setMostrarMateriais(false);
+                  if (bdgdCarregado) {
+                    // BDGD ativo: pede ao usuário para marcar a área primeiro
+                    setCapturaBboxPrancha(null);
+                    setModoSelecaoPrancha(true);
+                  } else {
                     setCapturarContextoBdgdTrigger((v) => v + 1);
+                    setMostrarPrancha(true);
                   }
                 }}
-                title="Gera a prancha do projeto (folha em escala com moldura, carimbo, simbologia e materiais) — imprime em PDF"
+                title="Gera a prancha do projeto — marque a área da rede existente a incluir"
               >
                 Prancha
               </button>
@@ -1161,18 +1183,22 @@ export function App() {
                 <span className="tv-label">Mats</span>
               </button>
               <button
-                className={`tv-btn${mostrarPrancha ? " active" : ""}`}
+                className={`tv-btn${mostrarPrancha || modoSelecaoPrancha ? " active" : ""}`}
                 onClick={() => {
-                  const abrir = !mostrarPrancha;
-                  setMostrarPrancha(abrir);
-                  if (abrir) {
-                    selecionarPonto(null);
-                    selecionarTrecho(null);
-                    setMostrarMateriais(false);
+                  if (modoSelecaoPrancha) { setModoSelecaoPrancha(false); return; }
+                  if (mostrarPrancha) { setMostrarPrancha(false); return; }
+                  selecionarPonto(null);
+                  selecionarTrecho(null);
+                  setMostrarMateriais(false);
+                  if (bdgdCarregado) {
+                    setCapturaBboxPrancha(null);
+                    setModoSelecaoPrancha(true);
+                  } else {
                     setCapturarContextoBdgdTrigger((v) => v + 1);
+                    setMostrarPrancha(true);
                   }
                 }}
-                title="Gerar prancha"
+                title="Gerar prancha — marque a área para capturar rede existente"
               >
                 <span className="tv-icon">📄</span>
                 <span className="tv-label">Prancha</span>
@@ -1227,6 +1253,9 @@ export function App() {
           voarPara={voarPara}
           kmlRedeGeojson={kmlRedeGeojson}
           kmlRedeVisivel={kmlRedeVisivel}
+          modoSelecaoPrancha={modoSelecaoPrancha}
+          capturaBbox={capturaBboxPrancha}
+          onBboxPranchaConfirmado={onBboxPranchaConfirmado}
         />
 
         {/* BarraFerramentas movida para a topbar */}
@@ -1329,6 +1358,15 @@ export function App() {
             <span>Arraste o ponto no mapa para o novo lugar</span>
             <button className="btn btn-mini" onClick={() => setMovendoId(null)}>
               Concluir (Esc)
+            </button>
+          </div>
+        )}
+
+        {modoSelecaoPrancha && (
+          <div className="modo-bar modo-bar-prancha-area">
+            <span>📐 Arraste um retângulo na área da rede existente para incluir na prancha</span>
+            <button className="btn btn-mini" onClick={() => setModoSelecaoPrancha(false)}>
+              Cancelar (Esc)
             </button>
           </div>
         )}
