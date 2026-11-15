@@ -65,6 +65,26 @@ export interface ContextoBdgd {
 }
 
 /**
+ * Desloca TODOS os elementos do contexto BDGD por um delta lat/lng (graus).
+ * Usa para corrigir erros sistemáticos de georreferenciamento: quando um
+ * poste de campo não bate com o poste BDGD, o mesmo offset é aplicado a tudo.
+ */
+export function deslocarContextoBdgd(
+  ctx: ContextoBdgd,
+  dLat: number,
+  dLng: number,
+): ContextoBdgd {
+  const mv = (p: LatLng): LatLng => ({ lat: p.lat + dLat, lng: p.lng + dLng });
+  return {
+    trafoProximo: ctx.trafoProximo
+      ? { ...ctx.trafoProximo, wgs84: mv(ctx.trafoProximo.wgs84) }
+      : undefined,
+    segmentosMT: ctx.segmentosMT.map((s) => ({ ...s, de: mv(s.de), ate: mv(s.ate) })),
+    postesBdgd: ctx.postesBdgd.map((p) => ({ ...p, wgs84: mv(p.wgs84) })),
+  };
+}
+
+/**
  * Motor de desenho da prancha (B6) — parte determinística e testável.
  *
  * A prancha é a **folha em escala** (o desenho de projeto), não o mapa nem o DXF

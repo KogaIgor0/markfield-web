@@ -43,7 +43,7 @@ import { PainelCamadas } from "./ui/PainelCamadas";
 import { PranchaView } from "./ui/PranchaView";
 import { NovoProjetoModal } from "./ui/NovoProjetoModal";
 import { BDGD_CAMADAS_PADRAO, type BdgdCarregamentoResultado } from "./map/bdgd";
-import type { ContextoBdgd } from "./domain/prancha";
+import { deslocarContextoBdgd, type ContextoBdgd } from "./domain/prancha";
 import type { FeatureCollection } from "geojson";
 import { comporEstrutura, separarEstrutura } from "./domain/estruturas-catalogo";
 import {
@@ -160,6 +160,14 @@ export function App() {
   const [trafosData, setTrafosData] = useState<FeatureCollection | null>(null);
   const [contextoBdgd, setContextoBdgd] = useState<ContextoBdgd | null>(null);
   const [capturarContextoBdgdTrigger, setCapturarContextoBdgdTrigger] = useState(0);
+  /** Elemento BDGD clicado pelo usuário para correção de coordenada. */
+  const [bdgdSelecionado, setBdgdSelecionado] = useState<{ tipo: "poste" | "trafo"; wgs84: LatLng } | null>(null);
+  /** True enquanto aguarda o usuário clicar no mapa para escolher a nova posição. */
+  const [modoBdgdCorrigir, setModoBdgdCorrigir] = useState(false);
+  /** Delta calculado aguardando confirmação do usuário antes de aplicar a todos. */
+  const [bdgdDeltaPendente, setBdgdDeltaPendente] = useState<{
+    dLat: number; dLng: number; distM: number;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
@@ -363,16 +371,74 @@ export function App() {
     setMostrarPrancha(true);
   }, []);
 
+  const atualizar = useCallback((novo: Projeto) => {
+    setEstado((e) => ({ ...e, projeto: novo }));
+    setSalvo(false);
+  }, []);
+
+  // ── Correção de coordenada BDGD ──────────────────────────────────────────
+
+  /**
+   * Quando BDGD é capturado pelo mapa, também persiste no projeto (.mkf).
+   * Isso permite restaurar o contexto ao reabrir o arquivo sem recapturar.
+   */
+  const onContextoBdgdCapturadoComSalvar = useCallback((ctx: ContextoBdgd) => {
+    setContextoBdgd(ctx);
+    if (projeto) atualizar({ ...projeto, contextoRedeExistente: ctx } as unknown as Projeto);
+  }, [projeto, atualizar]);
+
+  /** Usuário clicou em um poste ou trafo BDGD no mapa → entra no fluxo de correção. */
+  const onBdgdElementoClicado = useCallback((tipo: "poste" | "trafo", wgs84: LatLng) => {
+    if (!contextoBdgd) return; // sem contexto BDGD, nada a corrigir
+    setBdgdSelecionado({ tipo, wgs84 });
+    setBdgdDeltaPendente(null);
+    setModoBdgdCorrigir(false);
+  }, [contextoBdgd]);
+
+  /** Usuário clicou em "Corrigir coordenada" → entra no modo aguardar clique no mapa. */
+  const onIniciarCorrecaoBdgd = useCallback(() => {
+    setModoBdgdCorrigir(true);
+    setBdgdDeltaPendente(null);
+  }, []);
+
+  /** Cancela qualquer fase do fluxo de correção BDGD. */
+  const onCancelarBdgd = useCallback(() => {
+    setBdgdSelecionado(null);
+    setModoBdgdCorrigir(false);
+    setBdgdDeltaPendente(null);
+  }, []);
+
+  /** Usuário clicou no mapa durante o modo correção → calcula delta e pede confirmação. */
+  const onCorrigirPosicaoEscolhida = useCallback((wgs84novo: LatLng) => {
+    if (!bdgdSelecionado || !contextoBdgd) return;
+    setModoBdgdCorrigir(false);
+    const dLat = wgs84novo.lat - bdgdSelecionado.wgs84.lat;
+    const dLng = wgs84novo.lng - bdgdSelecionado.wgs84.lng;
+    const distM = distanciaM(bdgdSelecionado.wgs84, wgs84novo);
+    setBdgdDeltaPendente({ dLat, dLng, distM });
+  }, [bdgdSelecionado, contextoBdgd]);
+
+  /** Aplica o deslocamento calculado a todos os elementos BDGD e persiste no projeto. */
+  const onConfirmarDeltaBdgd = useCallback(() => {
+    if (!bdgdDeltaPendente || !contextoBdgd || !projeto) return;
+    const ctxCorrigido = deslocarContextoBdgd(
+      contextoBdgd,
+      bdgdDeltaPendente.dLat,
+      bdgdDeltaPendente.dLng,
+    );
+    setContextoBdgd(ctxCorrigido);
+    atualizar({ ...projeto, contextoRedeExistente: ctxCorrigido } as unknown as Projeto);
+    setBdgdSelecionado(null);
+    setBdgdDeltaPendente(null);
+  }, [bdgdDeltaPendente, contextoBdgd, projeto, atualizar]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   /** Ponto de derivação (ehFonte=true) — base de busca da rede existente na prancha. */
   const wgs84Derivacao = useMemo(
     () => projeto?.pontos.find((p) => p.ehFonte)?.wgs84 ?? null,
     [projeto],
   );
-
-  const atualizar = useCallback((novo: Projeto) => {
-    setEstado((e) => ({ ...e, projeto: novo }));
-    setSalvo(false);
-  }, []);
 
   const abrir = useCallback(async (arquivo: File) => {
     setErro(null);
@@ -416,6 +482,9 @@ export function App() {
       setModo("selecionar");
       setChaveEnq((c) => c + 1);
       setSalvo(true);
+      // Restaura o contexto BDGD salvo no projeto (postes/trafo/segmentos corrigidos).
+      setContextoBdgd((resultado.projeto as unknown as { contextoRedeExistente?: ContextoBdgd }).contextoRedeExistente ?? null);
+      onCancelarBdgd();
       // Registra no histórico (só para .mkf; KML/ZIP ficam no histórico após o 1º "Salvar").
       if (mkfBlobParaDb) {
         const newDbId = gerarDbId();
@@ -530,12 +599,15 @@ export function App() {
       setModo("selecionar");
       setChaveEnq((c) => c + 1);
       setSalvo(true);
+      // Restaura contexto BDGD salvo no projeto.
+      setContextoBdgd((resultado.projeto as unknown as { contextoRedeExistente?: ContextoBdgd }).contextoRedeExistente ?? null);
+      onCancelarBdgd();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao abrir o projeto do histórico.");
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [onCancelarBdgd]);
 
   /** Fecha o projeto aberto, voltando ao estado vazio. */
   const fecharProjeto = useCallback(() => {
@@ -555,12 +627,18 @@ export function App() {
     setMedicao([]);
     setModo("selecionar");
     setChaveEnq((c) => c + 1);
-  }, [salvo]);
+    setContextoBdgd(null);
+    onCancelarBdgd();
+  }, [salvo, onCancelarBdgd]);
 
   const salvar = useCallback(async () => {
     if (!projeto) return;
     try {
-      const blob = await exportarMkf(projeto, estado.blobs);
+      // Injeta o contexto BDGD (postes/segmentos MT corrigidos) no projeto antes de serializar.
+      const projetoParaSalvar = contextoBdgd
+        ? ({ ...projeto, contextoRedeExistente: contextoBdgd } as unknown as Projeto)
+        : projeto;
+      const blob = await exportarMkf(projetoParaSalvar, estado.blobs);
       const nome = nomeArquivoMkf(projeto);
 
       // Tenta usar File System Access API para salvar no mesmo arquivo.
@@ -1247,7 +1325,7 @@ export function App() {
           onBdgdCarregado={onBdgdCarregado}
           capturarContextoBdgdTrigger={capturarContextoBdgdTrigger}
           wgs84Derivacao={wgs84Derivacao}
-          onContextoBdgdCapturado={setContextoBdgd}
+          onContextoBdgdCapturado={onContextoBdgdCapturadoComSalvar}
           estiloBase={estiloBase}
           mostrarOsm={mostrarOsm}
           voarPara={voarPara}
@@ -1256,6 +1334,9 @@ export function App() {
           modoSelecaoPrancha={modoSelecaoPrancha}
           capturaBbox={capturaBboxPrancha}
           onBboxPranchaConfirmado={onBboxPranchaConfirmado}
+          onBdgdElementoClicado={onBdgdElementoClicado}
+          modoBdgdCorrigir={modoBdgdCorrigir}
+          onCorrigirPosicaoEscolhida={onCorrigirPosicaoEscolhida}
         />
 
         {/* BarraFerramentas movida para a topbar */}
@@ -1370,6 +1451,44 @@ export function App() {
             </button>
           </div>
         )}
+
+        {/* ── Fluxo de correção de coordenada BDGD ── */}
+        {bdgdSelecionado && !modoBdgdCorrigir && !bdgdDeltaPendente && (
+          <div className="modo-bar modo-bar-bdgd">
+            <span>
+              🔵 {bdgdSelecionado.tipo === "trafo" ? "Transformador" : "Poste"} BDGD selecionado
+            </span>
+            <button className="btn btn-mini btn-accent" onClick={onIniciarCorrecaoBdgd}>
+              Corrigir coordenada
+            </button>
+            <button className="btn btn-mini" onClick={onCancelarBdgd}>✕</button>
+          </div>
+        )}
+
+        {modoBdgdCorrigir && (
+          <div className="modo-bar modo-bar-bdgd">
+            <span>🎯 Clique no poste de campo (ou em qualquer ponto do mapa) para a posição correta</span>
+            <button className="btn btn-mini" onClick={onCancelarBdgd}>Cancelar</button>
+          </div>
+        )}
+
+        {bdgdDeltaPendente && contextoBdgd && (
+          <div className="modo-bar modo-bar-bdgd modo-bar-bdgd-confirmar">
+            <span>
+              Deslocar{" "}
+              <strong>
+                {contextoBdgd.postesBdgd.length + (contextoBdgd.trafoProximo ? 1 : 0) + contextoBdgd.segmentosMT.length}
+              </strong>{" "}
+              elementos BDGD em{" "}
+              <strong>{bdgdDeltaPendente.distM.toFixed(1)} m</strong>?
+            </span>
+            <button className="btn btn-mini btn-accent" onClick={onConfirmarDeltaBdgd}>
+              Sim, deslocar todos
+            </button>
+            <button className="btn btn-mini" onClick={onCancelarBdgd}>Cancelar</button>
+          </div>
+        )}
+        {/* ─────────────────────────────────────────── */}
 
         {selecionado && projeto && (
           <PainelPonto

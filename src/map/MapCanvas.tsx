@@ -230,6 +230,15 @@ interface MapCanvasProps {
   capturaBbox?: [number, number, number, number] | null;
   /** Chamado quando o usuário confirma o retângulo no modo seleção de área. */
   onBboxPranchaConfirmado?: (bbox: [number, number, number, number]) => void;
+  /** Chamado quando o usuário clica em um poste ou trafo BDGD (inicia fluxo de correção). */
+  onBdgdElementoClicado?: (tipo: "poste" | "trafo", wgs84: LatLng) => void;
+  /**
+   * Quando true, o próximo clique no mapa captura a nova posição desejada para o
+   * elemento BDGD. O cursor muda para crosshair. Snap automático para pontos de projeto.
+   */
+  modoBdgdCorrigir?: boolean;
+  /** Chamado com a posição escolhida pelo usuário no modo de correção BDGD. */
+  onCorrigirPosicaoEscolhida?: (wgs84: LatLng) => void;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -307,6 +316,13 @@ export function MapCanvas(props: MapCanvasProps) {
   // Ref que guarda o bbox de captura atual — acessível dentro dos closures do useEffect.
   const capturaBboxRef = useRef<[number, number, number, number] | null>(null);
   capturaBboxRef.current = props.capturaBbox ?? null;
+
+  // Cursor crosshair enquanto o modo de correção BDGD está ativo.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.getCanvas().style.cursor = props.modoBdgdCorrigir ? "crosshair" : "";
+  }, [props.modoBdgdCorrigir]);
 
   // Cria o mapa e registra os handlers de interação uma única vez.
   useEffect(() => {
@@ -474,6 +490,32 @@ export function MapCanvas(props: MapCanvasProps) {
       popupBdgdRef.current?.remove();
       popupBdgdRef.current = null;
     });
+
+    // Flag para impedir que o handler geral de clique processe após click em camada BDGD.
+    // MapLibre não tem stopPropagation entre layer-click e map-click genérico.
+    let bdgdClickHandled = false;
+
+    // ── BDGD postes: clique → iniciar fluxo de correção de coordenada ────
+    map.on("click", BDGD_LYR.postes, (e) => {
+      if (propsRef.current.modoSelecaoPrancha) return;
+      if (propsRef.current.modoBdgdCorrigir) return; // em modo correção não re-seleciona
+      const f = e.features?.[0];
+      if (!f || f.geometry.type !== "Point") return;
+      const [lng, lat] = f.geometry.coordinates as [number, number];
+      propsRef.current.onBdgdElementoClicado?.("poste", { lat, lng });
+      bdgdClickHandled = true;
+    });
+
+    // ── BDGD transformadores: clique → iniciar fluxo de correção ─────────
+    map.on("click", BDGD_LYR.transformadores, (e) => {
+      if (propsRef.current.modoSelecaoPrancha) return;
+      if (propsRef.current.modoBdgdCorrigir) return;
+      const f = e.features?.[0];
+      if (!f || f.geometry.type !== "Point") return;
+      const [lng, lat] = f.geometry.coordinates as [number, number];
+      propsRef.current.onBdgdElementoClicado?.("trafo", { lat, lng });
+      bdgdClickHandled = true;
+    });
     // ──────────────────────────────────────────────────────────────────────
 
     // Foto → popup com a imagem.
@@ -498,7 +540,26 @@ export function MapCanvas(props: MapCanvasProps) {
 
     // Clique geral: adicionar (modo adicionar) ou desmarcar (clique no vazio).
     map.on("click", (e) => {
+      // Se um layer BDGD já tratou este clique, ignora aqui para não criar ponto inadvertidamente.
+      if (bdgdClickHandled) { bdgdClickHandled = false; return; }
       if (propsRef.current.modoSelecaoPrancha) return;
+      // Modo correção BDGD: captura nova posição (snap para ponto de projeto, ou livre)
+      if (propsRef.current.modoBdgdCorrigir) {
+        const pontosNaArea = map.queryRenderedFeatures(e.point, { layers: [LYR.pontos] });
+        if (pontosNaArea.length > 0) {
+          const pf = pontosNaArea[0];
+          if (pf.geometry.type === "Point") {
+            const [lng, lat] = pf.geometry.coordinates as [number, number];
+            propsRef.current.onCorrigirPosicaoEscolhida?.({ lat, lng });
+            return;
+          }
+        }
+        propsRef.current.onCorrigirPosicaoEscolhida?.({
+          lat: e.lngLat.lat,
+          lng: e.lngLat.lng,
+        });
+        return;
+      }
       const m = propsRef.current.modo;
       if (m === "medir") {
         propsRef.current.onMedirPonto?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });

@@ -1138,6 +1138,24 @@ body {
   color: #3b82f6;
 }
 
+/* Correção de coordenada BDGD */
+.modo-bar-bdgd {
+  border-color: #64748b;
+  background: rgba(100,116,139,0.14);
+}
+.modo-bar-bdgd-confirmar {
+  border-color: #d97706;
+  background: rgba(217,119,6,0.12);
+}
+.btn-accent {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.btn-accent:hover {
+  opacity: 0.85;
+}
+
 /* ---------------------------------------------------------------------------
    Prancha (B6) — folha de projeto em escala + impressão/PDF
    --------------------------------------------------------------------------- */
