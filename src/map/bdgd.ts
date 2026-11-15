@@ -553,32 +553,47 @@ export async function carregarDadosBdgd(
    * circuito visível no viewport atual. Arquivos individuais por circuito (~50–300 KB)
    * evitam o problema do trafos.geojson consolidado (148–700 MB).
    */
+  /** Espera até o mapa ficar idle E tiles carregados, com até maxMs de espera. */
+  const aguardarIdleComTiles = (maxMs = 8000): Promise<void> =>
+    new Promise<void>((resolve) => {
+      const fim = Date.now() + maxMs;
+      const tentar = () => {
+        if (map.areTilesLoaded()) { resolve(); return; }
+        const restante = fim - Date.now();
+        if (restante <= 0) { resolve(); return; }
+        map.once("idle", () => {
+          // Idle disparou — confirma se tiles estão realmente prontos
+          if (map.areTilesLoaded()) { resolve(); }
+          else { setTimeout(tentar, 300); }
+        });
+      };
+      tentar();
+    });
+
   const carregarTrafosPorCtmt = async (): Promise<void> => {
-    // Aguarda tiles da Rede MT renderizarem no viewport (idle = tudo carregado)
-    await new Promise<void>((resolve) => {
-      const done = () => { clearTimeout(timer); resolve(); };
-      const timer = setTimeout(done, 6000); // timeout de segurança
-      if (map.areTilesLoaded()) {
-        done();
-      } else {
-        map.once("idle", done);
+    // Aguarda tiles da Rede MT renderizarem (retry até 8 s)
+    await aguardarIdleComTiles(8000);
+
+    // Tenta extrair CTMTs do viewport até 3 vezes (tiles podem chegar tardio)
+    let ctmts = new Set<string>();
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      const features = map.queryRenderedFeatures(undefined, {
+        layers: [BDGD_LYR.redeMT],
+      });
+      console.log(`[BDGD] queryRenderedFeatures tentativa ${tentativa + 1}: ${features.length} features`);
+      for (const f of features) {
+        const ctmt = (f.properties?.["CTMT"] ?? f.properties?.["COD_CTMT"]) as unknown;
+        if (ctmt != null && String(ctmt).trim()) ctmts.add(String(ctmt).trim());
       }
-    });
-
-    // Consulta features da Rede MT visíveis no viewport
-    const features = map.queryRenderedFeatures(undefined, {
-      layers: [BDGD_LYR.redeMT],
-    });
-
-    // Extrai CTMTs únicos (campo CTMT ou COD_CTMT dependendo do pipeline)
-    const ctmts = new Set<string>();
-    for (const f of features) {
-      const ctmt = (f.properties?.["CTMT"] ?? f.properties?.["COD_CTMT"]) as unknown;
-      if (ctmt != null && String(ctmt).trim()) ctmts.add(String(ctmt).trim());
+      if (ctmts.size > 0) break;
+      if (tentativa < 2) {
+        await new Promise<void>((r) => setTimeout(r, 2000));
+        await aguardarIdleComTiles(4000);
+      }
     }
 
     if (ctmts.size === 0) {
-      console.warn("[BDGD] Nenhum CTMT visível — tente aproximar o mapa");
+      console.warn("[BDGD] Nenhum CTMT visível após 3 tentativas — tente aproximar o mapa");
       return;
     }
 
@@ -586,24 +601,33 @@ export async function carregarDadosBdgd(
 
     // Busca os arquivos per-CTMT em paralelo
     const todasFeatures: GeoJSON.Feature[] = [];
+    let ok = 0, falha = 0;
     await Promise.all(
       [...ctmts].map(async (ctmt) => {
         try {
           const url = `${BDGD_CDN}/${fonte.id}/trafos-${ctmt}.geojson`;
           const res = await fetch(url);
-          if (!res.ok) return; // CTMT sem arquivo de trafos (normal para alguns circuitos)
+          if (!res.ok) {
+            console.warn(`[BDGD] trafos-${ctmt}: HTTP ${res.status}`);
+            falha++;
+            return;
+          }
           const fc = (await res.json()) as GeoJSON.FeatureCollection;
           todasFeatures.push(...fc.features);
-        } catch {
-          // silencioso — nem todos os CTMTs têm transformadores no release
+          ok++;
+        } catch (e) {
+          console.warn(`[BDGD] trafos-${ctmt}: erro`, e);
+          falha++;
         }
       }),
     );
 
+    console.log(`[BDGD] Trafos: ${ok} CTMTs ok, ${falha} falhas, ${todasFeatures.length} features total`);
+
     if (todasFeatures.length > 0) {
       const src = map.getSource(BDGD_SRC.transformadores) as maplibregl.GeoJSONSource | undefined;
       src?.setData({ type: "FeatureCollection", features: todasFeatures });
-      console.log(`[BDGD] ${todasFeatures.length} transformadores carregados`);
+      console.log(`[BDGD] ${todasFeatures.length} transformadores carregados no mapa`);
     }
   };
 
