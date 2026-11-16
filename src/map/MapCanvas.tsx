@@ -240,11 +240,17 @@ interface MapCanvasProps {
   /** Chamado com a posição escolhida pelo usuário no modo de correção BDGD. */
   onCorrigirPosicaoEscolhida?: (wgs84: LatLng) => void;
   /**
-   * Delta a aplicar VISUALMENTE nas sources BDGD do mapa.
+   * Delta a aplicar VISUALMENTE nas sources BDGD do mapa (correção sistemática).
    * Muda (seq incrementa) cada vez que uma correção é confirmada.
    * dLat/dLng: graus a somar em todas as features BDGD do viewport.
    */
   bdgdDeltaAplicado?: { dLat: number; dLng: number; seq: number } | null;
+  /**
+   * Lista acumulada de correções individuais de poste/trafo.
+   * Cada item descreve qual elemento mover (tipo, posição original e nova).
+   * Muda referência sempre que um novo elemento é corrigido.
+   */
+  bdgdCorrecoesPostes?: Array<{ tipo: "poste" | "trafo"; original: LatLng; novo: LatLng }> | null;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -1222,6 +1228,90 @@ export function MapCanvas(props: MapCanvasProps) {
       }
     }
   }, [props.bdgdDeltaAplicado]);
+
+  // BDGD — aplica visualmente correções INDIVIDUAIS de poste/trafo.
+  // Apenas o(s) elemento(s) corrigido(s) mudam de posição; os demais ficam no lugar.
+  // Para PMTiles (postes Elektro): overlay GeoJSON com todos os postes visíveis,
+  // mas somente os que constam na lista corrigidos na nova posição.
+  useEffect(() => {
+    const map = mapRef.current;
+    const correcoes = props.bdgdCorrecoesPostes;
+    if (!map || !correcoes || correcoes.length === 0) return;
+
+    const tol = 1e-6; // ~0.1 m
+    const aplicar = (lng: number, lat: number): [number, number] => {
+      const c = correcoes.find(
+        (c) =>
+          Math.abs(c.original.lat - lat) < tol &&
+          Math.abs(c.original.lng - lng) < tol,
+      );
+      return c ? [c.novo.lng, c.novo.lat] : [lng, lat];
+    };
+
+    // Atualiza trafos se houver correção de trafo
+    if (correcoes.some((c) => c.tipo === "trafo")) {
+      const trafSrc = map.getSource(BDGD_SRC.transformadores);
+      if (trafSrc && trafSrc.type === "geojson") {
+        const feats = map.querySourceFeatures(BDGD_SRC.transformadores);
+        (trafSrc as maplibregl.GeoJSONSource).setData({
+          type: "FeatureCollection",
+          features: feats.map((f) => {
+            if (f.geometry.type !== "Point") return { ...f, geometry: f.geometry } as Feature;
+            const [lng, lat] = f.geometry.coordinates as [number, number];
+            const [newLng, newLat] = aplicar(lng, lat);
+            return { ...f, geometry: { type: "Point" as const, coordinates: [newLng, newLat] } } as Feature;
+          }),
+        });
+      }
+    }
+
+    const postesSrc = map.getSource(BDGD_SRC.postes);
+    if (!postesSrc) return;
+
+    const corrigirGeomPoste = (geom: Geometry): Geometry => {
+      if (geom.type !== "Point") return geom;
+      const [lng, lat] = geom.coordinates as [number, number];
+      const [newLng, newLat] = aplicar(lng, lat);
+      return { type: "Point", coordinates: [newLng, newLat] };
+    };
+
+    if (postesSrc.type === "geojson") {
+      const feats = map.querySourceFeatures(BDGD_SRC.postes);
+      (postesSrc as maplibregl.GeoJSONSource).setData({
+        type: "FeatureCollection",
+        features: feats.map((f) => ({ ...f, geometry: corrigirGeomPoste(f.geometry) })) as Feature[],
+      });
+    } else {
+      // PMTiles: overlay com todos os postes visíveis; apenas o(s) corrigido(s) na nova posição
+      const OVR_SRC = BDGD_SRC.postes + "-corr";
+      const OVR_LYR = BDGD_LYR.postes + "-corr";
+      const feats = map.querySourceFeatures(BDGD_SRC.postes, { sourceLayer: "postes" });
+      const correctedFC: FeatureCollection = {
+        type: "FeatureCollection",
+        features: feats.map((f) => ({ ...f, geometry: corrigirGeomPoste(f.geometry) })) as Feature[],
+      };
+      if (!map.getSource(OVR_SRC)) {
+        map.addSource(OVR_SRC, { type: "geojson", data: correctedFC });
+        map.addLayer({
+          id: OVR_LYR,
+          type: "circle",
+          source: OVR_SRC,
+          minzoom: 14,
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 14, 2, 17, 5] as maplibregl.ExpressionSpecification,
+            "circle-color": "#334155",
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "#94a3b8",
+          },
+        });
+      } else {
+        (map.getSource(OVR_SRC) as maplibregl.GeoJSONSource).setData(correctedFC);
+      }
+      if (map.getLayer(BDGD_LYR.postes)) {
+        map.setLayoutProperty(BDGD_LYR.postes, "visibility", "none");
+      }
+    }
+  }, [props.bdgdCorrecoesPostes]);
 
   return <div ref={containerRef} className="map-canvas" />;
 }

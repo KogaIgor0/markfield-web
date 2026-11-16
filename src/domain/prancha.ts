@@ -65,6 +65,37 @@ export interface ContextoBdgd {
 }
 
 /**
+ * Corrige a coordenada de UM ÚNICO elemento do contexto BDGD.
+ * Localiza o poste (ou trafo) que coincide com `wgs84Original` (tolerância ~1 cm)
+ * e substitui sua posição por `wgs84Novo`. Os demais elementos não são alterados.
+ */
+export function corrigirPosteEspecifico(
+  ctx: ContextoBdgd,
+  tipo: "poste" | "trafo",
+  wgs84Original: LatLng,
+  wgs84Novo: LatLng,
+): ContextoBdgd {
+  const tol = 1e-7;
+  const igual = (a: LatLng, b: LatLng) =>
+    Math.abs(a.lat - b.lat) < tol && Math.abs(a.lng - b.lng) < tol;
+  if (tipo === "trafo") {
+    return {
+      ...ctx,
+      trafoProximo:
+        ctx.trafoProximo && igual(ctx.trafoProximo.wgs84, wgs84Original)
+          ? { ...ctx.trafoProximo, wgs84: wgs84Novo }
+          : ctx.trafoProximo,
+    };
+  }
+  return {
+    ...ctx,
+    postesBdgd: ctx.postesBdgd.map((p) =>
+      igual(p.wgs84, wgs84Original) ? { ...p, wgs84: wgs84Novo } : p,
+    ),
+  };
+}
+
+/**
  * Desloca TODOS os elementos do contexto BDGD por um delta lat/lng (graus).
  * Usa para corrigir erros sistemáticos de georreferenciamento: quando um
  * poste de campo não bate com o poste BDGD, o mesmo offset é aplicado a tudo.

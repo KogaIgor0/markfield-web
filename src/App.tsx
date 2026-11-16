@@ -43,7 +43,7 @@ import { PainelCamadas } from "./ui/PainelCamadas";
 import { PranchaView } from "./ui/PranchaView";
 import { NovoProjetoModal } from "./ui/NovoProjetoModal";
 import { BDGD_CAMADAS_PADRAO, type BdgdCarregamentoResultado } from "./map/bdgd";
-import { deslocarContextoBdgd, type ContextoBdgd } from "./domain/prancha";
+import { deslocarContextoBdgd, corrigirPosteEspecifico, type ContextoBdgd } from "./domain/prancha";
 import type { FeatureCollection } from "geojson";
 import { comporEstrutura, separarEstrutura } from "./domain/estruturas-catalogo";
 import {
@@ -169,12 +169,19 @@ export function App() {
     dLat: number; dLng: number; distM: number;
   } | null>(null);
   /**
-   * Último delta confirmado — passado ao MapCanvas para atualizar VISUALMENTE as sources BDGD.
+   * Último delta confirmado (sistemático) — passado ao MapCanvas para atualizar VISUALMENTE as sources BDGD.
    * seq incrementa a cada confirmação; dLat/dLng é o delta daquela correção específica.
    */
   const [bdgdDeltaAplicado, setBdgdDeltaAplicado] = useState<{
     dLat: number; dLng: number; seq: number;
   } | null>(null);
+  /**
+   * Lista de correções individuais de poste/trafo confirmadas — passada ao MapCanvas
+   * para mover visualmente APENAS os elementos corrigidos um a um.
+   */
+  const [bdgdCorrecoesPostes, setBdgdCorrecoesPostes] = useState<
+    Array<{ tipo: "poste" | "trafo"; original: LatLng; novo: LatLng }>
+  >([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
@@ -445,6 +452,31 @@ export function App() {
     setBdgdDeltaPendente(null);
   }, [bdgdDeltaPendente, contextoBdgd, projeto, atualizar]);
 
+  /** Corrige APENAS o elemento BDGD clicado (sem deslocar os demais). */
+  const onConfirmarSoEste = useCallback(() => {
+    if (!bdgdDeltaPendente || !contextoBdgd || !bdgdSelecionado || !projeto) return;
+    const wgs84Original = bdgdSelecionado.wgs84;
+    const wgs84Novo: LatLng = {
+      lat: wgs84Original.lat + bdgdDeltaPendente.dLat,
+      lng: wgs84Original.lng + bdgdDeltaPendente.dLng,
+    };
+    const ctxCorrigido = corrigirPosteEspecifico(
+      contextoBdgd,
+      bdgdSelecionado.tipo,
+      wgs84Original,
+      wgs84Novo,
+    );
+    setContextoBdgd(ctxCorrigido);
+    atualizar({ ...projeto, contextoRedeExistente: ctxCorrigido } as unknown as Projeto);
+    // Atualização visual: só este elemento
+    setBdgdCorrecoesPostes((prev) => [
+      ...prev,
+      { tipo: bdgdSelecionado.tipo, original: wgs84Original, novo: wgs84Novo },
+    ]);
+    setBdgdSelecionado(null);
+    setBdgdDeltaPendente(null);
+  }, [bdgdDeltaPendente, contextoBdgd, bdgdSelecionado, projeto, atualizar]);
+
   // ─────────────────────────────────────────────────────────────────────────
 
   /** Ponto de derivação (ehFonte=true) — base de busca da rede existente na prancha. */
@@ -642,6 +674,7 @@ export function App() {
     setChaveEnq((c) => c + 1);
     setContextoBdgd(null);
     setBdgdDeltaAplicado(null);
+    setBdgdCorrecoesPostes([]);
     onCancelarBdgd();
   }, [salvo, onCancelarBdgd]);
 
@@ -1352,6 +1385,7 @@ export function App() {
           modoBdgdCorrigir={modoBdgdCorrigir}
           onCorrigirPosicaoEscolhida={onCorrigirPosicaoEscolhida}
           bdgdDeltaAplicado={bdgdDeltaAplicado}
+          bdgdCorrecoesPostes={bdgdCorrecoesPostes.length > 0 ? bdgdCorrecoesPostes : null}
         />
 
         {/* BarraFerramentas movida para a topbar */}
@@ -1487,18 +1521,18 @@ export function App() {
           </div>
         )}
 
-        {bdgdDeltaPendente && contextoBdgd && (
+        {bdgdDeltaPendente && contextoBdgd && bdgdSelecionado && (
           <div className="modo-bar modo-bar-bdgd modo-bar-bdgd-confirmar">
             <span>
-              Deslocar{" "}
-              <strong>
-                {contextoBdgd.postesBdgd.length + (contextoBdgd.trafoProximo ? 1 : 0) + contextoBdgd.segmentosMT.length}
-              </strong>{" "}
-              elementos BDGD em{" "}
+              Mover{" "}
+              <strong>{bdgdSelecionado.tipo === "trafo" ? "transformador" : "poste"}</strong>{" "}
               <strong>{bdgdDeltaPendente.distM.toFixed(1)} m</strong>?
             </span>
-            <button className="btn btn-mini btn-accent" onClick={onConfirmarDeltaBdgd}>
-              Sim, deslocar todos
+            <button className="btn btn-mini btn-accent" onClick={onConfirmarSoEste}>
+              Corrigir só este
+            </button>
+            <button className="btn btn-mini" onClick={onConfirmarDeltaBdgd}>
+              Deslocar todos BDGD ({bdgdDeltaPendente.distM.toFixed(1)} m)
             </button>
             <button className="btn btn-mini" onClick={onCancelarBdgd}>Cancelar</button>
           </div>
