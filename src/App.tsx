@@ -43,7 +43,7 @@ import { PainelCamadas } from "./ui/PainelCamadas";
 import { PranchaView } from "./ui/PranchaView";
 import { NovoProjetoModal } from "./ui/NovoProjetoModal";
 import { BDGD_CAMADAS_PADRAO, type BdgdCarregamentoResultado } from "./map/bdgd";
-import { deslocarContextoBdgd, corrigirPosteEspecifico, type ContextoBdgd } from "./domain/prancha";
+import { corrigirPosteEspecifico, type ContextoBdgd } from "./domain/prancha";
 import type { FeatureCollection } from "geojson";
 import { comporEstrutura, separarEstrutura } from "./domain/estruturas-catalogo";
 import {
@@ -431,26 +431,6 @@ export function App() {
     const distM = distanciaM(bdgdSelecionado.wgs84, wgs84novo);
     setBdgdDeltaPendente({ dLat, dLng, distM });
   }, [bdgdSelecionado, contextoBdgd]);
-
-  /** Aplica o deslocamento calculado a todos os elementos BDGD e persiste no projeto. */
-  const onConfirmarDeltaBdgd = useCallback(() => {
-    if (!bdgdDeltaPendente || !contextoBdgd || !projeto) return;
-    const ctxCorrigido = deslocarContextoBdgd(
-      contextoBdgd,
-      bdgdDeltaPendente.dLat,
-      bdgdDeltaPendente.dLng,
-    );
-    setContextoBdgd(ctxCorrigido);
-    atualizar({ ...projeto, contextoRedeExistente: ctxCorrigido } as unknown as Projeto);
-    // Aciona atualização visual das sources BDGD no MapCanvas
-    setBdgdDeltaAplicado((prev) => ({
-      dLat: bdgdDeltaPendente.dLat,
-      dLng: bdgdDeltaPendente.dLng,
-      seq: (prev?.seq ?? 0) + 1,
-    }));
-    setBdgdSelecionado(null);
-    setBdgdDeltaPendente(null);
-  }, [bdgdDeltaPendente, contextoBdgd, projeto, atualizar]);
 
   /** Corrige APENAS o elemento BDGD clicado (sem deslocar os demais). */
   const onConfirmarSoEste = useCallback(() => {
@@ -1529,10 +1509,7 @@ export function App() {
               <strong>{bdgdDeltaPendente.distM.toFixed(1)} m</strong>?
             </span>
             <button className="btn btn-mini btn-accent" onClick={onConfirmarSoEste}>
-              Corrigir só este
-            </button>
-            <button className="btn btn-mini" onClick={onConfirmarDeltaBdgd}>
-              Deslocar todos BDGD ({bdgdDeltaPendente.distM.toFixed(1)} m)
+              Sim, corrigir
             </button>
             <button className="btn btn-mini" onClick={onCancelarBdgd}>Cancelar</button>
           </div>
