@@ -56,7 +56,7 @@ import {
   vaosLongos,
   VAO_MAXIMO_M,
 } from "./domain/vaos";
-import type { AreaBdgd, LatLng, Projeto, TipoPonto } from "./domain/model";
+import type { AreaBdgd, LatLng, PosteBdgd, Projeto, SegmentoMT, TipoPonto, TrafoExistente } from "./domain/model";
 import { projetoVazio } from "./domain/model";
 import { salvarProjetoDb, gerarDbId, type ProjetoArquivado } from "./db/projetosDb";
 import { ProjetosModal } from "./ui/ProjetosModal";
@@ -155,6 +155,8 @@ export function App() {
   const [capturaBboxPrancha, setCapturaBboxPrancha] = useState<[number,number,number,number] | null>(null);
   /** Modo de desenho do bbox da AreaBdgd do projeto (clique+arrasto no mapa). */
   const [modoDesenharAreaBdgd, setModoDesenharAreaBdgd] = useState(false);
+  /** Modo de inserção manual de elemento existente no mapa. */
+  const [modoInserirExistente, setModoInserirExistente] = useState<"poste" | "trafo" | "segmento" | null>(null);
   const [bdgdCarregado, setBdgdCarregado] = useState(false);
   const [estiloBase, setEstiloBase] = useState<EstiloBase>("satellite");
   const [mostrarOsm, setMostrarOsm] = useState(false);
@@ -419,6 +421,29 @@ export function App() {
     atualizar({ ...projeto, areaBdgd: novaArea });
     // Dispara captura BDGD imediatamente (tiles já carregados na tela)
     setCapturarContextoBdgdTrigger((v) => v + 1);
+  }, [projeto, atualizar]);
+
+  // ── Inserção manual de elementos existentes ─────────────────────────────
+
+  const onInserirPosteExistente = useCallback((wgs84: LatLng) => {
+    if (!projeto) return;
+    const area = projeto.areaBdgd ?? { postesBdgd: [], segmentosMT: [], trafos: [] };
+    const novo: PosteBdgd = { wgs84, manual: true };
+    atualizar({ ...projeto, areaBdgd: { ...area, postesBdgd: [...area.postesBdgd, novo] } });
+  }, [projeto, atualizar]);
+
+  const onInserirTrafoExistente = useCallback((wgs84: LatLng) => {
+    if (!projeto) return;
+    const area = projeto.areaBdgd ?? { postesBdgd: [], segmentosMT: [], trafos: [] };
+    const novo: TrafoExistente = { wgs84, manual: true };
+    atualizar({ ...projeto, areaBdgd: { ...area, trafos: [...area.trafos, novo] } });
+  }, [projeto, atualizar]);
+
+  const onInserirSegmentoExistente = useCallback((de: LatLng, ate: LatLng) => {
+    if (!projeto) return;
+    const area = projeto.areaBdgd ?? { postesBdgd: [], segmentosMT: [], trafos: [] };
+    const novo: SegmentoMT = { de, ate, manual: true };
+    atualizar({ ...projeto, areaBdgd: { ...area, segmentosMT: [...area.segmentosMT, novo] } });
   }, [projeto, atualizar]);
 
   /** Usuário clicou em um poste ou trafo BDGD no mapa → entra no fluxo de correção. */
@@ -888,6 +913,7 @@ export function App() {
         setSelecionadoTrechoId(null);
         setModoSelecaoPrancha(false);
         setModoDesenharAreaBdgd(false);
+        setModoInserirExistente(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1383,6 +1409,10 @@ export function App() {
           areaBdgd={projeto?.areaBdgd ?? null}
           modoDesenharAreaBdgd={modoDesenharAreaBdgd}
           onAreaBdgdBboxDefinido={onAreaBdgdBboxDefinido}
+          modoInserirExistente={modoInserirExistente}
+          onInserirPosteExistente={onInserirPosteExistente}
+          onInserirTrafoExistente={onInserirTrafoExistente}
+          onInserirSegmentoExistente={onInserirSegmentoExistente}
         />
 
         {/* BarraFerramentas movida para a topbar */}
@@ -1404,6 +1434,9 @@ export function App() {
             onLimparKmlRede={onLimparKmlRede}
             onDefinirAreaBdgd={() => { setMostrarCamadas(false); setModoDesenharAreaBdgd(true); }}
             temAreaDefinida={!!projeto?.areaBdgd?.bbox}
+            temProjeto={!!projeto}
+            modoInserirExistente={modoInserirExistente}
+            onDefinirModoInserir={(modo) => { setMostrarCamadas(false); setModoInserirExistente(modo); }}
           />
         )}
 
@@ -1505,6 +1538,23 @@ export function App() {
             <span>🗺️ Arraste um retângulo para definir a área do projeto (captura rede existente)</span>
             <button className="btn btn-mini" onClick={() => setModoDesenharAreaBdgd(false)}>
               Cancelar (Esc)
+            </button>
+          </div>
+        )}
+
+        {modoInserirExistente && (
+          <div className="modo-bar modo-bar-inserir-existente">
+            {modoInserirExistente === "poste" && (
+              <span>🔵 Clique no mapa para inserir um <strong>poste existente</strong></span>
+            )}
+            {modoInserirExistente === "trafo" && (
+              <span>🔴 Clique no mapa para inserir um <strong>transformador existente</strong></span>
+            )}
+            {modoInserirExistente === "segmento" && (
+              <span>🔶 Clique em dois pontos para inserir um <strong>segmento de MT existente</strong></span>
+            )}
+            <button className="btn btn-mini" onClick={() => setModoInserirExistente(null)}>
+              Sair (Esc)
             </button>
           </div>
         )}

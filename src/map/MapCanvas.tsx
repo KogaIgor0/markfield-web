@@ -260,6 +260,17 @@ interface MapCanvasProps {
   modoDesenharAreaBdgd?: boolean;
   /** Chamado quando o usuário confirma o retângulo no modo desenharAreaBdgd. */
   onAreaBdgdBboxDefinido?: (bbox: NonNullable<AreaBdgd["bbox"]>) => void;
+  /**
+   * Modo de inserção manual de elemento existente: "poste" | "trafo" | "segmento".
+   * No modo "segmento" o usuário clica dois pontos consecutivos.
+   */
+  modoInserirExistente?: "poste" | "trafo" | "segmento" | null;
+  /** Chamado quando o usuário clica no mapa para inserir um poste existente. */
+  onInserirPosteExistente?: (wgs84: LatLng) => void;
+  /** Chamado quando o usuário clica no mapa para inserir um trafo existente. */
+  onInserirTrafoExistente?: (wgs84: LatLng) => void;
+  /** Chamado quando o usuário define os dois pontos de um segmento MT existente. */
+  onInserirSegmentoExistente?: (de: LatLng, ate: LatLng) => void;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -339,12 +350,24 @@ export function MapCanvas(props: MapCanvasProps) {
   const capturaBboxRef = useRef<[number, number, number, number] | null>(null);
   capturaBboxRef.current = props.capturaBbox ?? null;
 
+  // Ref para o primeiro ponto do segmento MT em modo de inserção manual.
+  const segPrimeiroCliqueRef = useRef<LatLng | null>(null);
+
   // Cursor crosshair enquanto o modo de correção BDGD está ativo.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     map.getCanvas().style.cursor = props.modoBdgdCorrigir ? "crosshair" : "";
   }, [props.modoBdgdCorrigir]);
+
+  // Cursor crosshair nos modos de inserção manual de elementos existentes.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.getCanvas().style.cursor = props.modoInserirExistente ? "crosshair" : "";
+    // Ao sair do modo, limpa o primeiro clique pendente do segmento.
+    if (!props.modoInserirExistente) segPrimeiroCliqueRef.current = null;
+  }, [props.modoInserirExistente]);
 
   // Cria o mapa e registra os handlers de interação uma única vez.
   useEffect(() => {
@@ -403,7 +426,7 @@ export function MapCanvas(props: MapCanvasProps) {
       if (id && arrastou) propsRef.current.onMoverPonto?.(id, { lat: e.lngLat.lat, lng: e.lngLat.lng });
     };
     map.on("mousedown", LYR.pontos, (e) => {
-      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd) return; // bbox drawing mode — ignore
+      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd || propsRef.current.modoInserirExistente) return;
       const id = e.features?.[0]?.properties?.id as string | undefined;
       if (!id) return;
       if (emModoLigar() || emModoInserir()) {
@@ -444,7 +467,7 @@ export function MapCanvas(props: MapCanvasProps) {
 
     // Selecionar um trecho (só no modo selecionar).
     map.on("click", LYR.linhas, (e) => {
-      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd) return;
+      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd || propsRef.current.modoInserirExistente) return;
       if (emModoLigar() || emModoAdicionar() || emModoInserir()) return;
       const id = e.features?.[0]?.properties?.id as string | undefined;
       if (!id) return;
@@ -519,7 +542,7 @@ export function MapCanvas(props: MapCanvasProps) {
 
     // ── BDGD postes: clique → iniciar fluxo de correção de coordenada ────
     map.on("click", BDGD_LYR.postes, (e) => {
-      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd) return;
+      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd || propsRef.current.modoInserirExistente) return;
       if (propsRef.current.modoBdgdCorrigir) return; // em modo correção não re-seleciona
       const f = e.features?.[0];
       if (!f || f.geometry.type !== "Point") return;
@@ -530,7 +553,7 @@ export function MapCanvas(props: MapCanvasProps) {
 
     // ── BDGD transformadores: clique → iniciar fluxo de correção ─────────
     map.on("click", BDGD_LYR.transformadores, (e) => {
-      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd) return;
+      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd || propsRef.current.modoInserirExistente) return;
       if (propsRef.current.modoBdgdCorrigir) return;
       const f = e.features?.[0];
       if (!f || f.geometry.type !== "Point") return;
@@ -565,6 +588,29 @@ export function MapCanvas(props: MapCanvasProps) {
       // Se um layer BDGD já tratou este clique, ignora aqui para não criar ponto inadvertidamente.
       if (bdgdClickHandled) { bdgdClickHandled = false; return; }
       if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd) return;
+
+      // ── Inserção manual de elementos existentes ──────────────────────────
+      const modoIns = propsRef.current.modoInserirExistente;
+      if (modoIns) {
+        const wgs84: LatLng = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+        if (modoIns === "poste") {
+          propsRef.current.onInserirPosteExistente?.(wgs84);
+        } else if (modoIns === "trafo") {
+          propsRef.current.onInserirTrafoExistente?.(wgs84);
+        } else if (modoIns === "segmento") {
+          const primeiro = segPrimeiroCliqueRef.current;
+          if (!primeiro) {
+            // Primeiro clique — guarda e aguarda segundo
+            segPrimeiroCliqueRef.current = wgs84;
+          } else {
+            // Segundo clique — dispara callback e limpa estado
+            segPrimeiroCliqueRef.current = null;
+            propsRef.current.onInserirSegmentoExistente?.(primeiro, wgs84);
+          }
+        }
+        return;
+      }
+
       // Modo correção BDGD: captura nova posição (snap para ponto de projeto, ou livre)
       if (propsRef.current.modoBdgdCorrigir) {
         const pontosNaArea = map.queryRenderedFeatures(e.point, { layers: [LYR.pontos] });
@@ -1066,6 +1112,63 @@ export function MapCanvas(props: MapCanvasProps) {
       });
     }
   }, [props.areaBdgd?.bbox]);
+
+  // Overlay de elementos manuais (manual=true em areaBdgd).
+  // Renderiza postes, trafos e segmentos inseridos manualmente na cor ciano,
+  // para diferenciar dos dados capturados automaticamente da BDGD.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !prontoRef.current) return;
+
+    const SRC_M = "mkf-manual-src";
+    const LYR_POST = "mkf-manual-postes";
+    const LYR_TRAF = "mkf-manual-trafos";
+    const LYR_SEG  = "mkf-manual-segs";
+
+    const area = props.areaBdgd;
+    const features: GeoJSON.Feature[] = [];
+
+    if (area) {
+      for (const p of area.postesBdgd) {
+        if (!p.manual) continue;
+        features.push({ type: "Feature", geometry: { type: "Point", coordinates: [p.wgs84.lng, p.wgs84.lat] }, properties: { kind: "poste" } });
+      }
+      for (const t of area.trafos) {
+        if (!t.manual) continue;
+        features.push({ type: "Feature", geometry: { type: "Point", coordinates: [t.wgs84.lng, t.wgs84.lat] }, properties: { kind: "trafo" } });
+      }
+      for (const s of area.segmentosMT) {
+        if (!s.manual) continue;
+        features.push({ type: "Feature", geometry: { type: "LineString", coordinates: [[s.de.lng, s.de.lat], [s.ate.lng, s.ate.lat]] }, properties: { kind: "seg" } });
+      }
+    }
+
+    const fc: GeoJSON.FeatureCollection = { type: "FeatureCollection", features };
+
+    if (map.getSource(SRC_M)) {
+      (map.getSource(SRC_M) as maplibregl.GeoJSONSource).setData(fc);
+    } else {
+      map.addSource(SRC_M, { type: "geojson", data: fc });
+      // Segmentos
+      map.addLayer({
+        id: LYR_SEG, type: "line", source: SRC_M,
+        filter: ["==", ["get", "kind"], "seg"],
+        paint: { "line-color": "#22d3ee", "line-width": 2, "line-dasharray": [4, 3], "line-opacity": 0.9 },
+      });
+      // Postes manuais
+      map.addLayer({
+        id: LYR_POST, type: "circle", source: SRC_M,
+        filter: ["==", ["get", "kind"], "poste"],
+        paint: { "circle-radius": 6, "circle-color": "#22d3ee", "circle-stroke-color": "#0e7490", "circle-stroke-width": 1.5, "circle-opacity": 0.9 },
+      });
+      // Trafos manuais (ícone quadrado via circle-pitch-alignment + stroke alto)
+      map.addLayer({
+        id: LYR_TRAF, type: "circle", source: SRC_M,
+        filter: ["==", ["get", "kind"], "trafo"],
+        paint: { "circle-radius": 7, "circle-color": "#f472b6", "circle-stroke-color": "#be185d", "circle-stroke-width": 1.5, "circle-opacity": 0.9 },
+      });
+    }
+  }, [props.areaBdgd]);
 
   // BDGD — captura contexto (rede existente) para a prancha.
   useEffect(() => {
