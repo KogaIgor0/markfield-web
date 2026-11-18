@@ -1083,6 +1083,15 @@ export function MapCanvas(props: MapCanvasProps) {
       const callback = propsRef.current.onAreaBdgdCapturada;
       if (!callback) return;
 
+      // Bbox efetivo: prancha-flow (capturaBboxRef) tem prioridade; senão usa areaBdgd.bbox
+      const _rawBbox = capturaBboxRef.current;
+      const _areaBboxSrc = propsRef.current.areaBdgd?.bbox;
+      const efetivoBbox: [number, number, number, number] | null = _rawBbox
+        ? _rawBbox
+        : _areaBboxSrc
+        ? [_areaBboxSrc.oeste, _areaBboxSrc.sul, _areaBboxSrc.leste, _areaBboxSrc.norte]
+        : null;
+
       // IMPORTANTE: usa querySourceFeatures (não queryRenderedFeatures).
       // queryRenderedFeatures só retorna features VISÍVEIS no viewport renderizado —
       // quando a prancha abre por cima do mapa, o MapLibre pode pausar o render e
@@ -1099,7 +1108,7 @@ export function MapCanvas(props: MapCanvasProps) {
 
       // Converte features de linha para segmentos de 2 vértices (apenas vizinhos ao ponto de derivação)
       const segmentosMT: SegmentoMT[] = [];
-      const bboxMT = capturaBboxRef.current;
+      const bboxMT = efetivoBbox;
       if (featuresRedeMT.length > 0 && (derivacao || bboxMT)) {
         // Calcula distância quadrada entre dois pontos WGS84 (aproximação plana suficiente p/ ~100m)
         const distSq = (a: LatLng, b: LatLng) => {
@@ -1221,7 +1230,7 @@ export function MapCanvas(props: MapCanvasProps) {
             console.log("[BDGD] PONNOT: querySourceFeatures retornou 0 features");
           }
           const RAIO_GD = 0.003; // ~300 m em graus (aprox.)
-          const bbox = capturaBboxRef.current;
+          const bbox = efetivoBbox;
           for (const f of postesFeatures) {
             if (f.geometry.type !== "Point") continue;
             const [lng, lat] = f.geometry.coordinates;
@@ -1253,9 +1262,12 @@ export function MapCanvas(props: MapCanvasProps) {
         // Silencioso — source pode não ter sido carregada ainda
       }
 
+      // Preserva o bbox definido pelo usuário (areaBdgd.bbox) quando disponível.
+      // Só usa getBounds() como fallback para o fluxo da prancha (sem área definida).
+      const existingBbox = propsRef.current.areaBdgd?.bbox;
       const bounds = map.getBounds();
       const area: AreaBdgd = {
-        bbox: {
+        bbox: existingBbox ?? {
           norte: bounds.getNorth(),
           sul: bounds.getSouth(),
           leste: bounds.getEast(),
@@ -1268,20 +1280,26 @@ export function MapCanvas(props: MapCanvasProps) {
       callback(area);
     };
 
-    // Captura em dois momentos para cobrir a race condition de tiles PMTiles:
-    //
-    // 1) Captura imediata — funciona se os tiles já estão no cache (ex: prancha
-    //    aberta depois que o mapa ficou idle por um tempo).
-    //
-    // 2) Captura no próximo idle — cobre o caso em que areTilesLoaded() retornou
-    //    true prematuramente logo após a source PMTiles ser adicionada (antes do
-    //    MapLibre despachar os tile requests). O idle dispara quando os tiles
-    //    terminam de carregar e garante querySourceFeatures com dados reais.
-    //    Fallback de 15 s caso idle não dispare (ex: área sem tiles).
-    fazerCaptura();
+    // Fase 3 — quando há um bbox de área definido, voa até ele antes de capturar.
+    // Os tiles da região podem não estar carregados se o usuário estava em outro local.
+    // fitBounds dispara uma animação de fly; o idle subsequente garante que os tiles
+    // terminaram de carregar antes de fazerCaptura() ser chamado.
+    const areaBboxParaFly = propsRef.current.areaBdgd?.bbox;
+    if (areaBboxParaFly) {
+      const { oeste, sul, leste, norte } = areaBboxParaFly;
+      map.fitBounds([oeste, sul, leste, norte] as [number, number, number, number], { padding: 60 });
+      // Não faz captura imediata — aguarda idle após o fly (tiles da área carregam durante a animação)
+    } else {
+      // Sem área definida: captura imediata (tiles do viewport atual já estão no cache)
+      fazerCaptura();
+    }
 
+    // Captura no próximo idle — cobre ambos os casos:
+    // - com areaBbox: idle dispara após o fly+load dos tiles da nova área
+    // - sem areaBbox: idle dispara após possível race condition de PMTiles (ver comentário original)
+    // Fallback de 15 s caso idle não dispare (ex: área sem tiles ou animação muito longa).
     const temFonteMT = !!map.getSource(BDGD_SRC.redeMT);
-    if (temFonteMT) {
+    if (temFonteMT || areaBboxParaFly) {
       const onIdle = () => { clearTimeout(fallbackTimer); fazerCaptura(); };
       // Timeout de segurança: após 15 s encerra a espera
       const fallbackTimer = setTimeout(() => { map.off("idle", onIdle); }, 15000);
