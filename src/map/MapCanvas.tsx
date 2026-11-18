@@ -251,6 +251,12 @@ interface MapCanvasProps {
    * Muda referência sempre que um novo elemento é corrigido.
    */
   bdgdCorrecoesPostes?: Array<{ tipo: "poste" | "trafo"; original: LatLng; novo: LatLng }> | null;
+  /**
+   * Contexto BDGD completo (postes + segmentos + trafo).
+   * Usado para construir o overlay visual com TODOS os postes (não apenas os do viewport).
+   * Já contém as posições corrigidas após cada correção individual.
+   */
+  contextoBdgd?: ContextoBdgd | null;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -1230,9 +1236,8 @@ export function MapCanvas(props: MapCanvasProps) {
   }, [props.bdgdDeltaAplicado]);
 
   // BDGD — aplica visualmente correções INDIVIDUAIS de poste/trafo.
-  // Apenas o(s) elemento(s) corrigido(s) mudam de posição; os demais ficam no lugar.
-  // Para PMTiles (postes Elektro): overlay GeoJSON com todos os postes visíveis,
-  // mas somente os que constam na lista corrigidos na nova posição.
+  // Reconstrói o overlay a partir de contextoBdgd (lista completa de postes já corrigidos)
+  // para garantir que postes fora do viewport também apareçam.
   useEffect(() => {
     const map = mapRef.current;
     const correcoes = props.bdgdCorrecoesPostes;
@@ -1268,28 +1273,31 @@ export function MapCanvas(props: MapCanvasProps) {
     const postesSrc = map.getSource(BDGD_SRC.postes);
     if (!postesSrc) return;
 
-    const corrigirGeomPoste = (geom: Geometry): Geometry => {
-      if (geom.type !== "Point") return geom;
-      const [lng, lat] = geom.coordinates as [number, number];
-      const [newLng, newLat] = aplicar(lng, lat);
-      return { type: "Point", coordinates: [newLng, newLat] };
+    // Constrói o overlay a partir do contextoBdgd completo (todos os postes, com
+    // posições já corrigidas) em vez de querySourceFeatures, que retorna apenas as
+    // features presentes nos tiles carregados no viewport atual — o que faz postes
+    // fora da vista desaparecerem quando o layer PMTiles original é ocultado.
+    const ctx = propsRef.current.contextoBdgd;
+    const correctedFC: FeatureCollection = {
+      type: "FeatureCollection",
+      features: (ctx?.postesBdgd ?? []).map((p): Feature => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [p.wgs84.lng, p.wgs84.lat] },
+        properties: {
+          TIP_EST: p.tipEst ?? null,
+          ALT_EST: p.altEst ?? null,
+          TIP_OPE: p.tipOpe ?? null,
+          COD_ID: p.codId ?? null,
+        },
+      })),
     };
 
     if (postesSrc.type === "geojson") {
-      const feats = map.querySourceFeatures(BDGD_SRC.postes);
-      (postesSrc as maplibregl.GeoJSONSource).setData({
-        type: "FeatureCollection",
-        features: feats.map((f) => ({ ...f, geometry: corrigirGeomPoste(f.geometry) })) as Feature[],
-      });
+      (postesSrc as maplibregl.GeoJSONSource).setData(correctedFC);
     } else {
-      // PMTiles: overlay com todos os postes visíveis; apenas o(s) corrigido(s) na nova posição
+      // PMTiles: overlay GeoJSON com todos os postes; layer PMTiles original oculto
       const OVR_SRC = BDGD_SRC.postes + "-corr";
       const OVR_LYR = BDGD_LYR.postes + "-corr";
-      const feats = map.querySourceFeatures(BDGD_SRC.postes, { sourceLayer: "postes" });
-      const correctedFC: FeatureCollection = {
-        type: "FeatureCollection",
-        features: feats.map((f) => ({ ...f, geometry: corrigirGeomPoste(f.geometry) })) as Feature[],
-      };
       if (!map.getSource(OVR_SRC)) {
         map.addSource(OVR_SRC, { type: "geojson", data: correctedFC });
         map.addLayer({

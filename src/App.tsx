@@ -1366,6 +1366,7 @@ export function App() {
           onCorrigirPosicaoEscolhida={onCorrigirPosicaoEscolhida}
           bdgdDeltaAplicado={bdgdDeltaAplicado}
           bdgdCorrecoesPostes={bdgdCorrecoesPostes.length > 0 ? bdgdCorrecoesPostes : null}
+          contextoBdgd={contextoBdgd}
         />
 
         {/* BarraFerramentas movida para a topbar */}

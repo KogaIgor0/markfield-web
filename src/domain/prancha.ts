@@ -92,6 +92,12 @@ export function corrigirPosteEspecifico(
     postesBdgd: ctx.postesBdgd.map((p) =>
       igual(p.wgs84, wgs84Original) ? { ...p, wgs84: wgs84Novo } : p,
     ),
+    // Atualiza também os endpoints dos segmentos MT que partem/chegam neste poste.
+    segmentosMT: ctx.segmentosMT.map((s) => ({
+      ...s,
+      de: igual(s.de, wgs84Original) ? wgs84Novo : s.de,
+      ate: igual(s.ate, wgs84Original) ? wgs84Novo : s.ate,
+    })),
   };
 }
 
