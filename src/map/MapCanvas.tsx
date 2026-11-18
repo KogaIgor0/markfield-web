@@ -256,6 +256,10 @@ interface MapCanvasProps {
    * Usada para construir o overlay visual com TODOS os postes (posições já corrigidas).
    */
   areaBdgd?: AreaBdgd | null;
+  /** Ativa o modo de desenho de retângulo para definir o bbox da AreaBdgd. */
+  modoDesenharAreaBdgd?: boolean;
+  /** Chamado quando o usuário confirma o retângulo no modo desenharAreaBdgd. */
+  onAreaBdgdBboxDefinido?: (bbox: NonNullable<AreaBdgd["bbox"]>) => void;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -316,6 +320,7 @@ export function MapCanvas(props: MapCanvasProps) {
     capturarContextoBdgdTrigger,
     kmlRedeGeojson,
     kmlRedeVisivel,
+    modoDesenharAreaBdgd,
   } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -398,7 +403,7 @@ export function MapCanvas(props: MapCanvasProps) {
       if (id && arrastou) propsRef.current.onMoverPonto?.(id, { lat: e.lngLat.lat, lng: e.lngLat.lng });
     };
     map.on("mousedown", LYR.pontos, (e) => {
-      if (propsRef.current.modoSelecaoPrancha) return; // bbox drawing mode — ignore
+      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd) return; // bbox drawing mode — ignore
       const id = e.features?.[0]?.properties?.id as string | undefined;
       if (!id) return;
       if (emModoLigar() || emModoInserir()) {
@@ -439,7 +444,7 @@ export function MapCanvas(props: MapCanvasProps) {
 
     // Selecionar um trecho (só no modo selecionar).
     map.on("click", LYR.linhas, (e) => {
-      if (propsRef.current.modoSelecaoPrancha) return;
+      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd) return;
       if (emModoLigar() || emModoAdicionar() || emModoInserir()) return;
       const id = e.features?.[0]?.properties?.id as string | undefined;
       if (!id) return;
@@ -514,7 +519,7 @@ export function MapCanvas(props: MapCanvasProps) {
 
     // ── BDGD postes: clique → iniciar fluxo de correção de coordenada ────
     map.on("click", BDGD_LYR.postes, (e) => {
-      if (propsRef.current.modoSelecaoPrancha) return;
+      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd) return;
       if (propsRef.current.modoBdgdCorrigir) return; // em modo correção não re-seleciona
       const f = e.features?.[0];
       if (!f || f.geometry.type !== "Point") return;
@@ -525,7 +530,7 @@ export function MapCanvas(props: MapCanvasProps) {
 
     // ── BDGD transformadores: clique → iniciar fluxo de correção ─────────
     map.on("click", BDGD_LYR.transformadores, (e) => {
-      if (propsRef.current.modoSelecaoPrancha) return;
+      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd) return;
       if (propsRef.current.modoBdgdCorrigir) return;
       const f = e.features?.[0];
       if (!f || f.geometry.type !== "Point") return;
@@ -559,7 +564,7 @@ export function MapCanvas(props: MapCanvasProps) {
     map.on("click", (e) => {
       // Se um layer BDGD já tratou este clique, ignora aqui para não criar ponto inadvertidamente.
       if (bdgdClickHandled) { bdgdClickHandled = false; return; }
-      if (propsRef.current.modoSelecaoPrancha) return;
+      if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd) return;
       // Modo correção BDGD: captura nova posição (snap para ponto de projeto, ou livre)
       if (propsRef.current.modoBdgdCorrigir) {
         const pontosNaArea = map.queryRenderedFeatures(e.point, { layers: [LYR.pontos] });
@@ -941,6 +946,126 @@ export function MapCanvas(props: MapCanvasProps) {
       if (map.getSource(BBOX_SRC)) map.removeSource(BBOX_SRC);
     };
   }, [modoSelecaoPrancha]);
+
+  // Modo desenhar área do projeto (AreaBdgd.bbox): click+drag → retângulo tracejado laranja.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !prontoRef.current) return;
+    if (!modoDesenharAreaBdgd) return;
+
+    const AREA_SRC = "mkf-area-draw-src";
+    const AREA_FILL = "mkf-area-draw-fill";
+    const AREA_LINE = "mkf-area-draw-line";
+
+    if (!map.getSource(AREA_SRC)) {
+      map.addSource(AREA_SRC, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      map.addLayer({ id: AREA_FILL, type: "fill", source: AREA_SRC,
+        paint: { "fill-color": "#f97316", "fill-opacity": 0.12 } });
+      map.addLayer({ id: AREA_LINE, type: "line", source: AREA_SRC,
+        paint: { "line-color": "#f97316", "line-width": 2, "line-dasharray": [6, 3] } });
+    }
+
+    const canvas = map.getCanvas();
+    canvas.style.cursor = "crosshair";
+    map.dragPan.disable();
+
+    let startLng: number | null = null;
+    let startLat: number | null = null;
+    let arrastando = false;
+
+    const onDown = (e: maplibregl.MapMouseEvent) => {
+      startLng = e.lngLat.lng;
+      startLat = e.lngLat.lat;
+      arrastando = true;
+    };
+    const onMove = (e: maplibregl.MapMouseEvent) => {
+      if (!arrastando || startLng === null || startLat === null) return;
+      const minLng = Math.min(startLng, e.lngLat.lng);
+      const maxLng = Math.max(startLng, e.lngLat.lng);
+      const minLat = Math.min(startLat, e.lngLat.lat);
+      const maxLat = Math.max(startLat, e.lngLat.lat);
+      (map.getSource(AREA_SRC) as maplibregl.GeoJSONSource).setData({
+        type: "FeatureCollection",
+        features: [{ type: "Feature", geometry: { type: "Polygon",
+          coordinates: [[[minLng, minLat], [maxLng, minLat], [maxLng, maxLat], [minLng, maxLat], [minLng, minLat]]] },
+          properties: {} }],
+      });
+    };
+    const onUp = (e: maplibregl.MapMouseEvent) => {
+      if (!arrastando || startLng === null || startLat === null) return;
+      arrastando = false;
+      const minLng = Math.min(startLng, e.lngLat.lng);
+      const maxLng = Math.max(startLng, e.lngLat.lng);
+      const minLat = Math.min(startLat, e.lngLat.lat);
+      const maxLat = Math.max(startLat, e.lngLat.lat);
+      if (maxLng - minLng > 0.0001 && maxLat - minLat > 0.0001) {
+        propsRef.current.onAreaBdgdBboxDefinido?.({
+          norte: maxLat,
+          sul: minLat,
+          leste: maxLng,
+          oeste: minLng,
+        });
+      }
+    };
+
+    map.on("mousedown", onDown);
+    map.on("mousemove", onMove);
+    map.on("mouseup", onUp);
+
+    return () => {
+      map.off("mousedown", onDown);
+      map.off("mousemove", onMove);
+      map.off("mouseup", onUp);
+      canvas.style.cursor = "";
+      map.dragPan.enable();
+      if (map.getLayer(AREA_FILL)) map.removeLayer(AREA_FILL);
+      if (map.getLayer(AREA_LINE)) map.removeLayer(AREA_LINE);
+      if (map.getSource(AREA_SRC)) map.removeSource(AREA_SRC);
+    };
+  }, [modoDesenharAreaBdgd]);
+
+  // Overlay persistente: exibe o bbox da AreaBdgd do projeto como retângulo tracejado.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !prontoRef.current) return;
+
+    const BBOX_SRC = "mkf-area-proj-src";
+    const BBOX_LINE = "mkf-area-proj-line";
+
+    const bbox = props.areaBdgd?.bbox;
+
+    if (!bbox) {
+      // Remove overlay se bbox foi apagado
+      if (map.getLayer(BBOX_LINE)) map.removeLayer(BBOX_LINE);
+      if (map.getSource(BBOX_SRC)) map.removeSource(BBOX_SRC);
+      return;
+    }
+
+    const { norte, sul, leste, oeste } = bbox;
+    const fc: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: [{
+        type: "Feature",
+        geometry: {
+          type: "Polygon",
+          coordinates: [[[oeste, sul], [leste, sul], [leste, norte], [oeste, norte], [oeste, sul]]],
+        },
+        properties: {},
+      }],
+    };
+
+    if (map.getSource(BBOX_SRC)) {
+      (map.getSource(BBOX_SRC) as maplibregl.GeoJSONSource).setData(fc);
+    } else {
+      map.addSource(BBOX_SRC, { type: "geojson", data: fc });
+      map.addLayer({
+        id: BBOX_LINE,
+        type: "line",
+        source: BBOX_SRC,
+        paint: { "line-color": "#f97316", "line-width": 1.5, "line-dasharray": [5, 4], "line-opacity": 0.7 },
+      });
+    }
+  }, [props.areaBdgd?.bbox]);
 
   // BDGD — captura contexto (rede existente) para a prancha.
   useEffect(() => {

@@ -153,6 +153,8 @@ export function App() {
   // Seleção de área para captura BDGD da prancha
   const [modoSelecaoPrancha, setModoSelecaoPrancha] = useState(false);
   const [capturaBboxPrancha, setCapturaBboxPrancha] = useState<[number,number,number,number] | null>(null);
+  /** Modo de desenho do bbox da AreaBdgd do projeto (clique+arrasto no mapa). */
+  const [modoDesenharAreaBdgd, setModoDesenharAreaBdgd] = useState(false);
   const [bdgdCarregado, setBdgdCarregado] = useState(false);
   const [estiloBase, setEstiloBase] = useState<EstiloBase>("satellite");
   const [mostrarOsm, setMostrarOsm] = useState(false);
@@ -397,6 +399,26 @@ export function App() {
    */
   const onAreaBdgdCapturada = useCallback((area: AreaBdgd) => {
     if (projeto) atualizar({ ...projeto, areaBdgd: area });
+  }, [projeto, atualizar]);
+
+  /**
+   * Usuário definiu o bbox da área do projeto arrastando no mapa.
+   * Preserva postes/segmentos/trafos existentes; atualiza só o bbox.
+   * Em seguida dispara captura BDGD para popular o restante da área.
+   */
+  const onAreaBdgdBboxDefinido = useCallback((bbox: NonNullable<AreaBdgd["bbox"]>) => {
+    if (!projeto) return;
+    setModoDesenharAreaBdgd(false);
+    const existente = projeto.areaBdgd;
+    const novaArea: AreaBdgd = {
+      bbox,
+      postesBdgd: existente?.postesBdgd ?? [],
+      segmentosMT: existente?.segmentosMT ?? [],
+      trafos: existente?.trafos ?? [],
+    };
+    atualizar({ ...projeto, areaBdgd: novaArea });
+    // Dispara captura BDGD imediatamente (tiles já carregados na tela)
+    setCapturarContextoBdgdTrigger((v) => v + 1);
   }, [projeto, atualizar]);
 
   /** Usuário clicou em um poste ou trafo BDGD no mapa → entra no fluxo de correção. */
@@ -865,6 +887,7 @@ export function App() {
         setSelecionadoId(null);
         setSelecionadoTrechoId(null);
         setModoSelecaoPrancha(false);
+        setModoDesenharAreaBdgd(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1358,6 +1381,8 @@ export function App() {
           bdgdDeltaAplicado={bdgdDeltaAplicado}
           bdgdCorrecoesPostes={bdgdCorrecoesPostes.length > 0 ? bdgdCorrecoesPostes : null}
           areaBdgd={projeto?.areaBdgd ?? null}
+          modoDesenharAreaBdgd={modoDesenharAreaBdgd}
+          onAreaBdgdBboxDefinido={onAreaBdgdBboxDefinido}
         />
 
         {/* BarraFerramentas movida para a topbar */}
@@ -1377,6 +1402,8 @@ export function App() {
             onAbrirKmlRede={onAbrirKmlRede}
             onToggleKmlRede={() => setKmlRedeVisivel((v) => !v)}
             onLimparKmlRede={onLimparKmlRede}
+            onDefinirAreaBdgd={() => { setMostrarCamadas(false); setModoDesenharAreaBdgd(true); }}
+            temAreaDefinida={!!projeto?.areaBdgd?.bbox}
           />
         )}
 
@@ -1468,6 +1495,15 @@ export function App() {
           <div className="modo-bar modo-bar-prancha-area">
             <span>📐 Arraste um retângulo na área da rede existente para incluir na prancha</span>
             <button className="btn btn-mini" onClick={() => setModoSelecaoPrancha(false)}>
+              Cancelar (Esc)
+            </button>
+          </div>
+        )}
+
+        {modoDesenharAreaBdgd && (
+          <div className="modo-bar modo-bar-prancha-area">
+            <span>🗺️ Arraste um retângulo para definir a área do projeto (captura rede existente)</span>
+            <button className="btn btn-mini" onClick={() => setModoDesenharAreaBdgd(false)}>
               Cancelar (Esc)
             </button>
           </div>
