@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Feature, FeatureCollection, Geometry, Point } from "geojson";
-import type { LatLng, Projeto, TipoPonto } from "../domain/model";
+import type { AreaBdgd, LatLng, PosteBdgd, Projeto, SegmentoMT, TipoPonto, TrafoExistente } from "../domain/model";
 import { fotosGeoJson, linhasGeoJson, pontosGeoJson } from "./geojson";
 import { BASE_MAPA, ESRI_MAXZOOM, MAPTILER_KEY } from "../config";
 import {
@@ -20,7 +20,7 @@ import {
   limparKmlRede,
   setVisibilidadeKmlRede,
 } from "./kmlRedeLayer";
-import type { ContextoBdgd, PosteBdgd, SegmentoMT } from "../domain/prancha";
+// ContextoBdgd removido — usar AreaBdgd (do model) para código novo.
 
 /**
  * Mapa base + render + EDIÇÃO do projeto (Fase 2).
@@ -212,14 +212,14 @@ interface MapCanvasProps {
   /** Voa para um ponto/bbox no mapa. Trocar o objeto dispara o flyTo. */
   voarPara?: MapAlvo | null;
   /**
-   * Incrementar para disparar a captura do contexto BDGD (rede existente
-   * próxima ao ponto de derivação). Resultado chega via onContextoBdgdCapturado.
+   * Incrementar para disparar a captura da AreaBdgd (rede existente dentro do viewport).
+   * Resultado chega via onAreaBdgdCapturada.
    */
   capturarContextoBdgdTrigger?: number;
   /** Coordenada do ponto de derivação (ehFonte=true) para busca de vizinhos BDGD. */
   wgs84Derivacao?: LatLng | null;
-  /** Chamado com o contexto BDGD capturado (ou undefined se mapa sem dados). */
-  onContextoBdgdCapturado?: (ctx: ContextoBdgd) => void;
+  /** Chamado com a AreaBdgd capturada. */
+  onAreaBdgdCapturada?: (area: AreaBdgd) => void;
   /** GeoJSON da rede KML importada pelo usuário (null = limpar). */
   kmlRedeGeojson?: GeoJSON.FeatureCollection | null;
   /** Se a camada de rede KML deve estar visível. */
@@ -252,11 +252,10 @@ interface MapCanvasProps {
    */
   bdgdCorrecoesPostes?: Array<{ tipo: "poste" | "trafo"; original: LatLng; novo: LatLng }> | null;
   /**
-   * Contexto BDGD completo (postes + segmentos + trafo).
-   * Usado para construir o overlay visual com TODOS os postes (não apenas os do viewport).
-   * Já contém as posições corrigidas após cada correção individual.
+   * AreaBdgd completa do projeto (postes + segmentos + trafos).
+   * Usada para construir o overlay visual com TODOS os postes (posições já corrigidas).
    */
-  contextoBdgd?: ContextoBdgd | null;
+  areaBdgd?: AreaBdgd | null;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -956,7 +955,7 @@ export function MapCanvas(props: MapCanvasProps) {
       if (cancelado) return;
 
       const derivacao = propsRef.current.wgs84Derivacao;
-      const callback = propsRef.current.onContextoBdgdCapturado;
+      const callback = propsRef.current.onAreaBdgdCapturada;
       if (!callback) return;
 
       // IMPORTANTE: usa querySourceFeatures (não queryRenderedFeatures).
@@ -1039,7 +1038,7 @@ export function MapCanvas(props: MapCanvasProps) {
       }
 
       // Busca transformador(es) via querySourceFeatures no source GeoJSON
-      let trafoProximo: ContextoBdgd["trafoProximo"] | undefined;
+      let trafoProximo: TrafoExistente | undefined;
       const bboxTraf = capturaBboxRef.current;
       if (derivacao || bboxTraf) {
         try {
@@ -1129,7 +1128,19 @@ export function MapCanvas(props: MapCanvasProps) {
         // Silencioso — source pode não ter sido carregada ainda
       }
 
-      callback({ trafoProximo, segmentosMT, postesBdgd });
+      const bounds = map.getBounds();
+      const area: AreaBdgd = {
+        bbox: {
+          norte: bounds.getNorth(),
+          sul: bounds.getSouth(),
+          leste: bounds.getEast(),
+          oeste: bounds.getWest(),
+        },
+        postesBdgd,
+        segmentosMT,
+        trafos: trafoProximo ? [trafoProximo] : [],
+      };
+      callback(area);
     };
 
     // Captura em dois momentos para cobrir a race condition de tiles PMTiles:
@@ -1277,7 +1288,7 @@ export function MapCanvas(props: MapCanvasProps) {
     // posições já corrigidas) em vez de querySourceFeatures, que retorna apenas as
     // features presentes nos tiles carregados no viewport atual — o que faz postes
     // fora da vista desaparecerem quando o layer PMTiles original é ocultado.
-    const ctx = propsRef.current.contextoBdgd;
+    const ctx = propsRef.current.areaBdgd;
     const correctedFC: FeatureCollection = {
       type: "FeatureCollection",
       features: (ctx?.postesBdgd ?? []).map((p): Feature => ({

@@ -10,10 +10,11 @@ import {
   layoutFolha,
   passoEscalaM,
   projecaoNaFolha,
-  type ContextoBdgd,
+  trafoProximoDaArea,
   type FolhaId,
   type Orientacao,
 } from "../domain/prancha";
+import type { AreaBdgd } from "../domain/model";
 import { gerarDxfPrancha } from "../io/dxfPrancha";
 import { acharPoste } from "../domain/postes-catalogo";
 import { baixar } from "../io/exportar";
@@ -40,13 +41,13 @@ interface Props {
   onFechar: () => void;
   /** Persiste edições de ponto (ex.: posição do balão) para sobreviver à navegação. */
   onEditarPonto?: (id: string, patch: PatchPonto) => void;
-  /** Trecho da rede MT existente + transformador mais próximo para desenhar na prancha. */
-  contextoRedeExistente?: ContextoBdgd;
+  /** Área BDGD do projeto (rede existente) para desenhar na prancha. */
+  areaBdgd?: AreaBdgd;
 }
 
 type EscalaModo = "auto" | number;
 
-export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, onFechar, onEditarPonto, contextoRedeExistente }: Props) {
+export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, onFechar, onEditarPonto, areaBdgd }: Props) {
   const [folha, setFolha] = useState<FolhaId>("A3");
   const [orientacao, setOrientacao] = useState<Orientacao>("paisagem");
   const [escalaModo, setEscalaModo] = useState<EscalaModo>("auto");
@@ -217,7 +218,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   }, [mostrarOsmPrancha, buildTiles, zSat]);
 
   const baixarDxf = () => {
-    const dxf = gerarDxfPrancha({ projeto, esforcos, rotulosEstrutura, materiais, folha, orientacao, escala, contextoRedeExistente });
+    const dxf = gerarDxfPrancha({ projeto, esforcos, rotulosEstrutura, materiais, folha, orientacao, escala, areaBdgd });
     const base = (projeto.meta.nome || "projeto").replace(/[^\p{L}\p{N}_-]+/gu, "_");
     baixar(new Blob([dxf], { type: "application/dxf" }), `${base}-prancha.dxf`);
   };
@@ -376,10 +377,10 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
             )}
 
             {/* Rede existente BDGD (cinza) — desenhada por baixo da rede proposta */}
-            {bbox && contextoRedeExistente && (
+            {bbox && areaBdgd && (
               <g>
                 {/* Segmentos da Rede MT existente */}
-                {contextoRedeExistente.segmentosMT.map((seg, i) => {
+                {areaBdgd.segmentosMT.map((seg, i) => {
                   const [x1, y1] = toSvg(seg.de);
                   const [x2, y2] = toSvg(seg.ate);
                   return (
@@ -397,11 +398,11 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     Quando os atributos SSDMT estiverem disponíveis mostra
                     "CA · 70 mm² · 13,8 kV"; caso contrário mostra "Rede MT". */}
                 {(() => {
-                  if (contextoRedeExistente.segmentosMT.length === 0) return null;
+                  if (areaBdgd.segmentosMT.length === 0) return null;
                   // Pega o segmento mais longo na tela (sem filtrar por atributos)
-                  let bestSeg = contextoRedeExistente.segmentosMT[0];
+                  let bestSeg = areaBdgd.segmentosMT[0];
                   let bestLen = 0;
-                  for (const seg of contextoRedeExistente.segmentosMT) {
+                  for (const seg of areaBdgd.segmentosMT) {
                     const [x1, y1] = toSvg(seg.de);
                     const [x2, y2] = toSvg(seg.ate);
                     const len = Math.hypot(x2 - x1, y2 - y1);
@@ -453,7 +454,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
 
                 {/* Postes reais do BDGD (PONNOT) — símbolo DIS-NOR-012 existente
                     (duplo círculo, sem hachura). Exibe ALT_EST quando disponível. */}
-                {contextoRedeExistente.postesBdgd.map((poste, i) => {
+                {areaBdgd.postesBdgd.map((poste, i) => {
                   const [px, py] = toSvg(poste.wgs84);
                   // Rótulo: prefere "11m/Conc" (ALT_EST + TIP_EST); fallback para TIP_OPE; último recurso "Exist."
                   // Aceita tanto código numérico ("1","2"…) quanto texto do workflow expandido ("Madeira","Concreto"…)
@@ -492,8 +493,11 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                 })}
 
                 {/* Transformador existente — símbolo DIS-NOR-012 outline only (sem hachura) */}
-                {contextoRedeExistente.trafoProximo && (() => {
-                  const [tx, ty] = toSvg(contextoRedeExistente.trafoProximo.wgs84);
+                {(() => {
+                  const fonteTrafo = projeto.pontos.find((p) => p.ehFonte);
+                  const trafoProximo = trafoProximoDaArea(areaBdgd, fonteTrafo?.wgs84);
+                  if (!trafoProximo) return null;
+                  const [tx, ty] = toSvg(trafoProximo.wgs84);
                   const TH = 8, TB = 3;
 
                   // Calcula o ângulo do segmento MT para rotacionar o triângulo
@@ -506,15 +510,15 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   // Se fonte e trafo estão no mesmo poste (dirLen ≈ 0), usa o
                   // segmento mais longo como proxy da linha principal.
                   let angleDeg = 0;
-                  if (contextoRedeExistente.segmentosMT.length > 0) {
+                  if (areaBdgd.segmentosMT.length > 0) {
                     // Pré-calcula coordenadas SVG de cada segmento candidato
-                    const svgSegs = contextoRedeExistente.segmentosMT.map((seg) => {
+                    const svgSegs = areaBdgd.segmentosMT.map((seg) => {
                       const [sx1, sy1] = toSvg(seg.de);
                       const [sx2, sy2] = toSvg(seg.ate);
                       return { seg, sx1, sy1, sx2, sy2, len: Math.hypot(sx2 - sx1, sy2 - sy1) };
                     });
 
-                    let bestSeg = contextoRedeExistente.segmentosMT[0];
+                    let bestSeg = areaBdgd.segmentosMT[0];
                     const fonteP = projeto.pontos.find((p) => p.ehFonte);
 
                     if (fonteP) {
@@ -563,13 +567,13 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                       <circle cx={tx} cy={ty} r={2.0} fill="#fff" stroke="#888888" strokeWidth={0.4} />
                       <circle cx={tx} cy={ty} r={1.2} fill="none" stroke="#888888" strokeWidth={0.4} />
                       {/* Label acima da base do triângulo, paralelo à linha */}
-                      {contextoRedeExistente.trafoProximo.label && (
+                      {trafoProximo.label && (
                         <text
                           x={tx} y={ty - TH - 1.5}
                           textAnchor="middle"
                           fontSize={2.2} fill="#888888"
                         >
-                          {contextoRedeExistente.trafoProximo.label}
+                          {trafoProximo.label}
                         </text>
                       )}
                     </g>
@@ -582,21 +586,22 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                     para cada polo adjacente do segmento MT principal. */}
                 {(() => {
                   const fonteP = projeto.pontos.find((p) => p.ehFonte);
-                  if (!fonteP || contextoRedeExistente.segmentosMT.length === 0) return null;
+                  if (!fonteP || areaBdgd.segmentosMT.length === 0) return null;
 
                   const [px, py] = toSvg(fonteP.wgs84);
 
                   // Mesmo algoritmo de seleção do segmento principal do trafo
-                  const svgSegsV = contextoRedeExistente.segmentosMT.map((seg) => {
+                  const svgSegsV = areaBdgd.segmentosMT.map((seg) => {
                     const [sx1, sy1] = toSvg(seg.de);
                     const [sx2, sy2] = toSvg(seg.ate);
                     return { seg, sx1, sy1, sx2, sy2, len: Math.hypot(sx2 - sx1, sy2 - sy1) };
                   });
 
-                  let mainSeg = contextoRedeExistente.segmentosMT[0];
+                  let mainSeg = areaBdgd.segmentosMT[0];
 
-                  if (contextoRedeExistente.trafoProximo) {
-                    const [trafoX, trafoY] = toSvg(contextoRedeExistente.trafoProximo.wgs84);
+                  const trafoProximoVao = trafoProximoDaArea(areaBdgd, fonteP.wgs84);
+                  if (trafoProximoVao) {
+                    const [trafoX, trafoY] = toSvg(trafoProximoVao.wgs84);
                     const dirX = trafoX - px, dirY = trafoY - py;
                     const dirLen = Math.hypot(dirX, dirY);
                     if (dirLen > 0.1) {
@@ -621,7 +626,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                   // e exibe uma etiqueta de distância por lado — cor preta.
                   type PoloAdj = { svgX: number; svgY: number; distM: number };
                   const farCandidates: PoloAdj[] = [];
-                  for (const seg of contextoRedeExistente.segmentosMT) {
+                  for (const seg of areaBdgd.segmentosMT) {
                     const d1 = distanciaM(fonteP.wgs84, seg.de);
                     const d2 = distanciaM(fonteP.wgs84, seg.ate);
                     const farPolo = d1 > d2 ? seg.de : seg.ate;

@@ -365,6 +365,86 @@ export interface Referencia {
 }
 
 // --------------------------------------------------------------------------
+// Rede existente / BDGD
+// --------------------------------------------------------------------------
+
+/** Atributos do condutor conforme SSDMT (disponíveis quando exportados via PMTiles). */
+export interface CaboMT {
+  /** Tipo/material do condutor (TIP_CND no SSDMT, ex.: "CA", "ACSR", "CU"). */
+  tipo?: string;
+  /** Seção nominal em mm² (CRS_CND no SSDMT, ex.: 50, 70, 95, 120). */
+  secaoMm2?: number;
+  /** Tensão de operação em kV (TEN_OPE no SSDMT, ex.: 13.8, 34.5). */
+  tensaoKv?: number;
+}
+
+/** Um segmento da Rede MT existente (dois vértices WGS84). */
+export interface SegmentoMT {
+  de: LatLng;
+  ate: LatLng;
+  /** Atributos do condutor — disponíveis quando os campos SSDMT estão no PMTiles. */
+  cabo?: CaboMT;
+  /** Inserido manualmente pelo usuário (não capturado da BDGD). */
+  manual?: boolean;
+}
+
+/**
+ * Poste real da BDGD (camada PONNOT) ou inserido manualmente.
+ */
+export interface PosteBdgd {
+  /** Posição WGS84 do poste. */
+  wgs84: LatLng;
+  /**
+   * Tipo de estrutura (TIP_EST).
+   * Código ANEEL: 1=Madeira, 2=Concreto, 3=Metálico, 4=Fibra de vidro.
+   */
+  tipEst?: string | number;
+  /** Altura da estrutura em metros (ALT_EST), ex.: 9, 11, 13. */
+  altEst?: number;
+  /**
+   * Tipo de operação (TIP_OPE).
+   * Código ANEEL: 1=Derivação, 2=Passagem, 3=Término, 4=Ancoragem.
+   */
+  tipOpe?: string | number;
+  /** Identificador único do registro (COD_ID). */
+  codId?: string;
+  /** Inserido manualmente pelo usuário (não capturado da BDGD). */
+  manual?: boolean;
+}
+
+/** Transformador existente na área BDGD (capturado da BDGD ou inserido manualmente). */
+export interface TrafoExistente {
+  /** Posição WGS84 do transformador. */
+  wgs84: LatLng;
+  /** Rótulo exibido na prancha (ex.: "TR-15kVA"). */
+  label?: string;
+  /** Potência nominal em kVA, quando disponível. */
+  potKva?: number;
+  /** Inserido manualmente pelo usuário (não capturado da BDGD). */
+  manual?: boolean;
+}
+
+/**
+ * Área BDGD do projeto — retângulo georreferenciado com snapshot completo da
+ * rede existente dentro dele. Substitui o antigo `contextoBdgd` (snapshot
+ * efêmero de viewport); aqui os dados são do projeto (persistem no .mkf).
+ *
+ * Em projetos novos: bbox é desenhado pelo usuário no mapa → sistema captura
+ * automaticamente os dados BDGD dentro do retângulo. O usuário pode também
+ * inserir elementos manualmente (manual=true) quando não há BDGD disponível.
+ */
+export interface AreaBdgd {
+  /** Retângulo de captura (WGS84 graus). Null = ainda não definido. */
+  bbox?: { norte: number; sul: number; leste: number; oeste: number };
+  /** Postes reais (PONNOT) dentro da área — capturados da BDGD ou inseridos manualmente. */
+  postesBdgd: PosteBdgd[];
+  /** Segmentos da Rede MT dentro da área. */
+  segmentosMT: SegmentoMT[];
+  /** Transformadores dentro da área. */
+  trafos: TrafoExistente[];
+}
+
+// --------------------------------------------------------------------------
 // Projeto
 // --------------------------------------------------------------------------
 
@@ -391,6 +471,11 @@ export interface Projeto {
   linhasLivres: LinhaLivre[];
   fotos: Foto[];
   referencias: Referencia[];
+  /**
+   * Área BDGD do projeto — snapshot da rede existente capturado pelo usuário.
+   * Persiste no .mkf. Substituiu o antigo `contextoRedeExistente` (legado).
+   */
+  areaBdgd?: AreaBdgd;
 }
 
 /** Cria um projeto vazio e válido. */

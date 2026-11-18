@@ -43,7 +43,7 @@ import { PainelCamadas } from "./ui/PainelCamadas";
 import { PranchaView } from "./ui/PranchaView";
 import { NovoProjetoModal } from "./ui/NovoProjetoModal";
 import { BDGD_CAMADAS_PADRAO, type BdgdCarregamentoResultado } from "./map/bdgd";
-import { corrigirPosteEspecifico, type ContextoBdgd } from "./domain/prancha";
+import { corrigirElementoAreaBdgd } from "./domain/prancha";
 import type { FeatureCollection } from "geojson";
 import { comporEstrutura, separarEstrutura } from "./domain/estruturas-catalogo";
 import {
@@ -56,7 +56,7 @@ import {
   vaosLongos,
   VAO_MAXIMO_M,
 } from "./domain/vaos";
-import type { LatLng, Projeto, TipoPonto } from "./domain/model";
+import type { AreaBdgd, LatLng, Projeto, TipoPonto } from "./domain/model";
 import { projetoVazio } from "./domain/model";
 import { salvarProjetoDb, gerarDbId, type ProjetoArquivado } from "./db/projetosDb";
 import { ProjetosModal } from "./ui/ProjetosModal";
@@ -158,7 +158,6 @@ export function App() {
   const [mostrarOsm, setMostrarOsm] = useState(false);
   const [voarPara, setVoarPara] = useState<MapAlvo | null>(null);
   const [trafosData, setTrafosData] = useState<FeatureCollection | null>(null);
-  const [contextoBdgd, setContextoBdgd] = useState<ContextoBdgd | null>(null);
   const [capturarContextoBdgdTrigger, setCapturarContextoBdgdTrigger] = useState(0);
   /** Elemento BDGD clicado pelo usuário para correção de coordenada. */
   const [bdgdSelecionado, setBdgdSelecionado] = useState<{ tipo: "poste" | "trafo"; wgs84: LatLng } | null>(null);
@@ -393,21 +392,20 @@ export function App() {
   // ── Correção de coordenada BDGD ──────────────────────────────────────────
 
   /**
-   * Quando BDGD é capturado pelo mapa, também persiste no projeto (.mkf).
-   * Isso permite restaurar o contexto ao reabrir o arquivo sem recapturar.
+   * Quando BDGD é capturado pelo mapa, persiste no projeto (.mkf) como areaBdgd.
+   * Permite restaurar os dados ao reabrir o arquivo sem recapturar.
    */
-  const onContextoBdgdCapturadoComSalvar = useCallback((ctx: ContextoBdgd) => {
-    setContextoBdgd(ctx);
-    if (projeto) atualizar({ ...projeto, contextoRedeExistente: ctx } as unknown as Projeto);
+  const onAreaBdgdCapturada = useCallback((area: AreaBdgd) => {
+    if (projeto) atualizar({ ...projeto, areaBdgd: area });
   }, [projeto, atualizar]);
 
   /** Usuário clicou em um poste ou trafo BDGD no mapa → entra no fluxo de correção. */
   const onBdgdElementoClicado = useCallback((tipo: "poste" | "trafo", wgs84: LatLng) => {
-    if (!contextoBdgd) return; // sem contexto BDGD, nada a corrigir
+    if (!projeto?.areaBdgd) return; // sem área BDGD, nada a corrigir
     setBdgdSelecionado({ tipo, wgs84 });
     setBdgdDeltaPendente(null);
     setModoBdgdCorrigir(false);
-  }, [contextoBdgd]);
+  }, [projeto?.areaBdgd]);
 
   /** Usuário clicou em "Corrigir coordenada" → entra no modo aguardar clique no mapa. */
   const onIniciarCorrecaoBdgd = useCallback(() => {
@@ -424,30 +422,29 @@ export function App() {
 
   /** Usuário clicou no mapa durante o modo correção → calcula delta e pede confirmação. */
   const onCorrigirPosicaoEscolhida = useCallback((wgs84novo: LatLng) => {
-    if (!bdgdSelecionado || !contextoBdgd) return;
+    if (!bdgdSelecionado) return;
     setModoBdgdCorrigir(false);
     const dLat = wgs84novo.lat - bdgdSelecionado.wgs84.lat;
     const dLng = wgs84novo.lng - bdgdSelecionado.wgs84.lng;
     const distM = distanciaM(bdgdSelecionado.wgs84, wgs84novo);
     setBdgdDeltaPendente({ dLat, dLng, distM });
-  }, [bdgdSelecionado, contextoBdgd]);
+  }, [bdgdSelecionado]);
 
   /** Corrige APENAS o elemento BDGD clicado (sem deslocar os demais). */
   const onConfirmarSoEste = useCallback(() => {
-    if (!bdgdDeltaPendente || !contextoBdgd || !bdgdSelecionado || !projeto) return;
+    if (!bdgdDeltaPendente || !projeto?.areaBdgd || !bdgdSelecionado) return;
     const wgs84Original = bdgdSelecionado.wgs84;
     const wgs84Novo: LatLng = {
       lat: wgs84Original.lat + bdgdDeltaPendente.dLat,
       lng: wgs84Original.lng + bdgdDeltaPendente.dLng,
     };
-    const ctxCorrigido = corrigirPosteEspecifico(
-      contextoBdgd,
+    const areaCorrigida = corrigirElementoAreaBdgd(
+      projeto.areaBdgd,
       bdgdSelecionado.tipo,
       wgs84Original,
       wgs84Novo,
     );
-    setContextoBdgd(ctxCorrigido);
-    atualizar({ ...projeto, contextoRedeExistente: ctxCorrigido } as unknown as Projeto);
+    atualizar({ ...projeto, areaBdgd: areaCorrigida });
     // Atualização visual: só este elemento
     setBdgdCorrecoesPostes((prev) => [
       ...prev,
@@ -455,7 +452,7 @@ export function App() {
     ]);
     setBdgdSelecionado(null);
     setBdgdDeltaPendente(null);
-  }, [bdgdDeltaPendente, contextoBdgd, bdgdSelecionado, projeto, atualizar]);
+  }, [bdgdDeltaPendente, projeto, bdgdSelecionado, atualizar]);
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -507,8 +504,7 @@ export function App() {
       setModo("selecionar");
       setChaveEnq((c) => c + 1);
       setSalvo(true);
-      // Restaura o contexto BDGD salvo no projeto (postes/trafo/segmentos corrigidos).
-      setContextoBdgd((resultado.projeto as unknown as { contextoRedeExistente?: ContextoBdgd }).contextoRedeExistente ?? null);
+      // areaBdgd já vem dentro de resultado.projeto (campo nativo do Projeto).
       onCancelarBdgd();
       // Registra no histórico (só para .mkf; KML/ZIP ficam no histórico após o 1º "Salvar").
       if (mkfBlobParaDb) {
@@ -624,8 +620,7 @@ export function App() {
       setModo("selecionar");
       setChaveEnq((c) => c + 1);
       setSalvo(true);
-      // Restaura contexto BDGD salvo no projeto.
-      setContextoBdgd((resultado.projeto as unknown as { contextoRedeExistente?: ContextoBdgd }).contextoRedeExistente ?? null);
+      // areaBdgd já vem dentro de resultado.projeto (campo nativo do Projeto).
       onCancelarBdgd();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao abrir o projeto do histórico.");
@@ -652,7 +647,6 @@ export function App() {
     setMedicao([]);
     setModo("selecionar");
     setChaveEnq((c) => c + 1);
-    setContextoBdgd(null);
     setBdgdDeltaAplicado(null);
     setBdgdCorrecoesPostes([]);
     onCancelarBdgd();
@@ -661,11 +655,8 @@ export function App() {
   const salvar = useCallback(async () => {
     if (!projeto) return;
     try {
-      // Injeta o contexto BDGD (postes/segmentos MT corrigidos) no projeto antes de serializar.
-      const projetoParaSalvar = contextoBdgd
-        ? ({ ...projeto, contextoRedeExistente: contextoBdgd } as unknown as Projeto)
-        : projeto;
-      const blob = await exportarMkf(projetoParaSalvar, estado.blobs);
+      // areaBdgd já faz parte de projeto (campo nativo) — exportarMkf serializa tudo.
+      const blob = await exportarMkf(projeto, estado.blobs);
       const nome = nomeArquivoMkf(projeto);
 
       // Tenta usar File System Access API para salvar no mesmo arquivo.
@@ -1352,7 +1343,7 @@ export function App() {
           onBdgdCarregado={onBdgdCarregado}
           capturarContextoBdgdTrigger={capturarContextoBdgdTrigger}
           wgs84Derivacao={wgs84Derivacao}
-          onContextoBdgdCapturado={onContextoBdgdCapturadoComSalvar}
+          onAreaBdgdCapturada={onAreaBdgdCapturada}
           estiloBase={estiloBase}
           mostrarOsm={mostrarOsm}
           voarPara={voarPara}
@@ -1366,7 +1357,7 @@ export function App() {
           onCorrigirPosicaoEscolhida={onCorrigirPosicaoEscolhida}
           bdgdDeltaAplicado={bdgdDeltaAplicado}
           bdgdCorrecoesPostes={bdgdCorrecoesPostes.length > 0 ? bdgdCorrecoesPostes : null}
-          contextoBdgd={contextoBdgd}
+          areaBdgd={projeto?.areaBdgd ?? null}
         />
 
         {/* BarraFerramentas movida para a topbar */}
@@ -1502,7 +1493,7 @@ export function App() {
           </div>
         )}
 
-        {bdgdDeltaPendente && contextoBdgd && bdgdSelecionado && (
+        {bdgdDeltaPendente && projeto?.areaBdgd && bdgdSelecionado && (
           <div className="modo-bar modo-bar-bdgd modo-bar-bdgd-confirmar">
             <span>
               Mover{" "}
@@ -1747,7 +1738,7 @@ export function App() {
           materiais={materiais}
           onFechar={() => setMostrarPrancha(false)}
           onEditarPonto={(id, patch) => atualizar(editarPonto(projeto, id, patch))}
-          contextoRedeExistente={contextoBdgd ?? undefined}
+          areaBdgd={projeto?.areaBdgd}
         />
       )}
 

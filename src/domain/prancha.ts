@@ -1,55 +1,17 @@
-import type { LatLng, Projeto } from "./model";
+import type { AreaBdgd, CaboMT, LatLng, PosteBdgd, Projeto, SegmentoMT, TrafoExistente } from "./model";
 import { paraUtm } from "../geo/utm";
 
-// --------------------------------------------------------------------------
-// Contexto BDGD (rede existente próxima ao ponto de derivação)
-// --------------------------------------------------------------------------
+// Re-exporta os tipos BDGD para não quebrar imports externos que ainda usam prancha.ts como fonte.
+export type { AreaBdgd, CaboMT, PosteBdgd, SegmentoMT, TrafoExistente };
 
-/** Atributos do condutor conforme SSDMT (disponíveis quando exportados via PMTiles). */
-export interface CaboMT {
-  /** Tipo/material do condutor (TIP_CND no SSDMT, ex.: "CA", "ACSR", "CU"). */
-  tipo?: string;
-  /** Seção nominal em mm² (CRS_CND no SSDMT, ex.: 50, 70, 95, 120). */
-  secaoMm2?: number;
-  /** Tensão de operação em kV (TEN_OPE no SSDMT, ex.: 13.8, 34.5). */
-  tensaoKv?: number;
-}
-
-/** Um segmento da Rede MT existente (dois vértices WGS84). */
-export interface SegmentoMT {
-  de: LatLng;
-  ate: LatLng;
-  /** Atributos do condutor — disponíveis quando os campos SSDMT estão no PMTiles. */
-  cabo?: CaboMT;
-}
+// --------------------------------------------------------------------------
+// Contexto BDGD (legado — mantido para compatibilidade com código existente)
+// Use AreaBdgd para código novo.
+// --------------------------------------------------------------------------
 
 /**
- * Poste real da BDGD (camada PONNOT).
- * Capturado via querySourceFeatures na source postes (PMTiles).
- */
-export interface PosteBdgd {
-  /** Posição WGS84 do poste. */
-  wgs84: LatLng;
-  /**
-   * Tipo de estrutura (TIP_EST).
-   * Código ANEEL: 1=Madeira, 2=Concreto, 3=Metálico, 4=Fibra de vidro.
-   * Pode vir como número ou string dependendo do pipeline.
-   */
-  tipEst?: string | number;
-  /** Altura da estrutura em metros (ALT_EST), ex.: 9, 11, 13. */
-  altEst?: number;
-  /**
-   * Tipo de operação (TIP_OPE).
-   * Código ANEEL: 1=Derivação, 2=Passagem, 3=Término, 4=Ancoragem.
-   */
-  tipOpe?: string | number;
-  /** Identificador único do registro (COD_ID). */
-  codId?: string;
-}
-
-/**
- * Trecho da rede existente a ser desenhado na prancha junto com a rede proposta.
- * Capturado via queryRenderedFeatures no MapCanvas antes de abrir a prancha.
+ * @deprecated Use AreaBdgd. Mantido para compatibilidade com as funções
+ * corrigirPosteEspecifico e deslocarContextoBdgd.
  */
 export interface ContextoBdgd {
   /** Transformador mais próximo do ponto de derivação (ponto WGS84 + rótulo). */
@@ -58,16 +20,100 @@ export interface ContextoBdgd {
   segmentosMT: SegmentoMT[];
   /**
    * Postes BDGD (PONNOT) próximos ao ponto de derivação.
-   * Capturados do PMTiles quando disponíveis (minzoom 13).
    * Lista vazia quando a camada não foi carregada ou não há postes no viewport.
    */
   postesBdgd: PosteBdgd[];
 }
 
+// --------------------------------------------------------------------------
+// AreaBdgd — funções de domínio
+// --------------------------------------------------------------------------
+
 /**
- * Corrige a coordenada de UM ÚNICO elemento do contexto BDGD.
+ * Distância euclideana em graus (apenas para ordenação relativa — não use como
+ * distância métrica real). Suficiente para achar o trafo mais próximo.
+ */
+function distGraus(a: LatLng, b: LatLng): number {
+  const dLat = a.lat - b.lat;
+  const dLng = a.lng - b.lng;
+  return Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
+/**
+ * Retorna o transformador mais próximo de `fonteWgs84` dentro da área BDGD.
+ * Usado pela prancha para escolher o "trafo de referência" quando há vários.
+ */
+export function trafoProximoDaArea(
+  area: AreaBdgd,
+  fonteWgs84?: LatLng,
+): TrafoExistente | undefined {
+  if (area.trafos.length === 0) return undefined;
+  if (!fonteWgs84 || area.trafos.length === 1) return area.trafos[0];
+  let melhor = area.trafos[0];
+  let melhorDist = distGraus(fonteWgs84, melhor.wgs84);
+  for (let i = 1; i < area.trafos.length; i++) {
+    const d = distGraus(fonteWgs84, area.trafos[i].wgs84);
+    if (d < melhorDist) { melhorDist = d; melhor = area.trafos[i]; }
+  }
+  return melhor;
+}
+
+/**
+ * Corrige a coordenada de UM ÚNICO elemento da AreaBdgd.
  * Localiza o poste (ou trafo) que coincide com `wgs84Original` (tolerância ~1 cm)
  * e substitui sua posição por `wgs84Novo`. Os demais elementos não são alterados.
+ */
+export function corrigirElementoAreaBdgd(
+  area: AreaBdgd,
+  tipo: "poste" | "trafo",
+  wgs84Original: LatLng,
+  wgs84Novo: LatLng,
+): AreaBdgd {
+  const tol = 1e-7;
+  const igual = (a: LatLng, b: LatLng) =>
+    Math.abs(a.lat - b.lat) < tol && Math.abs(a.lng - b.lng) < tol;
+  if (tipo === "trafo") {
+    return {
+      ...area,
+      trafos: area.trafos.map((t) =>
+        igual(t.wgs84, wgs84Original) ? { ...t, wgs84: wgs84Novo } : t,
+      ),
+    };
+  }
+  return {
+    ...area,
+    postesBdgd: area.postesBdgd.map((p) =>
+      igual(p.wgs84, wgs84Original) ? { ...p, wgs84: wgs84Novo } : p,
+    ),
+    // Atualiza também os endpoints dos segmentos MT que partem/chegam neste poste.
+    segmentosMT: area.segmentosMT.map((s) => ({
+      ...s,
+      de: igual(s.de, wgs84Original) ? wgs84Novo : s.de,
+      ate: igual(s.ate, wgs84Original) ? wgs84Novo : s.ate,
+    })),
+  };
+}
+
+/**
+ * Desloca TODOS os elementos da AreaBdgd por um delta lat/lng (graus).
+ * Corrige erros sistemáticos de georreferenciamento.
+ */
+export function deslocarAreaBdgd(
+  area: AreaBdgd,
+  dLat: number,
+  dLng: number,
+): AreaBdgd {
+  const mv = (p: LatLng): LatLng => ({ lat: p.lat + dLat, lng: p.lng + dLng });
+  return {
+    ...area,
+    trafos: area.trafos.map((t) => ({ ...t, wgs84: mv(t.wgs84) })),
+    segmentosMT: area.segmentosMT.map((s) => ({ ...s, de: mv(s.de), ate: mv(s.ate) })),
+    postesBdgd: area.postesBdgd.map((p) => ({ ...p, wgs84: mv(p.wgs84) })),
+  };
+}
+
+/**
+ * @deprecated Use corrigirElementoAreaBdgd. Mantido para compatibilidade.
  */
 export function corrigirPosteEspecifico(
   ctx: ContextoBdgd,
@@ -92,7 +138,6 @@ export function corrigirPosteEspecifico(
     postesBdgd: ctx.postesBdgd.map((p) =>
       igual(p.wgs84, wgs84Original) ? { ...p, wgs84: wgs84Novo } : p,
     ),
-    // Atualiza também os endpoints dos segmentos MT que partem/chegam neste poste.
     segmentosMT: ctx.segmentosMT.map((s) => ({
       ...s,
       de: igual(s.de, wgs84Original) ? wgs84Novo : s.de,
@@ -102,9 +147,7 @@ export function corrigirPosteEspecifico(
 }
 
 /**
- * Desloca TODOS os elementos do contexto BDGD por um delta lat/lng (graus).
- * Usa para corrigir erros sistemáticos de georreferenciamento: quando um
- * poste de campo não bate com o poste BDGD, o mesmo offset é aplicado a tudo.
+ * @deprecated Use deslocarAreaBdgd. Mantido para compatibilidade.
  */
 export function deslocarContextoBdgd(
   ctx: ContextoBdgd,

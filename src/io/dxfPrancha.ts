@@ -6,10 +6,11 @@ import {
   layoutFolha,
   passoEscalaM,
   projecaoNaFolha,
-  type ContextoBdgd,
+  trafoProximoDaArea,
   type FolhaId,
   type Orientacao,
 } from "../domain/prancha";
+import type { AreaBdgd } from "../domain/model";
 import { acharPoste } from "../domain/postes-catalogo";
 
 /**
@@ -36,8 +37,8 @@ interface ParamsPrancha {
   folha: FolhaId;
   orientacao: Orientacao;
   escala: number;
-  /** Trecho da rede MT existente + transformador mais próximo (BDGD). */
-  contextoRedeExistente?: ContextoBdgd;
+  /** Área BDGD do projeto (rede existente). */
+  areaBdgd?: AreaBdgd;
 }
 
 // Camadas do DXF da folha.
@@ -109,17 +110,19 @@ export function gerarDxfPrancha(p: ParamsPrancha): string {
 
   if (bbox) {
     // Rede existente BDGD (camadas MF_REDE_EXISTENTE / MF_TRAFO_EXISTENTE).
-    if (p.contextoRedeExistente) {
-      for (const seg of p.contextoRedeExistente.segmentosMT) {
+    if (p.areaBdgd) {
+      for (const seg of p.areaBdgd.segmentosMT) {
         const [x1, y1] = proj.toXY(seg.de);
         const [x2, y2] = proj.toXY(seg.ate);
         line(CAM.redeExistente.nome, x1, y1, x2, y2);
       }
-      if (p.contextoRedeExistente.trafoProximo) {
-        const [tx, ty] = proj.toXY(p.contextoRedeExistente.trafoProximo.wgs84);
+      const fonteP = p.projeto.pontos.find((pt) => pt.ehFonte);
+      const trafoProximo = trafoProximoDaArea(p.areaBdgd, fonteP?.wgs84);
+      if (trafoProximo) {
+        const [tx, ty] = proj.toXY(trafoProximo.wgs84);
         circle(CAM.trafoExistente.nome, tx, ty, 2.0);
         circle(CAM.trafoExistente.nome, tx, ty, 0.8);
-        const lbl = p.contextoRedeExistente.trafoProximo.label;
+        const lbl = trafoProximo.label;
         if (lbl) text(CAM.trafoExistente.nome, tx + 2.5, ty, 2.2, lbl);
       }
     }
