@@ -956,9 +956,6 @@ export function App() {
           <button className="cr-btn" onClick={() => setNovoProjetoAberto(true)}>
             Novo
           </button>
-          <button className="cr-btn" onClick={() => inputRef.current?.click()} disabled={carregando}>
-            {carregando ? "Importando…" : "Importar"}
-          </button>
           {projeto && (
             <button className={`cr-btn${salvo ? "" : " unsaved"}`} onClick={() => void salvar()}>
               {salvo ? "Salvar" : "● Salvar"}
@@ -976,13 +973,13 @@ export function App() {
           )}
         </div>
 
-        {/* BDGD toggle */}
+        {/* Camadas toggle */}
         <div className="ct-group">
           <button
             className={`cr-btn${mostrarCamadas ? " active" : ""}`}
             onClick={() => setMostrarCamadas((v) => !v)}
           >
-            🗺 Rede BDGD
+            🗺 Camadas
           </button>
           <button
             className={`cr-btn${mostrarOsm ? " active" : ""}`}
@@ -1557,7 +1554,7 @@ export function App() {
 
         {modoDesenharAreaBdgd && (
           <div className="modo-bar modo-bar-prancha-area">
-            <span>🗺️ Arraste um retângulo para definir a área do projeto (captura rede existente)</span>
+            <span>🗺️ Arraste um retângulo no mapa para definir a área do projeto</span>
             <button className="btn btn-mini" onClick={() => setModoDesenharAreaBdgd(false)}>
               Cancelar (Esc)
             </button>
@@ -1866,6 +1863,8 @@ export function App() {
             setDbId(null);
             setSalvo(false);
             setNovoProjetoAberto(false);
+            // Guia o projetista direto para o passo seguinte: definir a área no mapa.
+            setModoDesenharAreaBdgd(true);
           }}
           onCancelar={() => setNovoProjetoAberto(false)}
         />
