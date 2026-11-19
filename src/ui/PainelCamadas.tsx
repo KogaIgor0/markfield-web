@@ -20,19 +20,12 @@ interface Props {
   onDefinirAreaBdgd?: () => void;
   /** True quando o projeto já tem um bbox de área definido. */
   temAreaDefinida?: boolean;
-  /** True quando há um projeto aberto (habilita inserção manual). */
-  temProjeto?: boolean;
-  /** Modo de inserção manual ativo no momento. */
-  modoInserirExistente?: "poste" | "trafo" | "segmento" | null;
-  /** Ativa o modo de inserção manual de um tipo de elemento. */
-  onDefinirModoInserir?: (modo: "poste" | "trafo" | "segmento" | null) => void;
 }
 
 export function PainelCamadas({
   fonteId, ativas, carregando, erro, onToggle, onCarregar, onChangeFonte, onFechar,
   kmlRedeNome, kmlRedeVisivel, onAbrirKmlRede, onToggleKmlRede, onLimparKmlRede,
   onDefinirAreaBdgd, temAreaDefinida,
-  temProjeto, modoInserirExistente, onDefinirModoInserir,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fonte = BDGD_FONTES.find((f) => f.id === fonteId) ?? BDGD_FONTES[0];
@@ -149,31 +142,6 @@ export function PainelCamadas({
         }}
       />
 
-      {/* ── Inserção manual de elementos existentes ── */}
-      {temProjeto && (
-        <>
-          <div className="pc-divisor" />
-          <div className="pc-kml-titulo">Inserção manual de existentes</div>
-          <button
-            className={`pc-carregar-btn pc-inserir-btn${modoInserirExistente === "poste" ? " pc-inserir-ativo" : ""}`}
-            onClick={() => onDefinirModoInserir?.(modoInserirExistente === "poste" ? null : "poste")}
-          >
-            🔵 {modoInserirExistente === "poste" ? "✓ Inserindo poste…" : "Inserir poste existente"}
-          </button>
-          <button
-            className={`pc-carregar-btn pc-inserir-btn${modoInserirExistente === "trafo" ? " pc-inserir-ativo" : ""}`}
-            onClick={() => onDefinirModoInserir?.(modoInserirExistente === "trafo" ? null : "trafo")}
-          >
-            🔴 {modoInserirExistente === "trafo" ? "✓ Inserindo trafo…" : "Inserir transformador existente"}
-          </button>
-          <button
-            className={`pc-carregar-btn pc-inserir-btn${modoInserirExistente === "segmento" ? " pc-inserir-ativo" : ""}`}
-            onClick={() => onDefinirModoInserir?.(modoInserirExistente === "segmento" ? null : "segmento")}
-          >
-            🔶 {modoInserirExistente === "segmento" ? "✓ Inserindo segmento…" : "Inserir segmento de MT"}
-          </button>
-        </>
-      )}
     </div>
   );
 }

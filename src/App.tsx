@@ -1269,7 +1269,33 @@ export function App() {
                 <span className="tv-label">Dividir{longos.length ? ` ${longos.length}` : ""}</span>
               </button>
               <div className="tv-sep" />
-              <span className="tv-group-label">Vista</span>
+              {/* ── Inserção de existentes (ainda dentro de Edição) ── */}
+              <button
+                className={`tv-btn${modoInserirExistente === "poste" ? " active" : ""}`}
+                onClick={() => setModoInserirExistente((m) => m === "poste" ? null : "poste")}
+                title="Inserir poste existente no mapa (clique)"
+              >
+                <span className="tv-icon">🔵</span>
+                <span className="tv-label">P.exist</span>
+              </button>
+              <button
+                className={`tv-btn${modoInserirExistente === "trafo" ? " active" : ""}`}
+                onClick={() => setModoInserirExistente((m) => m === "trafo" ? null : "trafo")}
+                title="Inserir transformador existente no mapa (clique)"
+              >
+                <span className="tv-icon">🔴</span>
+                <span className="tv-label">T.exist</span>
+              </button>
+              <button
+                className={`tv-btn${modoInserirExistente === "segmento" ? " active" : ""}`}
+                onClick={() => setModoInserirExistente((m) => m === "segmento" ? null : "segmento")}
+                title="Inserir segmento de MT existente (2 cliques)"
+              >
+                <span className="tv-icon">🔶</span>
+                <span className="tv-label">Seg.MT</span>
+              </button>
+              <div className="tv-sep" />
+              <span className="tv-group-label">Exibição</span>
               <button
                 className={`tv-btn${emMedir ? " active" : ""}`}
                 onClick={() => {
@@ -1285,8 +1311,6 @@ export function App() {
                 <span className="tv-icon">📏</span>
                 <span className="tv-label">Medir</span>
               </button>
-              <div className="tv-sep" />
-              <span className="tv-group-label">Projeto</span>
               <button
                 className={`tv-btn${!mostrarFotos ? " active" : ""}`}
                 onClick={() => setMostrarFotos((v) => !v)}
@@ -1304,6 +1328,7 @@ export function App() {
                 <span className="tv-label">Nums</span>
               </button>
               <div className="tv-sep" />
+              <span className="tv-group-label">Projeto</span>
               <button
                 className={`tv-btn${modoRede ? " active-green" : ""}`}
                 onClick={() => setModoRede((v) => !v)}
@@ -1434,9 +1459,6 @@ export function App() {
             onLimparKmlRede={onLimparKmlRede}
             onDefinirAreaBdgd={() => { setMostrarCamadas(false); setModoDesenharAreaBdgd(true); }}
             temAreaDefinida={!!projeto?.areaBdgd?.bbox}
-            temProjeto={!!projeto}
-            modoInserirExistente={modoInserirExistente}
-            onDefinirModoInserir={(modo) => { setMostrarCamadas(false); setModoInserirExistente(modo); }}
           />
         )}
 
