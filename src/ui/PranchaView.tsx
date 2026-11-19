@@ -822,6 +822,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                 }
 
                 const pos = p.balaoPos ?? 0;
+                const dist = p.balaoDist ?? 0;
 
                 // Direção da rede no poste (para rotacionar triângulo do trafo)
                 // Soma vetorial das direções de todos os trechos conectados.
@@ -897,7 +898,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                       </>
                     )}
 
-                    {/* Balão oblongo — clique para rodar posição */}
+                    {/* Balão oblongo — clique: rodar posição · Shift+clique: ajustar distância */}
                     {balaoLinhas.length > 0 && (
                       <BalaoPosto
                         x={x} y={y}
@@ -906,8 +907,12 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
                         retirada={p.retirada}
                         observacao={p.observacao}
                         pos={pos}
+                        dist={dist}
                         onClick={() =>
                           onEditarPonto?.(p.id, { balaoPos: (pos + 1) % 4 })
+                        }
+                        onShiftClick={() =>
+                          onEditarPonto?.(p.id, { balaoDist: (dist + 1) % 3 })
                         }
                       />
                     )}
@@ -1134,10 +1139,11 @@ function QuadroMateriais({ w, materiais }: { w: number; materiais: ResumoMateria
  * Observação/retirada ficam imediatamente acima do oblongo (~1 mm de folga).
  *
  * pos: 0=cima-dir, 1=cima-esq, 2=baixo-dir, 3=baixo-esq
- * Clique no balão para ciclar a posição.
+ * dist: 0=normal, 1=médio, 2=longe  (Shift+clique cicla)
+ * Clique no balão para ciclar a posição; Shift+clique para ajustar distância.
  */
 function BalaoPosto({
-  x, y, linhas, reinstalacao, retirada, observacao, pos, onClick,
+  x, y, linhas, reinstalacao, retirada, observacao, pos, dist, onClick, onShiftClick,
 }: {
   x: number; y: number;
   linhas: string[];
@@ -1145,7 +1151,9 @@ function BalaoPosto({
   retirada?: string;
   observacao?: string;
   pos: number;
+  dist: number;
   onClick: () => void;
+  onShiftClick: () => void;
 }) {
   const fontSize = 2.2;
   const lh = 2.6;        // espaçamento entre linhas dentro do oblongo (mm)
@@ -1175,8 +1183,10 @@ function BalaoPosto({
   const bh = bhInst + bhReinst;
 
   const rx = 2.0;
-  const offX = 8;
-  const offY = 6;
+  // Factor de distância: 0=normal, 1=médio(~1.65×), 2=longe(~2.5×)
+  const distFactor = [1.0, 1.65, 2.5][dist % 3];
+  const offX = 8 * distFactor;
+  const offY = 6 * distFactor;
 
   // Centro do oblongo por posição
   const configs = [
@@ -1210,7 +1220,11 @@ function BalaoPosto({
   const yAcima = (i: number) => by - gapAcima - (nAcima - 1 - i) * aboveLh;
 
   return (
-    <g onClick={onClick} style={{ cursor: "pointer" }}>
+    <g
+      onClick={(e) => { if (e.shiftKey) { e.stopPropagation(); onShiftClick(); } else { onClick(); } }}
+      style={{ cursor: "pointer" }}
+    >
+      <title>Clique: mudar posição · Shift+clique: ajustar distância</title>
 
       {/* ── Textos acima do oblongo ── */}
 

@@ -161,6 +161,11 @@ export interface Ponto {
    */
   balaoPos?: number;
   /**
+   * Distância do balão oblongo em relação ao símbolo do poste:
+   * 0=normal (padrão), 1=médio, 2=longe. Shift+clique no balão cicla o valor.
+   */
+  balaoDist?: number;
+  /**
    * Texto de **retirada** — exibido ACIMA do balão riscado (DIS-NOR-012).
    * Indica o poste/equipamento existente que será retirado. Ex.: "11300DT - M1".
    */
