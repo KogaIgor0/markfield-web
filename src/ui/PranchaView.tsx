@@ -6,11 +6,13 @@ import type { ResumoMateriais } from "../domain/materiais";
 import { ESRI_MAXZOOM } from "../config";
 import {
   bboxProjeto,
+  dividirEmPranchas,
   ESCALAS_PADRAO,
   layoutFolha,
   passoEscalaM,
   projecaoNaFolha,
   trafoProximoDaArea,
+  type CelulaPrancha,
   type FolhaId,
   type Orientacao,
 } from "../domain/prancha";
@@ -57,6 +59,8 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   const [mostrarTrechos, setMostrarTrechos] = useState(true);
   const [mostrarSatelite, setMostrarSatelite] = useState(false);
   const [mostrarOsmPrancha, setMostrarOsmPrancha] = useState(false);
+  /** Índice da célula atual na grade de pranchas múltiplas (null = folha única). */
+  const [celulaIdx, setCelulaIdx] = useState<number | null>(null);
 
   // ── Zoom / pan interativo ────────────────────────────────────────────────
   const [zoomPrancha, setZoomPrancha] = useState(1.0);
@@ -111,10 +115,22 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   const layout = useMemo(() => layoutFolha(folha, orientacao), [folha, orientacao]);
   const { W, H, moldura, desenho, painel, carimbo } = layout;
 
-  const bbox = useMemo(() => bboxProjeto(projeto), [projeto]);
+  const bboxTotal = useMemo(() => bboxProjeto(projeto), [projeto]);
 
   const escalaAuto = 1000; // 1:1000 padrão DIS-NOR para redes de distribuição
   const escala = escalaModo === "auto" ? escalaAuto : escalaModo;
+
+  // Divisão automática em pranchas (null = cabe numa folha só).
+  const celulas = useMemo<CelulaPrancha[] | null>(
+    () => bboxTotal ? dividirEmPranchas(bboxTotal, desenho, escala) : null,
+    [bboxTotal, desenho, escala],
+  );
+
+  // Célula ativa — reset quando a grade muda (folha/escala/projeto alterados).
+  const celulaAtiva = celulas ? (celulas[celulaIdx ?? 0] ?? celulas[0]) : null;
+
+  // Bbox usado para projeção: célula ativa ou o projeto inteiro.
+  const bbox = celulaAtiva ? celulaAtiva.bbox : bboxTotal;
 
   // Projeção compartilhada (conteúdo centralizado na área de desenho).
   const proj = useMemo(() => projecaoNaFolha(bbox, escala, desenho), [bbox, escala, desenho]);
@@ -252,8 +268,8 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
         <strong>Prancha</strong>
         <label>
           Folha
-          <select value={folha} onChange={(e) => setFolha(e.target.value as FolhaId)}>
-            {(["A4", "A3", "A2", "A1"] as FolhaId[]).map((f) => (
+          <select value={folha} onChange={(e) => { setFolha(e.target.value as FolhaId); setCelulaIdx(null); }}>
+            {(["A4", "A3", "A2", "A1", "A0"] as FolhaId[]).map((f) => (
               <option key={f} value={f}>
                 {f}
               </option>
@@ -305,6 +321,30 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
           <input type="checkbox" checked={mostrarOsmPrancha} onChange={(e) => setMostrarOsmPrancha(e.target.checked)} />
           🌿 OSM
         </label>
+        {/* Navegação multi-prancha */}
+        {celulas && (
+          <>
+            <span className="prancha-barra-sep" />
+            <span className="prancha-multiprancha-label">
+              {celulas[0].nLinhas}×{celulas[0].nColunas} pranchas
+            </span>
+            <button
+              className="btn btn-mini"
+              disabled={(celulaIdx ?? 0) === 0}
+              onClick={() => { setCelulaIdx(i => Math.max(0, (i ?? 0) - 1)); setZoomPrancha(1); setPanPrancha({ x: 0, y: 0 }); }}
+              title="Prancha anterior"
+            >‹</button>
+            <span className="prancha-multiprancha-pag">
+              {(celulaIdx ?? 0) + 1}/{celulas.length}
+            </span>
+            <button
+              className="btn btn-mini"
+              disabled={(celulaIdx ?? 0) >= celulas.length - 1}
+              onClick={() => { setCelulaIdx(i => Math.min(celulas!.length - 1, (i ?? 0) + 1)); setZoomPrancha(1); setPanPrancha({ x: 0, y: 0 }); }}
+              title="Próxima prancha"
+            >›</button>
+          </>
+        )}
         {/* Zoom / pan */}
         <span className="prancha-barra-sep" />
         <button className="btn btn-mini" title="Zoom −" onClick={() => setZoomPrancha(z => Math.max(0.05, z / 1.5))}>−</button>
@@ -928,9 +968,9 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
               })}
           </g>
 
-          {!cabe && (
+          {!cabe && !celulas && (
             <text x={desenho.x + 1} y={desenho.y + desenho.h - 1} fontSize={2.6} fill="#b00">
-              ⚠ A rede não cabe nesta escala/folha — aumente a folha ou a escala (pode precisar de mais de uma folha).
+              ⚠ A rede não cabe nesta escala/folha — aumente a folha ou reduza a escala.
             </text>
           )}
 

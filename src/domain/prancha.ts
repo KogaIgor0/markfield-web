@@ -184,7 +184,7 @@ export function deslocarContextoBdgd(
 // Folha
 // --------------------------------------------------------------------------
 
-export type FolhaId = "A4" | "A3" | "A2" | "A1";
+export type FolhaId = "A4" | "A3" | "A2" | "A1" | "A0";
 export type Orientacao = "retrato" | "paisagem";
 
 /** Dimensões ISO 216 em RETRATO (largura × altura), mm. */
@@ -193,6 +193,7 @@ export const DIM_FOLHA: Record<FolhaId, [number, number]> = {
   A3: [297, 420],
   A2: [420, 594],
   A1: [594, 841],
+  A0: [841, 1189],
 };
 
 export interface DimFolha {
@@ -411,4 +412,78 @@ export function projecaoNaFolha(
     return [desenho.x + padX + pm.xMm, desenho.y + desenho.h - padY - pm.yMm];
   };
   return { padX, padY, cabe, toXY };
+}
+
+// --------------------------------------------------------------------------
+// Divisão automática em múltiplas pranchas
+// --------------------------------------------------------------------------
+
+/**
+ * Uma célula da grade de pranchas múltiplas.
+ * `linha` e `coluna` são 0-based; `bbox` é a região UTM desta célula
+ * com uma sobreposição de `sobreposicaoM` metros em cada borda compartilhada
+ * (para que elementos na fronteira apareçam nas duas folhas adjacentes).
+ */
+export interface CelulaPrancha {
+  linha: number;
+  coluna: number;
+  nLinhas: number;
+  nColunas: number;
+  bbox: Bbox;
+}
+
+/**
+ * Divide a caixa envolvente do projeto numa grade de células que cabem
+ * na área de desenho da folha, na escala especificada.
+ *
+ * Retorna `null` quando o projeto já cabe numa única folha.
+ * Retorna array de CelulaPrancha (nLinhas × nColunas) caso contrário.
+ *
+ * @param sobreposicaoM  metros de margem extra em cada borda compartilhada
+ *                       (padrão 10 m — evita cortar símbolos na fronteira).
+ */
+export function dividirEmPranchas(
+  bbox: Bbox,
+  desenho: Regiao,
+  escala: number,
+  sobreposicaoM = 10,
+): CelulaPrancha[] | null {
+  const dim = dimensaoDesenhoMm(bbox, escala);
+  // Verifica se cabe numa folha (com 0,5 mm de tolerância)
+  if (dim.larguraMm <= desenho.w + 0.5 && dim.alturaMm <= desenho.h + 0.5) return null;
+
+  // Dimensão real (metros) que cabe por célula — descontamos a sobreposição
+  const dispW = desenho.w; // mm disponíveis por coluna
+  const dispH = desenho.h; // mm disponíveis por linha
+  const celulaM_E = (dispW / 1000) * escala; // metros em Leste por célula
+  const celulaM_N = (dispH / 1000) * escala; // metros em Norte por célula
+
+  const larguraTotal = bbox.maxE - bbox.minE; // metros totais E-O
+  const alturaTotal  = bbox.maxN - bbox.minN; // metros totais N-S
+
+  const nColunas = Math.ceil(larguraTotal / celulaM_E);
+  const nLinhas  = Math.ceil(alturaTotal  / celulaM_N);
+
+  const celulas: CelulaPrancha[] = [];
+  for (let lin = 0; lin < nLinhas; lin++) {
+    for (let col = 0; col < nColunas; col++) {
+      const minE = bbox.minE + col * celulaM_E - (col > 0 ? sobreposicaoM : 0);
+      const maxE = bbox.minE + (col + 1) * celulaM_E + (col < nColunas - 1 ? sobreposicaoM : 0);
+      const minN = bbox.minN + lin * celulaM_N - (lin > 0 ? sobreposicaoM : 0);
+      const maxN = bbox.minN + (lin + 1) * celulaM_N + (lin < nLinhas - 1 ? sobreposicaoM : 0);
+      celulas.push({
+        linha: lin,
+        coluna: col,
+        nLinhas,
+        nColunas,
+        bbox: {
+          minE: Math.max(minE, bbox.minE - sobreposicaoM),
+          maxE: Math.min(maxE, bbox.maxE + sobreposicaoM),
+          minN: Math.max(minN, bbox.minN - sobreposicaoM),
+          maxN: Math.min(maxN, bbox.maxN + sobreposicaoM),
+        },
+      });
+    }
+  }
+  return celulas;
 }

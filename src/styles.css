@@ -1268,6 +1268,20 @@ body {
   text-align: center;
 }
 
+/* Navegação multi-prancha */
+.prancha-multiprancha-label {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.prancha-multiprancha-pag {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 32px;
+  text-align: center;
+}
+
 @media print {
   .topbar,
   .workspace,
@@ -1333,22 +1347,19 @@ body {
 
 /* ── PainelCamadas — dark chrome ───────────────────────────── */
 .painel-camadas {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 30;
+  /* Coluna lateral direita — irmã do workspace no flex de shell-body */
+  flex-shrink: 0;
+  width: 240px;
   background: var(--cr-bg2);
-  border: 1px solid var(--cr-border-2);
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border-left: 1px solid var(--cr-border-2);
   padding: 0;
-  min-width: 230px;
-  max-width: 280px;
   font-family: var(--cr-sans);
   font-size: 13px;
   color: var(--cr-fg);
-  pointer-events: all;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .pc-header {

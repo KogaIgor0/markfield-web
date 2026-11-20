@@ -1469,24 +1469,6 @@ export function App() {
 
         {/* BarraFerramentas movida para a topbar */}
 
-        {mostrarCamadas && (
-          <PainelCamadas
-            fonteId={bdgdFonteId}
-            ativas={camadasBdgdVisiveis}
-            carregando={carregandoBdgd}
-            erro={bdgdErro}
-            onToggle={onToggleCamada}
-            onCarregar={onCarregarBdgd}
-            onChangeFonte={setBdgdFonteId}
-            onFechar={() => setMostrarCamadas(false)}
-            kmlRedeNome={kmlRedeNome}
-            kmlRedeVisivel={kmlRedeVisivel}
-            onAbrirKmlRede={onAbrirKmlRede}
-            onToggleKmlRede={() => setKmlRedeVisivel((v) => !v)}
-            onLimparKmlRede={onLimparKmlRede}
-          />
-        )}
-
         {splash && <SplashScreen onDone={() => setSplash(false)} />}
 
         {emAdd && (
@@ -1873,6 +1855,26 @@ export function App() {
           </div>
         )}
       </main>
+
+        {/* Painel de camadas — coluna lateral direita (entre workspace e toolbar) */}
+        {mostrarCamadas && (
+          <PainelCamadas
+            fonteId={bdgdFonteId}
+            ativas={camadasBdgdVisiveis}
+            carregando={carregandoBdgd}
+            erro={bdgdErro}
+            onToggle={onToggleCamada}
+            onCarregar={onCarregarBdgd}
+            onChangeFonte={setBdgdFonteId}
+            onFechar={() => setMostrarCamadas(false)}
+            kmlRedeNome={kmlRedeNome}
+            kmlRedeVisivel={kmlRedeVisivel}
+            onAbrirKmlRede={onAbrirKmlRede}
+            onToggleKmlRede={() => setKmlRedeVisivel((v) => !v)}
+            onLimparKmlRede={onLimparKmlRede}
+          />
+        )}
+
       </div>{/* shell-body */}
 
       {/* Status bar */}
