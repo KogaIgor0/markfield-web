@@ -1235,7 +1235,9 @@ body {
 
 .prancha-papel {
   flex: 1;
-  overflow: hidden;        /* viewport de pan/zoom */
+  /* overflow: hidden removido — prancha-overlay é position:fixed/inset:0,
+     o viewport do browser já recorta; overflow:hidden aqui cortava a sombra
+     e pixels de borda do SVG transformado. */
   display: flex;
   justify-content: center;
   align-items: center;
