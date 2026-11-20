@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { LatLng, Projeto } from "../domain/model";
 import type { PatchPonto } from "../domain/edicao";
 import type { RedeEsforcos } from "../domain/esforco";
@@ -286,7 +287,8 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   const passoM = passoEscalaM(barraMaxMm, escala);
   const barraMm = (passoM * 1000) / escala;
 
-  return (
+  // Renderiza no body para ficar acima de qualquer stacking context do app
+  return createPortal(
     <div className="prancha-overlay">
       <div className="prancha-barra">
         <strong>Prancha</strong>
@@ -1014,7 +1016,8 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
         </svg>
         </div>{/* prancha-transform */}
       </div>{/* prancha-papel */}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
