@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LatLng, Projeto } from "../domain/model";
 import type { PatchPonto } from "../domain/edicao";
 import type { RedeEsforcos } from "../domain/esforco";
@@ -48,6 +48,9 @@ interface Props {
 }
 
 type EscalaModo = "auto" | number;
+
+/** Pixels CSS por milímetro (padrão CSS: 96 px/inch, 1 inch = 25,4 mm). */
+const MM_TO_PX = 96 / 25.4;
 
 export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, onFechar, onEditarPonto, areaBdgd }: Props) {
   const [folha, setFolha] = useState<FolhaId>("A3");
@@ -114,6 +117,27 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   // Layout da folha (mm) — o mesmo do DXF (domain/prancha.ts).
   const layout = useMemo(() => layoutFolha(folha, orientacao), [folha, orientacao]);
   const { W, H, moldura, desenho, painel, carimbo } = layout;
+
+  // ── Zoom automático de encaixe ────────────────────────────────────────────
+  // calcFitZoom calcula o zoom que faz a folha caber no viewport com 8% de margem.
+  const calcFitZoom = useCallback((): number => {
+    const vp = viewportRef.current;
+    if (!vp) return 1;
+    const margin = 0.92;
+    return Math.min(
+      (vp.clientWidth  * margin) / (W * MM_TO_PX),
+      (vp.clientHeight * margin) / (H * MM_TO_PX),
+      4,                           // teto: nunca mais que 400% no fit
+    );
+  }, [W, H]);
+
+  // Encaixar automaticamente ao abrir e ao trocar folha/orientação
+  useLayoutEffect(() => {
+    const z = calcFitZoom();
+    setZoomPrancha(z);
+    setPanPrancha({ x: 0, y: 0 });
+  }, [calcFitZoom]);
+  // ── fim zoom automático ───────────────────────────────────────────────────
 
   const bboxTotal = useMemo(() => bboxProjeto(projeto), [projeto]);
 
@@ -331,7 +355,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
             <button
               className="btn btn-mini"
               disabled={(celulaIdx ?? 0) === 0}
-              onClick={() => { setCelulaIdx(i => Math.max(0, (i ?? 0) - 1)); setZoomPrancha(1); setPanPrancha({ x: 0, y: 0 }); }}
+              onClick={() => { setCelulaIdx(i => Math.max(0, (i ?? 0) - 1)); setZoomPrancha(calcFitZoom()); setPanPrancha({ x: 0, y: 0 }); }}
               title="Prancha anterior"
             >‹</button>
             <span className="prancha-multiprancha-pag">
@@ -340,7 +364,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
             <button
               className="btn btn-mini"
               disabled={(celulaIdx ?? 0) >= celulas.length - 1}
-              onClick={() => { setCelulaIdx(i => Math.min(celulas!.length - 1, (i ?? 0) + 1)); setZoomPrancha(1); setPanPrancha({ x: 0, y: 0 }); }}
+              onClick={() => { setCelulaIdx(i => Math.min(celulas!.length - 1, (i ?? 0) + 1)); setZoomPrancha(calcFitZoom()); setPanPrancha({ x: 0, y: 0 }); }}
               title="Próxima prancha"
             >›</button>
           </>
@@ -350,7 +374,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
         <button className="btn btn-mini" title="Zoom −" onClick={() => setZoomPrancha(z => Math.max(0.05, z / 1.5))}>−</button>
         <span className="prancha-zoom-pct" title="Zoom atual">{Math.round(zoomPrancha * 100)}%</span>
         <button className="btn btn-mini" title="Zoom +" onClick={() => setZoomPrancha(z => Math.min(20, z * 1.5))}>+</button>
-        <button className="btn btn-mini" title="Encaixar desenho" onClick={() => { setZoomPrancha(1); setPanPrancha({ x: 0, y: 0 }); }}>Fit</button>
+        <button className="btn btn-mini" title="Encaixar desenho na tela" onClick={() => { setZoomPrancha(calcFitZoom()); setPanPrancha({ x: 0, y: 0 }); }}>Fit</button>
         <span className="prancha-barra-sep" />
         <button className="btn" onClick={baixarDxf} title="Baixa a prancha em DXF (a folha em mm), como pede a norma junto do PDF">
           Baixar DXF

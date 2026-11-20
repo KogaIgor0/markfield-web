@@ -1254,8 +1254,8 @@ body {
 }
 
 .prancha-svg {
-  width: min(1200px, 96vw);
-  height: auto;
+  /* Tamanho controlado pelo zoom dinâmico (PranchaView) — sem restrições CSS aqui */
+  display: block;
   background: #fff;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
 }
