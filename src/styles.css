@@ -2041,8 +2041,9 @@ body {
   overflow: hidden;
 }
 
-/* ── Vertical toolbar ────────────────────────────────────────── */
-.chrome-toolbar-v {
+/* ── Vertical toolbars (esquerda e direita) ───────────────────── */
+.chrome-toolbar-v,
+.chrome-toolbar-r {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2051,9 +2052,15 @@ body {
   width: var(--cr-toolbar-w);
   flex-shrink: 0;
   background: var(--cr-bg);
-  border-right: 1px solid var(--cr-border);
   overflow-y: auto;
   overflow-x: hidden;
+}
+.chrome-toolbar-v {
+  border-right: 1px solid var(--cr-border);
+  order: -1; /* fica antes do workspace no flex */
+}
+.chrome-toolbar-r {
+  border-left: 1px solid var(--cr-border);
 }
 
 .tv-btn {

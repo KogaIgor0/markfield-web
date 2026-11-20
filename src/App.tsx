@@ -1215,28 +1215,8 @@ export function App() {
 
       <div className="shell-body">
 
-        {/* Toolbar vertical */}
+        {/* Toolbar vertical esquerda */}
         <nav className="chrome-toolbar-v">
-          {/* ── Camadas (sempre visível) ── */}
-          <span className="tv-group-label">Camadas</span>
-          <button
-            className={`tv-btn${mostrarCamadas ? " active" : ""}`}
-            onClick={() => setMostrarCamadas((v) => !v)}
-            title="Camadas de dados (BDGD, KML, futuramente CAR, APP…)"
-          >
-            <span className="tv-icon">🗺</span>
-            <span className="tv-label">BDGD</span>
-          </button>
-          <button
-            className={`tv-btn${mostrarOsm ? " active" : ""}`}
-            onClick={() => setMostrarOsm((v) => !v)}
-            title="Sobrepor camada OSM (ruas e referências)"
-          >
-            <span className="tv-icon">🌿</span>
-            <span className="tv-label">OSM</span>
-          </button>
-          <div className="tv-sep" />
-
           {projeto && (
             <>
               <span className="tv-group-label">Edição</span>
@@ -1391,8 +1371,37 @@ export function App() {
                 <span className="tv-icon">📄</span>
                 <span className="tv-label">Prancha</span>
               </button>
+              <button
+                className={`tv-btn${modoDesenharAreaBdgd || !!bboxPendente ? " active" : ""}`}
+                onClick={() => setModoDesenharAreaBdgd((v) => !v)}
+                title={projeto?.areaBdgd?.bbox ? "Redefinir área do projeto" : "Definir área do projeto"}
+              >
+                <span className="tv-icon">⬜</span>
+                <span className="tv-label">Área</span>
+              </button>
             </>
           )}
+        </nav>
+
+        {/* Toolbar vertical direita — Camadas (sempre visível) */}
+        <nav className="chrome-toolbar-r">
+          <span className="tv-group-label">Camadas</span>
+          <button
+            className={`tv-btn${mostrarCamadas ? " active" : ""}`}
+            onClick={() => setMostrarCamadas((v) => !v)}
+            title="Camadas de dados (BDGD, KML, CAR, APP…)"
+          >
+            <span className="tv-icon">🗺</span>
+            <span className="tv-label">BDGD</span>
+          </button>
+          <button
+            className={`tv-btn${mostrarOsm ? " active" : ""}`}
+            onClick={() => setMostrarOsm((v) => !v)}
+            title="Sobrepor camada OSM (ruas e referências)"
+          >
+            <span className="tv-icon">🌿</span>
+            <span className="tv-label">OSM</span>
+          </button>
         </nav>
 
         <main
@@ -1475,8 +1484,6 @@ export function App() {
             onAbrirKmlRede={onAbrirKmlRede}
             onToggleKmlRede={() => setKmlRedeVisivel((v) => !v)}
             onLimparKmlRede={onLimparKmlRede}
-            onDefinirAreaBdgd={() => { setMostrarCamadas(false); setModoDesenharAreaBdgd(true); }}
-            temAreaDefinida={!!projeto?.areaBdgd?.bbox}
           />
         )}
 

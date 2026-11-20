@@ -16,16 +16,11 @@ interface Props {
   onAbrirKmlRede?: (file: File) => void;
   onToggleKmlRede?: () => void;
   onLimparKmlRede?: () => void;
-  /** Inicia o modo de desenho do bbox da AreaBdgd do projeto. */
-  onDefinirAreaBdgd?: () => void;
-  /** True quando o projeto já tem um bbox de área definido. */
-  temAreaDefinida?: boolean;
 }
 
 export function PainelCamadas({
   fonteId, ativas, carregando, erro, onToggle, onCarregar, onChangeFonte, onFechar,
   kmlRedeNome, kmlRedeVisivel, onAbrirKmlRede, onToggleKmlRede, onLimparKmlRede,
-  onDefinirAreaBdgd, temAreaDefinida,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fonte = BDGD_FONTES.find((f) => f.id === fonteId) ?? BDGD_FONTES[0];
@@ -86,15 +81,6 @@ export function PainelCamadas({
       {erro && (
         <div className="pc-erro">{erro}</div>
       )}
-
-      <button
-        className="pc-carregar-btn pc-definir-area-btn"
-        onClick={onDefinirAreaBdgd}
-        disabled={!temUrls}
-        title="Arraste um retângulo no mapa para definir a área do projeto e capturar a rede existente"
-      >
-        {temAreaDefinida ? "🗺️ Redefinir área do projeto" : "🗺️ Definir área do projeto"}
-      </button>
 
       <button
         className="pc-carregar-btn"
