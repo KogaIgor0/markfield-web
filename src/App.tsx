@@ -155,6 +155,8 @@ export function App() {
   const [capturaBboxPrancha, setCapturaBboxPrancha] = useState<[number,number,number,number] | null>(null);
   /** Modo de desenho do bbox da AreaBdgd do projeto (clique+arrasto no mapa). */
   const [modoDesenharAreaBdgd, setModoDesenharAreaBdgd] = useState(false);
+  /** Bbox desenhado aguardando confirmação do usuário (antes de persistir no projeto). */
+  const [bboxPendente, setBboxPendente] = useState<NonNullable<AreaBdgd["bbox"]> | null>(null);
   /** Modo de inserção manual de elemento existente no mapa. */
   const [modoInserirExistente, setModoInserirExistente] = useState<"poste" | "trafo" | "segmento" | null>(null);
   const [bdgdCarregado, setBdgdCarregado] = useState(false);
@@ -409,11 +411,18 @@ export function App() {
    * Em seguida dispara captura BDGD para popular o restante da área.
    */
   const onAreaBdgdBboxDefinido = useCallback((bbox: NonNullable<AreaBdgd["bbox"]>) => {
-    if (!projeto) return;
     setModoDesenharAreaBdgd(false);
+    // Aguarda confirmação do usuário antes de persistir
+    setBboxPendente(bbox);
+  }, []);
+
+  /** Confirma o bbox pendente: persiste no projeto e dispara captura BDGD. */
+  const onConfirmarAreaBdgd = useCallback(() => {
+    if (!projeto || !bboxPendente) return;
+    setBboxPendente(null);
     const existente = projeto.areaBdgd;
     const novaArea: AreaBdgd = {
-      bbox,
+      bbox: bboxPendente,
       postesBdgd: existente?.postesBdgd ?? [],
       segmentosMT: existente?.segmentosMT ?? [],
       trafos: existente?.trafos ?? [],
@@ -421,7 +430,13 @@ export function App() {
     atualizar({ ...projeto, areaBdgd: novaArea });
     // Dispara captura BDGD imediatamente (tiles já carregados na tela)
     setCapturarContextoBdgdTrigger((v) => v + 1);
-  }, [projeto, atualizar]);
+  }, [projeto, bboxPendente, atualizar]);
+
+  /** Descarta o bbox pendente e volta ao modo de desenho. */
+  const onRedesenharAreaBdgd = useCallback(() => {
+    setBboxPendente(null);
+    setModoDesenharAreaBdgd(true);
+  }, []);
 
   // ── Inserção manual de elementos existentes ─────────────────────────────
 
@@ -913,6 +928,7 @@ export function App() {
         setSelecionadoTrechoId(null);
         setModoSelecaoPrancha(false);
         setModoDesenharAreaBdgd(false);
+        setBboxPendente(null);
         setModoInserirExistente(null);
       }
     };
@@ -973,21 +989,6 @@ export function App() {
           )}
         </div>
 
-        {/* Camadas toggle */}
-        <div className="ct-group">
-          <button
-            className={`cr-btn${mostrarCamadas ? " active" : ""}`}
-            onClick={() => setMostrarCamadas((v) => !v)}
-          >
-            🗺 Camadas
-          </button>
-          <button
-            className={`cr-btn${mostrarOsm ? " active" : ""}`}
-            onClick={() => setMostrarOsm((v) => !v)}
-          >
-            🌿 OSM
-          </button>
-        </div>
 
         <div className="ct-busca-area">
           <BarraFerramentas
@@ -1216,6 +1217,26 @@ export function App() {
 
         {/* Toolbar vertical */}
         <nav className="chrome-toolbar-v">
+          {/* ── Camadas (sempre visível) ── */}
+          <span className="tv-group-label">Camadas</span>
+          <button
+            className={`tv-btn${mostrarCamadas ? " active" : ""}`}
+            onClick={() => setMostrarCamadas((v) => !v)}
+            title="Camadas de dados (BDGD, KML, futuramente CAR, APP…)"
+          >
+            <span className="tv-icon">🗺</span>
+            <span className="tv-label">BDGD</span>
+          </button>
+          <button
+            className={`tv-btn${mostrarOsm ? " active" : ""}`}
+            onClick={() => setMostrarOsm((v) => !v)}
+            title="Sobrepor camada OSM (ruas e referências)"
+          >
+            <span className="tv-icon">🌿</span>
+            <span className="tv-label">OSM</span>
+          </button>
+          <div className="tv-sep" />
+
           {projeto && (
             <>
               <span className="tv-group-label">Edição</span>
@@ -1560,6 +1581,31 @@ export function App() {
             </button>
           </div>
         )}
+
+        {bboxPendente && (() => {
+          const { norte, sul, leste, oeste } = bboxPendente;
+          const avgLat = (norte + sul) / 2;
+          const alturaKm = Math.round(Math.abs(norte - sul) * 111);
+          const larguraKm = Math.round(Math.abs(leste - oeste) * 111 * Math.cos(avgLat * Math.PI / 180));
+          return (
+            <div className="modo-bar modo-bar-bbox-confirmar">
+              <span>
+                📐 Área selecionada: <strong>{larguraKm} × {alturaKm} km</strong> — confirma?
+              </span>
+              <div className="modo-bar-acoes">
+                <button className="btn btn-mini btn-confirmar" onClick={onConfirmarAreaBdgd}>
+                  ✓ Confirmar
+                </button>
+                <button className="btn btn-mini" onClick={onRedesenharAreaBdgd}>
+                  ↩ Redesenhar
+                </button>
+                <button className="btn btn-mini" onClick={() => setBboxPendente(null)}>
+                  Cancelar (Esc)
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {modoInserirExistente && (
           <div className="modo-bar modo-bar-inserir-existente">

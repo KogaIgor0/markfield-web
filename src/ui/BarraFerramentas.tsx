@@ -154,13 +154,6 @@ export function BarraFerramentas({
           }
         }
 
-        // Se parece um código BDGD mas não tem dados, mostrar dica
-        if (pareceCodigo(q.trim().toUpperCase()) && !trafosData) {
-          setSugestoes([]);
-          setSemResultados(true);
-          return;
-        }
-
         // Fallback: Nominatim (geocoder geográfico)
         setCarregando(true);
         try {
