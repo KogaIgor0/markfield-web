@@ -1235,8 +1235,12 @@ body {
 
 .prancha-papel {
   flex: 1;
-  position: relative;      /* contexto de posicionamento para prancha-transform absoluto */
-  /* overflow padrão — prancha-overlay fixed/inset:0 já limita ao viewport */
+  /* display:grid place-items:center centra corretamente mesmo quando o item é
+     MAIOR que o container (ex.: A3 1587px em viewport 1280px).
+     display:flex justify-content:center faz flush-to-start nesse caso — era a causa do corte. */
+  display: grid;
+  place-items: center;
+  overflow: hidden;
   cursor: grab;
   user-select: none;       /* evita selecionar texto durante drag */
 }
@@ -1244,13 +1248,11 @@ body {
   cursor: grabbing;
 }
 
-/* Wrapper de transformação — translate(tx,ty) scale(zoom) com origin:0 0.
-   Absoluto no top-left de prancha-papel; tx/ty calculados em PranchaView.tsx. */
+/* Wrapper de transformação — scale(zoom) translate(panX, panY) com origin: centro.
+   Fluxo normal no grid (NÃO é absoluto); o grid place-items:center garante que
+   o centro do elemento fique no centro do viewport — correto para qualquer tamanho. */
 .prancha-transform {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: 0 0;
+  transform-origin: 50% 50%;
   line-height: 0;          /* evita espaço extra abaixo do SVG inline */
 }
 
