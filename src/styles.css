@@ -1235,12 +1235,8 @@ body {
 
 .prancha-papel {
   flex: 1;
-  /* overflow: hidden removido — prancha-overlay é position:fixed/inset:0,
-     o viewport do browser já recorta; overflow:hidden aqui cortava a sombra
-     e pixels de borda do SVG transformado. */
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  position: relative;      /* contexto de posicionamento para prancha-transform absoluto */
+  /* overflow padrão — prancha-overlay fixed/inset:0 já limita ao viewport */
   cursor: grab;
   user-select: none;       /* evita selecionar texto durante drag */
 }
@@ -1248,10 +1244,13 @@ body {
   cursor: grabbing;
 }
 
-/* Wrapper de transformação — escala + translação aplicadas aqui */
+/* Wrapper de transformação — translate(tx,ty) scale(zoom) com origin:0 0.
+   Absoluto no top-left de prancha-papel; tx/ty calculados em PranchaView.tsx. */
 .prancha-transform {
-  transform-origin: center center;
-  flex-shrink: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
   line-height: 0;          /* evita espaço extra abaixo do SVG inline */
 }
 

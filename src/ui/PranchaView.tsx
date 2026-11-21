@@ -67,15 +67,16 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   const [celulaIdx, setCelulaIdx] = useState<number | null>(null);
 
   // ── Zoom / pan interativo ────────────────────────────────────────────────
-  const [zoomPrancha, setZoomPrancha] = useState(1.0);
-  const [panPrancha, setPanPrancha] = useState({ x: 0, y: 0 });
+  // tfm = { tx, ty, zoom } — translação em px + escala.
+  // Transform aplicado: translate(tx,ty) scale(zoom)  com transform-origin: 0 0
+  // prancha-transform é position:absolute top:0 left:0 dentro de prancha-papel (position:relative).
+  // Centralização via tx = (vpW - svgPxW*zoom)/2 — independe do tamanho do item no flex.
+  const [tfm, setTfm] = useState({ tx: 0, ty: 0, zoom: 1.0 });
   const viewportRef = useRef<HTMLDivElement>(null);
-  // Refs para acesso sem re-render dentro dos event listeners nativos
-  const zoomRef = useRef(1.0);
-  const panRef  = useRef({ x: 0, y: 0 });
-  zoomRef.current = zoomPrancha;
-  panRef.current  = panPrancha;
-  const dragRef = useRef<{ mouseX: number; mouseY: number; panX: number; panY: number } | null>(null);
+  // Ref para acesso sem re-render dentro dos event listeners nativos
+  const tfmRef = useRef({ tx: 0, ty: 0, zoom: 1.0 });
+  tfmRef.current = tfm;
+  const dragRef = useRef<{ mouseX: number; mouseY: number; tx0: number; ty0: number } | null>(null);
 
   // Wheel não-passivo para permitir preventDefault (evita scroll da página)
   useEffect(() => {
@@ -84,30 +85,33 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
     const handler = (e: WheelEvent) => {
       e.preventDefault();
       const rect = vp.getBoundingClientRect();
-      const cx = e.clientX - rect.left - rect.width  / 2;
-      const cy = e.clientY - rect.top  - rect.height / 2;
+      // cursor relativo ao top-left de prancha-papel (= top-left de prancha-transform antes da transformação)
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
       const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      const prevZoom = zoomRef.current;
-      const newZoom  = Math.max(0.05, Math.min(20, prevZoom * factor));
-      const dInv = 1 / newZoom - 1 / prevZoom;
-      setZoomPrancha(newZoom);
-      setPanPrancha({ x: panRef.current.x + cx * dInv, y: panRef.current.y + cy * dInv });
+      const { tx, ty, zoom: prevZoom } = tfmRef.current;
+      const newZoom = Math.max(0.05, Math.min(20, prevZoom * factor));
+      const s = newZoom / prevZoom;
+      // Mantém o ponto sob o cursor fixo:
+      //   screen_x = tx + px*zoom  →  tx_new = cx*(1 - s) + tx*s
+      setTfm({ zoom: newZoom, tx: cx * (1 - s) + tx * s, ty: cy * (1 - s) + ty * s });
     };
     vp.addEventListener("wheel", handler, { passive: false });
     return () => vp.removeEventListener("wheel", handler);
-  }, []); // refs garantem valores atuais sem re-registrar
+  }, []); // tfmRef garante valores atuais sem re-registrar
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    dragRef.current = { mouseX: e.clientX, mouseY: e.clientY, panX: panRef.current.x, panY: panRef.current.y };
+    dragRef.current = { mouseX: e.clientX, mouseY: e.clientY, tx0: tfmRef.current.tx, ty0: tfmRef.current.ty };
   }, []);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!dragRef.current) return;
     const dx = e.clientX - dragRef.current.mouseX;
     const dy = e.clientY - dragRef.current.mouseY;
-    setPanPrancha({ x: dragRef.current.panX + dx / zoomRef.current, y: dragRef.current.panY + dy / zoomRef.current });
+    // tx/ty são em px de tela — translação direta sem dividir por zoom
+    setTfm({ zoom: tfmRef.current.zoom, tx: dragRef.current.tx0 + dx, ty: dragRef.current.ty0 + dy });
   }, []);
 
   const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
@@ -120,24 +124,29 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   const { W, H, moldura, desenho, painel, carimbo } = layout;
 
   // ── Zoom automático de encaixe ────────────────────────────────────────────
-  // calcFitZoom calcula o zoom que faz a folha caber no viewport com 8% de margem.
-  const calcFitZoom = useCallback((): number => {
+  // calcFitTfm retorna {tx, ty, zoom} que centraliza a folha no viewport com 8% de margem.
+  // Usando position:absolute+transform-origin:0 0, a centralização é explícita via tx/ty,
+  // sem depender de justify-content:center (que falha quando o item é mais largo que o container).
+  const calcFitTfm = useCallback(() => {
     const vp = viewportRef.current;
-    if (!vp) return 1;
+    if (!vp) return { tx: 0, ty: 0, zoom: 1 };
     const margin = 0.92;
-    return Math.min(
+    const zoom = Math.min(
       (vp.clientWidth  * margin) / (W * MM_TO_PX),
       (vp.clientHeight * margin) / (H * MM_TO_PX),
       4,                           // teto: nunca mais que 400% no fit
     );
+    // Com translate(tx,ty) scale(zoom) e transform-origin:0 0,
+    // screen_x = tx + px*zoom. Para centrar: tx = (vpW - svgPxW*zoom) / 2
+    const tx = (vp.clientWidth  - W * MM_TO_PX * zoom) / 2;
+    const ty = (vp.clientHeight - H * MM_TO_PX * zoom) / 2;
+    return { tx, ty, zoom };
   }, [W, H]);
 
   // Encaixar automaticamente ao abrir e ao trocar folha/orientação
   useLayoutEffect(() => {
-    const z = calcFitZoom();
-    setZoomPrancha(z);
-    setPanPrancha({ x: 0, y: 0 });
-  }, [calcFitZoom]);
+    setTfm(calcFitTfm());
+  }, [calcFitTfm]);
   // ── fim zoom automático ───────────────────────────────────────────────────
 
   const bboxTotal = useMemo(() => bboxProjeto(projeto), [projeto]);
@@ -357,7 +366,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
             <button
               className="btn btn-mini"
               disabled={(celulaIdx ?? 0) === 0}
-              onClick={() => { setCelulaIdx(i => Math.max(0, (i ?? 0) - 1)); setZoomPrancha(calcFitZoom()); setPanPrancha({ x: 0, y: 0 }); }}
+              onClick={() => { setCelulaIdx(i => Math.max(0, (i ?? 0) - 1)); setTfm(calcFitTfm()); }}
               title="Prancha anterior"
             >‹</button>
             <span className="prancha-multiprancha-pag">
@@ -366,17 +375,27 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
             <button
               className="btn btn-mini"
               disabled={(celulaIdx ?? 0) >= celulas.length - 1}
-              onClick={() => { setCelulaIdx(i => Math.min(celulas!.length - 1, (i ?? 0) + 1)); setZoomPrancha(calcFitZoom()); setPanPrancha({ x: 0, y: 0 }); }}
+              onClick={() => { setCelulaIdx(i => Math.min(celulas!.length - 1, (i ?? 0) + 1)); setTfm(calcFitTfm()); }}
               title="Próxima prancha"
             >›</button>
           </>
         )}
         {/* Zoom / pan */}
         <span className="prancha-barra-sep" />
-        <button className="btn btn-mini" title="Zoom −" onClick={() => setZoomPrancha(z => Math.max(0.05, z / 1.5))}>−</button>
-        <span className="prancha-zoom-pct" title="Zoom atual">{Math.round(zoomPrancha * 100)}%</span>
-        <button className="btn btn-mini" title="Zoom +" onClick={() => setZoomPrancha(z => Math.min(20, z * 1.5))}>+</button>
-        <button className="btn btn-mini" title="Encaixar desenho na tela" onClick={() => { setZoomPrancha(calcFitZoom()); setPanPrancha({ x: 0, y: 0 }); }}>Fit</button>
+        <button className="btn btn-mini" title="Zoom −" onClick={() => {
+          const vp = viewportRef.current;
+          if (!vp) return;
+          const cx = vp.clientWidth / 2; const cy = vp.clientHeight / 2;
+          setTfm(t => { const zoom = Math.max(0.05, t.zoom / 1.5); const s = zoom / t.zoom; return { zoom, tx: cx*(1-s)+t.tx*s, ty: cy*(1-s)+t.ty*s }; });
+        }}>−</button>
+        <span className="prancha-zoom-pct" title="Zoom atual">{Math.round(tfm.zoom * 100)}%</span>
+        <button className="btn btn-mini" title="Zoom +" onClick={() => {
+          const vp = viewportRef.current;
+          if (!vp) return;
+          const cx = vp.clientWidth / 2; const cy = vp.clientHeight / 2;
+          setTfm(t => { const zoom = Math.min(20, t.zoom * 1.5); const s = zoom / t.zoom; return { zoom, tx: cx*(1-s)+t.tx*s, ty: cy*(1-s)+t.ty*s }; });
+        }}>+</button>
+        <button className="btn btn-mini" title="Encaixar desenho na tela" onClick={() => setTfm(calcFitTfm())}>Fit</button>
         <span className="prancha-barra-sep" />
         <button className="btn" onClick={baixarDxf} title="Baixa a prancha em DXF (a folha em mm), como pede a norma junto do PDF">
           Baixar DXF
@@ -399,7 +418,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
       >
         <div
           className="prancha-transform"
-          style={{ transform: `scale(${zoomPrancha}) translate(${panPrancha.x}px, ${panPrancha.y}px)` }}
+          style={{ transform: `translate(${tfm.tx}px, ${tfm.ty}px) scale(${tfm.zoom})` }}
         >
         <svg
           className="prancha-svg"
