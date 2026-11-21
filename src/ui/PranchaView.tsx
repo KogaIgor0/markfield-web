@@ -129,23 +129,35 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   // sem depender de justify-content:center (que falha quando o item é mais largo que o container).
   const calcFitTfm = useCallback(() => {
     const vp = viewportRef.current;
-    if (!vp) return { tx: 0, ty: 0, zoom: 1 };
+    // Fallback para window quando o ref ainda não tem dimensões (portal timing)
+    const vpW = (vp && vp.clientWidth  > 0) ? vp.clientWidth  : window.innerWidth;
+    const vpH = (vp && vp.clientHeight > 0) ? vp.clientHeight : window.innerHeight * 0.9;
     const margin = 0.92;
     const zoom = Math.min(
-      (vp.clientWidth  * margin) / (W * MM_TO_PX),
-      (vp.clientHeight * margin) / (H * MM_TO_PX),
+      (vpW * margin) / (W * MM_TO_PX),
+      (vpH * margin) / (H * MM_TO_PX),
       4,                           // teto: nunca mais que 400% no fit
     );
     // Com translate(tx,ty) scale(zoom) e transform-origin:0 0,
     // screen_x = tx + px*zoom. Para centrar: tx = (vpW - svgPxW*zoom) / 2
-    const tx = (vp.clientWidth  - W * MM_TO_PX * zoom) / 2;
-    const ty = (vp.clientHeight - H * MM_TO_PX * zoom) / 2;
+    const tx = (vpW - W * MM_TO_PX * zoom) / 2;
+    const ty = (vpH - H * MM_TO_PX * zoom) / 2;
     return { tx, ty, zoom };
   }, [W, H]);
 
-  // Encaixar automaticamente ao abrir e ao trocar folha/orientação
-  useLayoutEffect(() => {
+  // Encaixar automaticamente ao abrir e ao trocar folha/orientação.
+  // useLayoutEffect tenta antes do paint; useEffect (após paint) garante que
+  // clientWidth/clientHeight já têm valores reais — cobre timing de createPortal
+  // onde o ref pode estar sem dimensões no layout phase.
+  useLayoutEffect(() => { setTfm(calcFitTfm()); }, [calcFitTfm]);
+  useEffect(() => {
     setTfm(calcFitTfm());
+    // ResizeObserver re-centraliza se prancha-papel mudar de tamanho
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const obs = new ResizeObserver(() => setTfm(calcFitTfm()));
+    obs.observe(vp);
+    return () => obs.disconnect();
   }, [calcFitTfm]);
   // ── fim zoom automático ───────────────────────────────────────────────────
 
