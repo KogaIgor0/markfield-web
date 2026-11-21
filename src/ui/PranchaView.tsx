@@ -413,7 +413,13 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
       >
         <div
           className="prancha-transform"
-          style={{ transform: `scale(${zoomPrancha}) translate(${panPrancha.x}px, ${panPrancha.y}px)` }}
+          style={{
+            left: '50%',
+            top: '50%',
+            marginLeft: `${-(W * MM_TO_PX) / 2}px`,
+            marginTop: `${-(H * MM_TO_PX) / 2}px`,
+            transform: `scale(${zoomPrancha}) translate(${panPrancha.x}px, ${panPrancha.y}px)`,
+          }}
         >
         <svg
           className="prancha-svg"

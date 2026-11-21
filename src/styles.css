@@ -1235,25 +1235,26 @@ body {
 
 .prancha-papel {
   flex: 1;
-  /* display:grid place-items:center centra corretamente mesmo quando o item é
-     MAIOR que o container (ex.: A3 1587px em viewport 1280px).
-     display:flex justify-content:center faz flush-to-start nesse caso — era a causa do corte. */
-  display: grid;
-  place-items: center;
+  position: relative;      /* containing block para prancha-transform absoluto */
   overflow: hidden;
   cursor: grab;
-  user-select: none;       /* evita selecionar texto durante drag */
+  user-select: none;
 }
 .prancha-papel:active {
   cursor: grabbing;
 }
 
-/* Wrapper de transformação — scale(zoom) translate(panX, panY) com origin: centro.
-   Fluxo normal no grid (NÃO é absoluto); o grid place-items:center garante que
-   o centro do elemento fique no centro do viewport — correto para qualquer tamanho. */
+/* Wrapper de transformação — position:absolute centrado via left/top/margin negativo.
+   left:50% top:50% coloca o topo-esquerdo no centro do viewport.
+   marginLeft:-(W×MM_TO_PX)/2 e marginTop:-(H×MM_TO_PX)/2 (inline no TSX)
+   deslocam o elemento para que seu próprio centro fique no centro do viewport.
+   transform-origin:50% 50% = centro do elemento = centro do viewport.
+   Funciona para QUALQUER tamanho (A4→A0) sem depender de alinhamento CSS
+   seguro/seguro do browser para itens maiores que o container. */
 .prancha-transform {
+  position: absolute;
   transform-origin: 50% 50%;
-  line-height: 0;          /* evita espaço extra abaixo do SVG inline */
+  line-height: 0;
 }
 
 .prancha-svg {
@@ -1303,8 +1304,12 @@ body {
     display: block !important;
     cursor: default !important;
   }
-  /* Resetar zoom/pan para impressão — saída sempre em escala real */
+  /* Resetar posicionamento/zoom/pan para impressão — saída sempre em escala real */
   .prancha-transform {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    margin: 0 !important;
     transform: none !important;
   }
   .prancha-svg {
