@@ -6,22 +6,30 @@ import { LIMITE_TANGENTE_GRAUS } from "./rede";
  * Estruturas (B3 / T3) — rede compacta protegida Elektro (DIS-NOR-013 rev.08).
  *
  * A partir do modelo de rede (B1: papel + ângulo de deflexão + equipamento),
- * atribui a cada poste o **código de estrutura** da norma. É o passo que dá
- * "cara de projeto": cada poste passa a mostrar CE1/CE2/CE4/CE3/CE3TR.
+ * atribui a cada poste o **código de estrutura** da norma.
  *
- * Regra confirmada (Igor / DIS-NOR-013):
- *   - tangente (deflexão ≤ 6°) ............... CE1
- *   - ângulo  6° <  d ≤ 60° .................. CE2
- *   - ângulo 60° <  d ≤ 90° .................. CE4  (amarração / duplo encabeçamento)
- *   - fim de rede ............................ CE3
- *   - fim de rede com transformador .......... CE3TR
+ * Regras automáticas confirmadas (DIS-NOR-013):
+ *   Ângulo/função de linha:
+ *     - tangente (deflexão ≤ 6°) ............... CE1
+ *     - ângulo  6° <  d ≤  60° ................. CE2
+ *     - ângulo 60° <  d ≤  90° ................. CE4   (amarração)
+ *     - ângulo 90° <  d ≤ 120° ................. CE3-CE3 (duplo encabeçamento)
+ *     - ângulo > 120° .......................... CE3-CE3 (revisar traçado)
+ *   Papel:
+ *     - fim de rede ............................ CE3
+ *     - fim de rede com transformador .......... CE3TR
+ *   Transformador sob a rede (grau ≥ 2):
+ *     - deflexão ≤ 60° ......................... CE2TR
+ *     - deflexão 60–90° ........................ CE4TR
+ *     - deflexão > 90° ......................... CE4TR (revisar)
+ *   Derivação (grau ≥ 3) — revisar, tipos possíveis:
+ *     CE2.3  (mesmo nível, mesmo lado)  |  CE2.CE3  (mesmo nível, lados opostos)
+ *     CE2-CE3 (níveis diferentes)       |  CE2-CE3 CF (com chave fusível)
  *
- * Casos que a norma NÃO fecha só com o ângulo — marcados `revisar` (nunca
- * chutamos um código como certo): derivação (grau ≥ 3), transformador no meio
- * da linha, ângulo > 90°, e a saída/derivação da rede existente (fonte).
+ * Casos sem auto: fonte, poste isolado, ângulo > 120° com trafo.
  *
- * Sufixos padronizados: -TR trafo, -PR para-raios, -CF chave fusível,
- * -PU poste existente, -SAH afastador, -SUH seccionador.
+ * Sufixos padronizados: TR trafo, PR para-raios, CF chave fusível,
+ * PU poste existente, SAH afastador, SUH seccionador.
  */
 
 export type Confianca = "ok" | "revisar" | "manual";
@@ -48,6 +56,9 @@ export const ANGULO_CE2_MAX = 60;
 /** Limite superior (°) do CE4. Acima de 90° a norma pede análise (revisar). */
 export const ANGULO_CE4_MAX = 90;
 
+/** Ângulo máximo para duplo encabeçamento CE3-CE3 sem revisar. */
+export const ANGULO_CE3CE3_MAX = 120;
+
 /** Estrutura de um poste de LINHA (grau ≥ 2, sem equipamento) pelo ângulo. */
 function porAngulo(d: number | undefined): EstruturaAtribuida {
   const g = d ?? 0;
@@ -60,11 +71,14 @@ function porAngulo(d: number | undefined): EstruturaAtribuida {
   if (g <= ANGULO_CE4_MAX) {
     return { codigo: "CE4", descricao: `Ângulo ${g.toFixed(1)}° (60–90°, amarração)`, confianca: "ok" };
   }
+  // > 90°: duplo encabeçamento CE3-CE3 (DIS-NOR-013)
   return {
-    codigo: "CE4",
-    descricao: `Ângulo ${g.toFixed(1)}° (> 90°)`,
-    confianca: "revisar",
-    motivo: "Ângulo acima de 90° — a norma pede análise (duplo encabeçamento CE3-CE3?).",
+    codigo: "CE3-CE3",
+    descricao: `Ângulo ${g.toFixed(1)}° (> 90°, duplo encabeçamento)`,
+    confianca: g <= ANGULO_CE3CE3_MAX ? "ok" : "revisar",
+    motivo: g > ANGULO_CE3CE3_MAX
+      ? `Ângulo ${g.toFixed(1)}° > 120° — traçado muito fechado; confirmar duplo encabeçamento ou rever rota.`
+      : undefined,
   };
 }
 
@@ -91,17 +105,25 @@ export function classificarEstrutura(pm: PosteModelado, ponto: Ponto): Estrutura
 function estruturaAutomatica(pm: PosteModelado, ponto: Ponto): EstruturaAtribuida {
   const trafo = ponto.tipo === "transformador";
 
-  // Transformador: no fim da rede é CE3TR (confirmado); no meio, a confirmar.
+  // ── Transformador (DIS-NOR-013) ───────────────────────────────────────────
   if (trafo) {
     if (pm.grau <= 1) {
+      // Fim de rede: CE3TR (ou CE3TRSC se sem CF — não temos esse dado automaticamente)
       return { codigo: "CE3TR", descricao: "Fim de rede com transformador", confianca: "ok" };
     }
-    const base = porAngulo(pm.deflexaoGraus);
+    // Sob a rede: ângulo determina CE2TR ou CE4TR
+    const g = pm.deflexaoGraus ?? 0;
+    if (g <= ANGULO_CE2_MAX) {
+      return { codigo: "CE2TR", descricao: `Transformador sob a rede (deflexão ${g.toFixed(1)}°)`, confianca: "ok" };
+    }
+    if (g <= ANGULO_CE4_MAX) {
+      return { codigo: "CE4TR", descricao: `Transformador em ângulo (${g.toFixed(1)}°, amarração)`, confianca: "ok" };
+    }
     return {
-      codigo: `${base.codigo}-TR`,
-      descricao: `Transformador no meio da linha (${base.codigo})`,
+      codigo: "CE4TR",
+      descricao: `Transformador em grande ângulo (${g.toFixed(1)}°)`,
       confianca: "revisar",
-      motivo: "Transformador fora do fim de rede — confirmar estrutura + TR na norma.",
+      motivo: `Ângulo ${g.toFixed(1)}° > 90° com trafo — confirmar CE4TR ou duplo encabeçamento.`,
     };
   }
 
@@ -124,10 +146,10 @@ function estruturaAutomatica(pm: PosteModelado, ponto: Ponto): EstruturaAtribuid
       return { codigo: "CE3", descricao: "Fim de rede (encabeçamento)", confianca: "ok" };
     case "derivacao":
       return {
-        codigo: "CE3",
+        codigo: "CE2.3",
         descricao: `Derivação (${pm.grau} saídas)`,
         confianca: "revisar",
-        motivo: "Derivação — confirmar estrutura na norma (encabeçamento/afastador -SAH?).",
+        motivo: "Confirmar tipo: CE2.3 (mesmo nível/lado), CE2.CE3 (mesmo nível/lados opostos), CE2-CE3 (níveis diferentes), CE2-CE3 CF (com chave fusível).",
       };
     case "tangente":
     case "angulo":
