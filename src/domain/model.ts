@@ -465,6 +465,20 @@ export interface ProjetoMeta {
   nome: string;
   /** Concessionária / praça (piloto: "neoenergia"). Escolhe o domain pack. */
   concessionaria?: string;
+  /**
+   * Tipo de rede elétrica do projeto.
+   *
+   * - `"compacta"` — Rede de Distribuição Compacta com cabos cobertos (DIS-NOR-013).
+   *   Estruturas CE1/CE2/CE4/CE3-CE3/CE3TR/etc. É o padrão para projetos novos
+   *   da Neoenergia Elektro em áreas urbanas e expansão.
+   * - `"nua"` — Rede com condutores nus até 36,2 kV (DIS-NOR-018). Estruturas
+   *   N1/N4/N3-N3/N3/etc. Usada em projetos rurais e manutenção onde a rede
+   *   compacta não é aplicável (Elektro). Cabos: ACSR SWAN/RAVEN/PENGUIN/LINNET.
+   *
+   * Ausente ou `undefined` → interpreta como `"compacta"` (compatibilidade com
+   * projetos existentes que não tinham este campo).
+   */
+  tipoRede?: "compacta" | "nua";
   criadoEm: string; // ISO 8601
   atualizadoEm: string; // ISO 8601
 }
@@ -490,11 +504,14 @@ export interface Projeto {
 }
 
 /** Cria um projeto vazio e válido. */
-export function projetoVazio(nome: string): Projeto {
+export function projetoVazio(
+  nome: string,
+  tipoRede?: "compacta" | "nua",
+): Projeto {
   const agora = new Date().toISOString();
   return {
     schemaVersion: 1,
-    meta: { nome, criadoEm: agora, atualizadoEm: agora },
+    meta: { nome, criadoEm: agora, atualizadoEm: agora, tipoRede },
     pontos: [],
     trechos: [],
     linhasLivres: [],

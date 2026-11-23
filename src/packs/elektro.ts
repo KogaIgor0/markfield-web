@@ -104,7 +104,7 @@ export interface PackConcessionaria {
   raioTrafoM: number;
   alturaTextoM: number;
 
-  // ── Constantes normativas ───────────────────────────────────────────────────
+  // ── Constantes normativas — rede compacta (DIS-NOR-013) ────────────────────
   normas: {
     /** Lance máximo sem amarração (m) — DIS-NOR-013 §6.17.3. */
     lanceMaxAmarracaoM: number;
@@ -129,8 +129,35 @@ export interface PackConcessionaria {
     postePadraoAlturaM: number;
   };
 
-  // ── Catálogo de cabos ───────────────────────────────────────────────────────
+  // ── Constantes normativas — rede nua/rural (DIS-NOR-018 / DIS-NOR-012) ─────
+  normasNua?: {
+    /** Lance máximo sem amarração (m) — provisório, confirmar na DIS-NOR-012. */
+    lanceMaxAmarracaoM: number;
+    /** Espaçamento máximo do estribo de espera (m) — provisório (DIS-NOR-012). */
+    lanceEstribosM: number;
+    /**
+     * Códigos de estrutura rede nua que constituem ponto de amarração.
+     * N3 = fim de rede, N4 = ângulo/ancoragem, N3-N3 = duplo encabeçamento.
+     */
+    codigosAmarracao: readonly string[];
+    /** Capacidade padrão do poste (daN) — rede nua (DIS-NOR-012 Quadro). */
+    capacidadePadraoDaN: number;
+    /** Cabo padrão da rede nua. */
+    caboPadrao: string;
+    /** Condição de vento padrão da rede nua (pior caso rural). */
+    condicaoPadrao: CondicaoVento;
+  };
+
+  // ── Catálogo de cabos — rede compacta ──────────────────────────────────────
   cabos: CaboEntry[];
+
+  // ── Catálogo de cabos — rede nua / rural (DIS-NOR-018) ────────────────────
+  /**
+   * Condutores nus ACSR e cobre para projetos de rede rural (DIS-NOR-018).
+   * Ausente nos packs que não operam rede nua.
+   * ⚠️ Trações PROVISÓRIAS — confirmar na DIS-NOR-012 §6.4+ (ainda não recebida).
+   */
+  cabosNus?: CaboEntry[];
 
   // ── Catálogo de postes ──────────────────────────────────────────────────────
   /**
@@ -142,11 +169,23 @@ export interface PackConcessionaria {
     duploT: Record<number, number[]>;
   };
 
-  // ── Catálogo de estruturas ──────────────────────────────────────────────────
+  // ── Catálogo de estruturas — rede compacta (DIS-NOR-013) ───────────────────
   estruturas: {
     /** Estruturas BASE (DIS-NOR-013). */
     catalogo: EstruturaDef[];
     /** Sufixos de equipamento (DIS-NOR-013 §6.16/6.21, Tabela 1). */
+    sufixos: SufixoDef[];
+  };
+
+  // ── Catálogo de estruturas — rede nua/rural (DIS-NOR-018 Anexo I) ──────────
+  /**
+   * Estruturas padronizadas para rede com condutores nus até 36,2 kV.
+   * Aplica-se a todos os distribuidores (Anexo I, Est. 1-24).
+   * Para Neoenergia Elektro: N1/N3/N4/N3-N3/N4-N3 usam **meio beco**
+   * (§6.10.3 e nota do Anexo I).
+   */
+  estruturasNua?: {
+    catalogo: EstruturaDef[];
     sufixos: SufixoDef[];
   };
 }
@@ -182,6 +221,17 @@ export const PACK_ELEKTRO: PackConcessionaria = {
     condicaoPadrao: "rural_medio_baixo",
     postePadraoSecao: "circular",
     postePadraoAlturaM: 11,           // mín. rural DIS-NOR-012 6.8.2
+  },
+
+  // ── Constantes normativas — rede nua/rural ─────────────────────────────
+  // ⚠️ Valores provisórios — DIS-NOR-012 ainda não recebida.
+  normasNua: {
+    lanceMaxAmarracaoM: 400,          // provisório — confirmar DIS-NOR-012
+    lanceEstribosM: 300,              // provisório — confirmar DIS-NOR-012
+    codigosAmarracao: ["N3", "N4", "N3-N3", "N3-TT"],
+    capacidadePadraoDaN: 400,         // provisório — confirmar DIS-NOR-012
+    caboPadrao: "PENGUIN",
+    condicaoPadrao: "rural_medio_baixo",
   },
 
   // ── Catálogo de cabos (DIS-NOR-013) ────────────────────────────────────
@@ -220,6 +270,80 @@ export const PACK_ELEKTRO: PackConcessionaria = {
       rupturaDaN: 2405,
       tracaoDaN: { urbana: 714, rural_alto: 871, rural_medio_baixo: 990 },
       tracaoReduzidaDaN: 300,
+      tracaoConfirmada: false,
+    },
+  ],
+
+  // ── Catálogo de cabos nus ACSR — rede rural (DIS-NOR-018) ──────────────
+  // Dados físicos: ABNT NBR 7270:2009 (ACSR).
+  // ⚠️ TRAÇÕES PROVISÓRIAS — confirmar na DIS-NOR-012 §6.4+ (ainda não recebida).
+  // Padrão Elektro para rede nua: PENGUIN (tronco/ramal) e LINNET (tronco principal).
+  cabosNus: [
+    {
+      codigo: "SWAN",
+      rotulo: "SWAN — ACSR 16+2,7 mm² nu (provisório)",
+      secaoMm2: 16,
+      tensaoKv: 15,
+      diametroMm: 6.21,
+      rupturaDaN: 480,
+      tracaoDaN: { urbana: 120, rural_alto: 160, rural_medio_baixo: 190 },
+      tracaoReduzidaDaN: 50,
+      tracaoConfirmada: false,
+    },
+    {
+      codigo: "RAVEN",
+      rotulo: "RAVEN — ACSR 25+4,3 mm² nu (provisório)",
+      secaoMm2: 25,
+      tensaoKv: 15,
+      diametroMm: 7.77,
+      rupturaDaN: 720,
+      tracaoDaN: { urbana: 180, rural_alto: 240, rural_medio_baixo: 290 },
+      tracaoReduzidaDaN: 72,
+      tracaoConfirmada: false,
+    },
+    {
+      codigo: "PENGUIN",
+      rotulo: "PENGUIN — ACSR 35+6 mm² nu (provisório)",
+      secaoMm2: 35,
+      tensaoKv: 15,
+      diametroMm: 9.05,
+      rupturaDaN: 1030,
+      tracaoDaN: { urbana: 260, rural_alto: 345, rural_medio_baixo: 415 },
+      tracaoReduzidaDaN: 105,
+      tracaoConfirmada: false,
+    },
+    {
+      codigo: "LINNET",
+      rotulo: "LINNET — ACSR 95+16,3 mm² nu (provisório)",
+      secaoMm2: 95,
+      tensaoKv: 15,
+      diametroMm: 15.04,
+      rupturaDaN: 2800,
+      tracaoDaN: { urbana: 700, rural_alto: 930, rural_medio_baixo: 1120 },
+      tracaoReduzidaDaN: 280,
+      tracaoConfirmada: false,
+    },
+    {
+      // Cobre nu 35 mm² — também usado em ramais rurais
+      codigo: "CU35",
+      rotulo: "Cu nu 35 mm²",
+      secaoMm2: 35,
+      tensaoKv: 15,
+      diametroMm: 6.75,
+      rupturaDaN: 975,
+      tracaoDaN: { urbana: 245, rural_alto: 325, rural_medio_baixo: 390 },
+      tracaoReduzidaDaN: 98,
+      tracaoConfirmada: false,
+    },
+    {
+      codigo: "CU70",
+      rotulo: "Cu nu 70 mm²",
+      secaoMm2: 70,
+      tensaoKv: 15,
+      diametroMm: 9.5,
+      rupturaDaN: 1950,
+      tracaoDaN: { urbana: 490, rural_alto: 650, rural_medio_baixo: 780 },
+      tracaoReduzidaDaN: 196,
       tracaoConfirmada: false,
     },
   ],
@@ -273,6 +397,49 @@ export const PACK_ELEKTRO: PackConcessionaria = {
       { sufixo: "DS",   rotulo: "Derivação subterrânea (descida)"            },
       { sufixo: "SAH",  rotulo: "Suporte afastador horizontal"               },
       { sufixo: "PU",   rotulo: "Poste existente (elevação)"                 },
+    ],
+  },
+
+  // ── Catálogo de estruturas — rede nua/rural (DIS-NOR-018 Anexo I) ──────
+  // Estruturas padronizadas 1-24 (Anexo I) = todos os distribuidores.
+  // Para Neoenergia Elektro: N1/N3/N4/N3-N3/N4-N3 usam MEIO BECO
+  // (§6.10.3 e nota específica do Anexo I da DIS-NOR-018 Rev.01).
+  //
+  // Mapeamento compacta → nua:
+  //   CE1      → N1        (tangente 0–6°)
+  //   CE2/CE4  → N4        (ângulo 6–60°)
+  //   CE3-CE3  → N3-N3     (duplo encabeçamento > 60°)
+  //   CE3      → N3        (fim de rede)
+  //   CE2TR/CE4TR → N1-TT  (trafo passante)
+  //   CE3TR    → N3-TT     (trafo fim de rede)
+  //   CE2.3    → N4-N3     (derivação sem CF)
+  estruturasNua: {
+    catalogo: [
+      // Estruturas automáticas (classificação por ângulo de deflexão)
+      { codigo: "N1",     rotulo: "N1 — tangente (0–6°) [meio beco]",              funcao: "tangente",      anguloMin: 0,  anguloMax: 6,  auto: true  },
+      { codigo: "N4",     rotulo: "N4 — amarração / ângulo (6–60°) [meio beco]",   funcao: "angulo",        anguloMin: 6,  anguloMax: 60, auto: true  },
+      { codigo: "N3-N3",  rotulo: "N3-N3 — duplo encabeçamento (> 60°) [meio beco]",funcao:"encabecamento", anguloMin: 60,               auto: true  },
+      { codigo: "N3",     rotulo: "N3 — encabeçamento / fim de rede [meio beco]",  funcao: "fim",                                         auto: true  },
+      // Transformadores (automáticos por grau do nó)
+      { codigo: "N1-TT",  rotulo: "N1-TT — trafo passante (sob a rede)",           funcao: "tangente",      anguloMin: 0,  anguloMax: 6,  auto: true  },
+      { codigo: "N3-TT",  rotulo: "N3-TT — trafo fim de rede",                    funcao: "fim",                                         auto: true  },
+      // Estruturas manuais
+      { codigo: "N4-N3",  rotulo: "N4-N3 — derivação sem chave fusível [meio beco]",funcao:"fim",                                        auto: false },
+      { codigo: "N4-CFU", rotulo: "N4-CFU — chave fusível em alinhamento",         funcao: "angulo",        anguloMin: 0,  anguloMax: 60, auto: false },
+      { codigo: "N3-TT-SOB", rotulo: "N3-TT-SOB — trafo fim de rede com CF sob rede",funcao:"fim",                                      auto: false },
+      // Estruturas de baixa tensão (rede secundária) — DIS-NOR-018 §7
+      { codigo: "B1",     rotulo: "B1 — tangente BT (0–6°) [meio beco]",           funcao: "tangente",      anguloMin: 0,  anguloMax: 6,  auto: false },
+      { codigo: "B3",     rotulo: "B3 — encabeçamento BT [meio beco]",             funcao: "fim",                                         auto: false },
+      { codigo: "B4",     rotulo: "B4 — ângulo BT (6–60°) [meio beco]",            funcao: "angulo",        anguloMin: 6,  anguloMax: 60, auto: false },
+    ],
+    sufixos: [
+      // Sufixos comuns rede nua (DIS-NOR-018)
+      { sufixo: "TT",   rotulo: "Transformador (rede nua)",      colado: true },
+      { sufixo: "SOB",  rotulo: "Sob a rede (CF abaixo dos condutores)" },
+      { sufixo: "CFU",  rotulo: "Chave fusível"                          },
+      { sufixo: "PR",   rotulo: "Para-raios"                             },
+      { sufixo: "SU",   rotulo: "Seccionador unipolar"                   },
+      { sufixo: "DS",   rotulo: "Derivação subterrânea (descida)"        },
     ],
   },
 };

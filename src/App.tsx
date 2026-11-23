@@ -28,6 +28,7 @@ import {
 } from "./domain/edicao";
 import { modelarRede } from "./domain/rede";
 import { classificarEstrutura, rotuloEstrutura, type EstruturaAtribuida } from "./domain/estrutura";
+import { classificarEstruturaNua, rotuloEstruturaNua } from "./domain/estruturaNua";
 import {
   modelarEsforcos,
   ROTULO_CONDICAO,
@@ -220,25 +221,29 @@ export function App() {
   );
   const refInserir = projeto && inserirRefId ? acharPonto(projeto, inserirRefId) : undefined;
 
-  // Estruturas (B3): código CE por poste, a partir do modelo de rede.
+  // Estruturas (B3): código por poste — rede compacta (CE) ou nua (N).
   const estruturas = useMemo(() => {
     const m = new Map<string, EstruturaAtribuida>();
     if (rede && projeto) {
+      const isNua = projeto.meta.tipoRede === "nua";
       for (const p of projeto.pontos) {
         const pmod = rede.postes.get(p.id);
-        if (pmod) m.set(p.id, classificarEstrutura(pmod, p));
+        if (pmod) {
+          m.set(p.id, isNua ? classificarEstruturaNua(pmod, p) : classificarEstrutura(pmod, p));
+        }
       }
     }
     return m;
   }, [rede, projeto]);
   const rotulosEstrutura = useMemo(() => {
     const m = new Map<string, string>();
+    const isNua = projeto?.meta.tipoRede === "nua";
     for (const [id, e] of estruturas) {
-      const r = rotuloEstrutura(e);
+      const r = isNua ? rotuloEstruturaNua(e) : rotuloEstrutura(e);
       if (r) m.set(id, r);
     }
     return m;
-  }, [estruturas]);
+  }, [estruturas, projeto?.meta.tipoRede]);
   const resumoEstrutura = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of estruturas.values()) {
@@ -963,6 +968,19 @@ export function App() {
         {projeto && (
           <div className="ct-project">
             <span className="ct-dist-badge">{bdgdFonteId.toUpperCase()}</span>
+            {/* Seletor de tipo de rede: compacta (DIS-NOR-013) ou nua/rural (DIS-NOR-018) */}
+            <select
+              className="ct-tipo-rede-sel"
+              value={projeto.meta.tipoRede ?? "compacta"}
+              title="Tipo de rede: compacta (cabos cobertos, CE1/CE2…) ou rural/nua (condutores nus, N1/N4…)"
+              onChange={(e) => {
+                const tipoRede = e.target.value as "compacta" | "nua";
+                atualizar({ ...projeto, meta: { ...projeto.meta, tipoRede } });
+              }}
+            >
+              <option value="compacta">Compacta</option>
+              <option value="nua">Rural (nua)</option>
+            </select>
             <span className="ct-proj-name">{projeto.meta.nome || "Sem nome"}</span>
             <button
               className="ct-fechar-projeto"
@@ -1985,8 +2003,8 @@ export function App() {
 
       {novoProjetoAberto && (
         <NovoProjetoModal
-          onCriar={(nome, distribuidoraId) => {
-            setEstado({ projeto: projetoVazio(nome), imagens: new Map(), blobs: new Map(), relatorio: null });
+          onCriar={(nome, distribuidoraId, tipoRede) => {
+            setEstado({ projeto: projetoVazio(nome, tipoRede), imagens: new Map(), blobs: new Map(), relatorio: null });
             setBdgdFonteId(distribuidoraId);
             setDbId(null);
             setSalvo(false);

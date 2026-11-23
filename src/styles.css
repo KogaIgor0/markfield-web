@@ -2012,6 +2012,19 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.ct-tipo-rede-sel {
+  font-size: 10px;
+  font-family: var(--cr-mono);
+  font-weight: 600;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--cr-border-2);
+  border-radius: 3px;
+  color: #E2E8F0;
+  padding: 1px 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  height: 20px;
+}
 
 .ct-group {
   display: flex;
