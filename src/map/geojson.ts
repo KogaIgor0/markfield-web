@@ -12,6 +12,7 @@ export function pontosGeoJson(
   estaiIds?: Set<string>,
   estaiInstaladoIds?: Set<string>,
   sugCE4Ids?: Set<string>,
+  estribosIds?: Set<string>,
 ): FeatureCollection<Point> {
   const features: Feature<Point>[] = projeto.pontos.map((p) => ({
     type: "Feature",
@@ -24,6 +25,7 @@ export function pontosGeoJson(
       estai: estaiIds?.has(p.id) ?? false,
       estaiOk: estaiInstaladoIds?.has(p.id) ?? false,
       sugCE4: sugCE4Ids?.has(p.id) ?? false,
+      estribo: estribosIds?.has(p.id) ?? false,
       observacao: p.observacao ?? "",
       precisaoM: p.precisaoM ?? null,
       criadoEm: p.criadoEm ?? "",

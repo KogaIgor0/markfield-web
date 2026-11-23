@@ -298,6 +298,7 @@ export function App() {
     () => (projeto && rede ? proporEstribos(projeto, estruturas, rede) : []),
     [projeto, estruturas, rede],
   );
+  const estribosIds = useMemo(() => new Set(estribos.map((s) => s.pontoId)), [estribos]);
   // Quantitativo de materiais (B5).
   const materiais = useMemo(
     () => (projeto ? resumoMateriais(projeto, estruturas, esforcos, estribos.length) : null),
@@ -1425,6 +1426,7 @@ export function App() {
           estaiIds={estaiIds}
           estaiInstaladoIds={estaiInstaladoIds}
           sugCE4Ids={sugCE4Ids}
+          estribosIds={estribosIds}
           estais={estais}
           medicao={medicao}
           onMedirPonto={onMedirPonto}
@@ -1820,11 +1822,19 @@ export function App() {
                     </span>
                   </div>
                 ))}
-                {estribos.length > 0 && (
-                  <div className="ce4-sug">
-                    <span>Estribo de espera (300 m): {estribos.length} ponto(s) sugerido(s)</span>
+                {estribos.map((s) => (
+                  <div key={s.pontoId} className="ce4-sug">
+                    <span>
+                      <i className="pin" style={{ background: "transparent", boxShadow: "inset 0 0 0 2px #0891b2" }} />{" "}
+                      P{s.numero ?? "?"} — estribo de espera ({s.posicaoM.toFixed(0)} m de {s.lanceComprimentoM.toFixed(0)} m)
+                    </span>
+                    <span className="ce4-acoes">
+                      <button className="btn-mini-sec" onClick={() => selecionarPonto(s.pontoId)}>
+                        Ver
+                      </button>
+                    </span>
                   </div>
-                )}
+                ))}
               </div>
             )}
             {rede.avisos.map((a, i) => (
