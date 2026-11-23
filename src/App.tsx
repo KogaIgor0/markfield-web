@@ -988,11 +988,9 @@ export function App() {
               DXF
             </button>
           )}
-          {projeto && (
-            <button className="cr-btn" onClick={() => kmlInputRef.current?.click()}>
-              KML
-            </button>
-          )}
+          <button className="cr-btn" onClick={() => kmlInputRef.current?.click()}>
+            KML
+          </button>
         </div>
 
 
