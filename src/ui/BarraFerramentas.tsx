@@ -1,10 +1,8 @@
 import { useState, useRef, useCallback } from "react";
 import type { FeatureCollection } from "geojson";
-import type { EstiloBase, MapAlvo } from "../map/MapCanvas";
+import type { MapAlvo } from "../map/MapCanvas";
 
 interface BfProps {
-  estiloBase: EstiloBase;
-  onEstiloChange: (e: EstiloBase) => void;
   /** GeoJSON dos transformadores carregados (UNTRMT) */
   trafosData: FeatureCollection | null;
   onVoarPara: (alvo: MapAlvo) => void;
@@ -124,8 +122,6 @@ function buscarNaTrafos(trafosData: FeatureCollection, query: string): Sugestao[
 }
 
 export function BarraFerramentas({
-  estiloBase,
-  onEstiloChange,
   trafosData,
   onVoarPara,
 }: BfProps) {
@@ -175,30 +171,10 @@ export function BarraFerramentas({
     setSemResultados(false);
   }
 
-  const estilos: { id: EstiloBase; label: string; title: string }[] = [
-    { id: "satellite", label: "🛰", title: "Satélite" },
-    { id: "hybrid",    label: "🌍", title: "Híbrido" },
-    { id: "streets",   label: "🗺",  title: "Ruas" },
-  ];
-
   const dropdownAberto = sugestoes.length > 0 || (semResultados && texto.trim().length > 0);
 
   return (
     <div className="barra-ferramentas">
-      {/* Seletor de estilo de mapa */}
-      <div className="bf-estilos">
-        {estilos.map((e) => (
-          <button
-            key={e.id}
-            className={`bf-estilo-btn${estiloBase === e.id ? " ativo" : ""}`}
-            title={e.title}
-            onClick={() => onEstiloChange(e.id)}
-          >
-            {e.label}
-          </button>
-        ))}
-      </div>
-
       {/* Barra de busca */}
       <div className="bf-busca">
         <span className="bf-lupa">🔍</span>

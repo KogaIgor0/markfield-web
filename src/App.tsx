@@ -189,6 +189,7 @@ export function App() {
   >([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
+  const kmlInputRef = useRef<HTMLInputElement>(null);
   const imagensAntigas = useRef<Map<string, string>>(new Map());
   /** Handle do arquivo .mkf aberto via showSaveFilePicker — permite salvar no mesmo arquivo. */
   const fileHandleRef = useRef<FileSystemFileHandle | null>(null);
@@ -987,13 +988,16 @@ export function App() {
               DXF
             </button>
           )}
+          {projeto && (
+            <button className="cr-btn" onClick={() => kmlInputRef.current?.click()}>
+              KML
+            </button>
+          )}
         </div>
 
 
         <div className="ct-busca-area">
           <BarraFerramentas
-            estiloBase={estiloBase}
-            onEstiloChange={setEstiloBase}
             trafosData={trafosData}
             onVoarPara={(alvo) => setVoarPara({ ...alvo })}
           />
@@ -1195,6 +1199,17 @@ export function App() {
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) void abrir(f);
+              e.target.value = "";
+            }}
+          />
+          <input
+            ref={kmlInputRef}
+            type="file"
+            accept=".kml,.kmz"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onAbrirKmlRede(f);
               e.target.value = "";
             }}
           />
@@ -1872,6 +1887,33 @@ export function App() {
           >
             <span className="tv-icon">🌿</span>
             <span className="tv-label">OSM</span>
+          </button>
+
+          <div className="tv-sep" />
+          <span className="tv-group-label">Mapa</span>
+          <button
+            className={`tv-btn${estiloBase === "satellite" ? " active" : ""}`}
+            onClick={() => setEstiloBase("satellite")}
+            title="Satélite"
+          >
+            <span className="tv-icon">🛰</span>
+            <span className="tv-label">Sat</span>
+          </button>
+          <button
+            className={`tv-btn${estiloBase === "hybrid" ? " active" : ""}`}
+            onClick={() => setEstiloBase("hybrid")}
+            title="Híbrido"
+          >
+            <span className="tv-icon">🌍</span>
+            <span className="tv-label">Híb</span>
+          </button>
+          <button
+            className={`tv-btn${estiloBase === "streets" ? " active" : ""}`}
+            onClick={() => setEstiloBase("streets")}
+            title="Ruas"
+          >
+            <span className="tv-icon">🗺</span>
+            <span className="tv-label">Ruas</span>
           </button>
         </nav>
 
