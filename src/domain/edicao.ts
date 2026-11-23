@@ -47,6 +47,7 @@ export type PatchPonto = Partial<
     | "estruturaManual"
     | "estais"
     | "trafo"
+    | "estriboEspera"
     // legados (E-01): aceitos só para LIMPAR ao migrar para `estais`.
     | "estaiInstalado"
     | "estaiAzimuteManual"

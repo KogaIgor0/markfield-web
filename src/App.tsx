@@ -299,6 +299,14 @@ export function App() {
     [projeto, estruturas, rede],
   );
   const estribosIds = useMemo(() => new Set(estribos.map((s) => s.pontoId)), [estribos]);
+  const confirmadosIds = useMemo(
+    () => new Set(projeto?.pontos.filter((p) => p.estriboEspera).map((p) => p.id) ?? []),
+    [projeto],
+  );
+  const estribosPendentes = useMemo(
+    () => estribos.filter((s) => !confirmadosIds.has(s.pontoId)),
+    [estribos, confirmadosIds],
+  );
   // Quantitativo de materiais (B5).
   const materiais = useMemo(
     () => (projeto ? resumoMateriais(projeto, estruturas, esforcos, estribos.length) : null),
@@ -1427,6 +1435,7 @@ export function App() {
           estaiInstaladoIds={estaiInstaladoIds}
           sugCE4Ids={sugCE4Ids}
           estribosIds={estribosIds}
+          confirmadosIds={confirmadosIds}
           estais={estais}
           medicao={medicao}
           onMedirPonto={onMedirPonto}
@@ -1804,7 +1813,7 @@ export function App() {
                 ))}
               </div>
             )}
-            {(pararaios.length > 0 || estribos.length > 0) && (
+            {(pararaios.length > 0 || estribos.length > 0 || confirmadosIds.size > 0) && (
               <div className="rede-hud-ce4">
                 <div className="rede-hud-ce4-topo">
                   <span>Validações da norma</span>
@@ -1822,7 +1831,7 @@ export function App() {
                     </span>
                   </div>
                 ))}
-                {estribos.map((s) => (
+                {estribosPendentes.map((s) => (
                   <div key={s.pontoId} className="ce4-sug">
                     <span>
                       <i className="pin" style={{ background: "transparent", boxShadow: "inset 0 0 0 2px #0891b2" }} />{" "}
@@ -1832,9 +1841,23 @@ export function App() {
                       <button className="btn-mini-sec" onClick={() => selecionarPonto(s.pontoId)}>
                         Ver
                       </button>
+                      <button
+                        className="btn-mini"
+                        title="Confirmar estribo neste poste"
+                        onClick={() => projeto && atualizar(editarPonto(projeto, s.pontoId, { estriboEspera: true }))}
+                      >
+                        Marcar
+                      </button>
                     </span>
                   </div>
                 ))}
+                {confirmadosIds.size > 0 && (
+                  <div className="ce4-sug estribo-conf-linha">
+                    <span style={{ color: "var(--fg-sec, #666)", fontStyle: "italic" }}>
+                      ✓ {confirmadosIds.size} estribo{confirmadosIds.size > 1 ? "s" : ""} confirmado{confirmadosIds.size > 1 ? "s" : ""}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
             {rede.avisos.map((a, i) => (

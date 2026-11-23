@@ -177,6 +177,12 @@ export interface Ponto {
    */
   reinstalacao?: string;
   /**
+   * Estribo de espera ferragem confirmada (DIS-NOR-013 §6.15.2).
+   * `true` = projetista confirmou que a ferragem estará neste poste.
+   * O motor sugere os postes candidatos a cada 300 m; o engenheiro confirma um a um.
+   */
+  estriboEspera?: boolean;
+  /**
    * @deprecated Compatibilidade com arquivos antigos (um estai só). Na leitura,
    * o motor converte `estaiInstalado`/`estaiAzimuteManual` para `estais[]`; ao
    * editar, o Web passa a gravar `estais` e limpa estes campos. Não usar em código novo.

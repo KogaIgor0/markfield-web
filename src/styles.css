@@ -658,6 +658,24 @@ body {
   border-color: #7fce9c;
 }
 
+.estribo-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
+}
+.estribo-toggle input {
+  accent-color: #0066cc;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
 /* Legenda dos papéis + HUD do modelo de rede (B1) */
 .legenda-rede {
   max-width: 190px;

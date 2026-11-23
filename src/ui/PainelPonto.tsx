@@ -561,6 +561,16 @@ export function PainelPonto({
         >
           {ponto.ehFonte ? "✓ É a fonte da rede" : "Marcar como fonte"}
         </button>
+        <label className="estribo-toggle">
+          <input
+            type="checkbox"
+            checked={ponto.estriboEspera ?? false}
+            onChange={(e) =>
+              onEditar({ estriboEspera: e.target.checked || undefined })
+            }
+          />
+          Estribo de espera (ferragem neste poste)
+        </label>
       </div>
 
       {/* Seção EQUIPAMENTOS — transformador: painel completo */}

@@ -139,6 +139,7 @@ const LYR = {
   estaiOk: "mkf-estai-ok",
   sugCE4: "mkf-sug-ce4",
   estribo: "mkf-estribo",
+  estriboConf: "mkf-estribo-conf",
   fotos: "mkf-fotos",
   pontos: "mkf-pontos",
   estaiLinha: "mkf-estai-linha",
@@ -182,8 +183,10 @@ interface MapCanvasProps {
   estaiInstaladoIds?: Set<string>;
   /** ids dos postes sugeridos para CE4 (E-01/A). Anel âmbar tracejado no modo Rede. */
   sugCE4Ids?: Set<string>;
-  /** ids dos postes com estribo de espera sugerido (6.15.2). Anel ciano no modo Rede. */
+  /** ids dos postes com estribo de espera sugerido (6.15.2). Anel ciano tracejado no modo Rede. */
   estribosIds?: Set<string>;
+  /** ids dos postes com estribo de espera confirmado pelo projetista. Anel ciano sólido. */
+  confirmadosIds?: Set<string>;
   /** Segmentos do estai instalado (poste → âncora), no sentido do esforço. */
   estais?: { de: LatLng; ate: LatLng }[];
   /** Pontos da régua de medição (modo "medir"). */
@@ -322,6 +325,7 @@ export function MapCanvas(props: MapCanvasProps) {
     estaiInstaladoIds,
     sugCE4Ids,
     estribosIds,
+    confirmadosIds,
     estais,
     medicao,
     mostrarFotos,
@@ -675,6 +679,7 @@ export function MapCanvas(props: MapCanvasProps) {
         propsRef.current.estaiInstaladoIds,
         propsRef.current.sugCE4Ids,
         propsRef.current.estribosIds,
+        propsRef.current.confirmadosIds,
       );
       fcRef.current = fc;
       const cor = propsRef.current.modoRede ? COR_PAPEL : COR_TIPO;
@@ -727,17 +732,17 @@ export function MapCanvas(props: MapCanvasProps) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !projeto || !map.getSource(SRC.pontos)) return;
-    const fc = pontosGeoJson(projeto, papeis, estaiIds, estaiInstaladoIds, sugCE4Ids, estribosIds);
+    const fc = pontosGeoJson(projeto, papeis, estaiIds, estaiInstaladoIds, sugCE4Ids, estribosIds, confirmadosIds);
     fcRef.current = fc;
     (map.getSource(SRC.pontos) as maplibregl.GeoJSONSource).setData(fc);
-  }, [papeis, estaiIds, estaiInstaladoIds, sugCE4Ids, estribosIds, projeto]);
+  }, [papeis, estaiIds, estaiInstaladoIds, sugCE4Ids, estribosIds, confirmadosIds, projeto]);
 
   // Alterna a cor dos postes (papel x tipo) e o anel de estai só no modo Rede.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.getLayer(LYR.pontos)) return;
     map.setPaintProperty(LYR.pontos, "circle-color", modoRede ? COR_PAPEL : COR_TIPO);
-    for (const l of [LYR.estai, LYR.estaiOk, LYR.sugCE4, LYR.estribo, LYR.estaiLinha, LYR.estaiAncora]) {
+    for (const l of [LYR.estai, LYR.estaiOk, LYR.sugCE4, LYR.estribo, LYR.estriboConf, LYR.estaiLinha, LYR.estaiAncora]) {
       if (map.getLayer(l)) map.setLayoutProperty(l, "visibility", modoRede ? "visible" : "none");
     }
   }, [modoRede]);
@@ -1725,12 +1730,27 @@ function desenharProjeto(
     id: LYR.estribo,
     type: "circle",
     source: SRC.pontos,
-    filter: ["==", ["get", "estribo"], true],
+    filter: ["all", ["==", ["get", "estribo"], true], ["==", ["get", "estriboConf"], false]],
     layout: { visibility: modoRede ? "visible" : "none" },
     paint: {
       "circle-radius": 21,
       "circle-color": "rgba(8,145,178,0.10)",
       "circle-stroke-width": 2,
+      "circle-stroke-color": "#0891b2",
+    },
+  });
+
+  // Estribo de espera confirmado pelo projetista — anel sólido ciano mais espesso.
+  map.addLayer({
+    id: LYR.estriboConf,
+    type: "circle",
+    source: SRC.pontos,
+    filter: ["==", ["get", "estriboConf"], true],
+    layout: { visibility: modoRede ? "visible" : "none" },
+    paint: {
+      "circle-radius": 21,
+      "circle-color": "rgba(8,145,178,0.18)",
+      "circle-stroke-width": 3,
       "circle-stroke-color": "#0891b2",
     },
   });
