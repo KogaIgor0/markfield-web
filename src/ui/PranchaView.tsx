@@ -6,6 +6,7 @@ import type { RedeEsforcos } from "../domain/esforco";
 import type { ResumoMateriais } from "../domain/materiais";
 import { ESRI_MAXZOOM } from "../config";
 import {
+  bboxDeCoords,
   bboxProjeto,
   dividirEmPranchas,
   ESCALAS_PADRAO,
@@ -154,7 +155,21 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
   }, [calcFitZoom]);
   // ── fim zoom automático ───────────────────────────────────────────────────
 
-  const bboxTotal = useMemo(() => bboxProjeto(projeto), [projeto]);
+  // Bbox da prancha: prioridade para a área explicitamente desenhada pelo usuário
+  // (areaBdgd.bbox = retângulo que o usuário arrastou no mapa). Sem ela, recalcula
+  // a partir dos postes propostos (comportamento anterior).
+  const bboxTotal = useMemo(() => {
+    if (areaBdgd?.bbox) {
+      const { norte, sul, leste, oeste } = areaBdgd.bbox;
+      return bboxDeCoords([
+        { lat: norte, lng: oeste },
+        { lat: norte, lng: leste },
+        { lat: sul,   lng: oeste },
+        { lat: sul,   lng: leste },
+      ]);
+    }
+    return bboxProjeto(projeto);
+  }, [areaBdgd, projeto]);
 
   const escalaAuto = 1000; // 1:1000 padrão DIS-NOR para redes de distribuição
   const escala = escalaModo === "auto" ? escalaAuto : escalaModo;
@@ -184,7 +199,7 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
     prefixKey: string,
     zTarget: number,
   ) => {
-    if (!bbox || projeto.pontos.length === 0) return null;
+    if (!bbox || (projeto.pontos.length === 0 && !areaBdgd?.bbox)) return null;
     const n = (z: number) => Math.pow(2, z);
     const lng2tx = (lng: number, z: number) => Math.floor((lng + 180) / 360 * n(z));
     const lat2ty = (lat: number, z: number) =>
@@ -194,12 +209,21 @@ export function PranchaView({ projeto, esforcos, rotulosEstrutura, materiais, on
       const ang = Math.PI - 2 * Math.PI * y / n(z);
       return 180 / Math.PI * Math.atan(0.5 * (Math.exp(ang) - Math.exp(-ang)));
     };
+    // Extent para os tiles: usa areaBdgd.bbox quando disponível (cobre toda a
+    // área escolhida pelo usuário); caso contrário usa os postes propostos.
     let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-    for (const p of projeto.pontos) {
-      if (p.wgs84.lat < minLat) minLat = p.wgs84.lat;
-      if (p.wgs84.lat > maxLat) maxLat = p.wgs84.lat;
-      if (p.wgs84.lng < minLng) minLng = p.wgs84.lng;
-      if (p.wgs84.lng > maxLng) maxLng = p.wgs84.lng;
+    if (areaBdgd?.bbox) {
+      minLat = areaBdgd.bbox.sul;
+      maxLat = areaBdgd.bbox.norte;
+      minLng = areaBdgd.bbox.oeste;
+      maxLng = areaBdgd.bbox.leste;
+    } else {
+      for (const p of projeto.pontos) {
+        if (p.wgs84.lat < minLat) minLat = p.wgs84.lat;
+        if (p.wgs84.lat > maxLat) maxLat = p.wgs84.lat;
+        if (p.wgs84.lng < minLng) minLng = p.wgs84.lng;
+        if (p.wgs84.lng > maxLng) maxLng = p.wgs84.lng;
+      }
     }
     const tileDeg = 360 / n(zTarget);
     minLng -= tileDeg; maxLng += tileDeg;
