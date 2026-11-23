@@ -182,15 +182,62 @@ export function proporAmarracao(
 export const LANCE_ESTRIBO_M: number = PACK_ELEKTRO.normas.lanceEstribosM;
 
 /**
+ * Códigos que são pontos de referência de aterramento para estribo de espera.
+ * CE4 (ancoragem de cabo) NÃO conta — apenas encabeçamentos CE3/CE3TR e postes
+ * de grau ≠ 2 (fonte, fim, derivação, trafo). A CE4 não está equipada para
+ * aterramento temporário; a medição de 300 m é contínua entre os terminais.
+ */
+const CODIGOS_ESTRIBO_REF: readonly string[] = ["CE3", "CE3TR", "CE3-CE3"];
+
+/**
  * Propõe pontos de **estribo de espera para aterramento temporário** — DIS-NOR-013
- * **6.15.2**: a cada 300 m de rede nos trechos sem partes expostas. v1: sugere o
- * poste mais próximo a cada 300 m ao longo de cada lance (mesma máquina da CE4).
- * (6.15.3 — estribos nas chaves — entra quando houver os equipamentos no modelo.)
+ * **6.15.2**: a cada 300 m de rede entre encabeçamentos e terminais (CE3, grau≠2).
+ * CE4 não zera a contagem — é ancoragem de cabo, não ponto de aterramento.
  */
 export function proporEstribos(
   projeto: Projeto,
   codigos: Map<string, EstruturaAtribuida>,
   rede: RedeModelada,
 ): SugestaoCE4[] {
-  return proporPontosEmLances(projeto, codigos, rede, LANCE_ESTRIBO_M);
+  const porId = new Map(projeto.pontos.map((p) => [p.id, p]));
+  const adj = new Map<string, Set<string>>();
+  for (const p of projeto.pontos) adj.set(p.id, new Set());
+  for (const t of projeto.trechos) {
+    if (t.dePontoId && t.aPontoId && adj.has(t.dePontoId) && adj.has(t.aPontoId)) {
+      adj.get(t.dePontoId)!.add(t.aPontoId);
+      adj.get(t.aPontoId)!.add(t.dePontoId);
+    }
+  }
+  // Referência de estribo: grau≠2 (fonte, fim, derivação, trafo) OU CE3/CE3TR.
+  // CE4 NÃO conta: a contagem de 300 m não é zerada por ancoragem.
+  const amaEstribo = (id: string): boolean => {
+    const cod = codigos.get(id)?.codigo ?? "";
+    const grau = rede.postes.get(id)?.grau ?? 0;
+    if (grau !== 2) return true;
+    return CODIGOS_ESTRIBO_REF.some((c) => cod.startsWith(c));
+  };
+
+  const sugestoes: SugestaoCE4[] = [];
+  const jaSugerido = new Set<string>();
+  percorrerLances(projeto, porId, adj, amaEstribo, (deId, ateId, cadeia, comp) => {
+    if (comp <= LANCE_ESTRIBO_M + 1e-6) return;
+    const n = Math.ceil(comp / LANCE_ESTRIBO_M);
+    const passo = comp / n;
+    const interiores = cadeia.filter((c) => c.id !== deId && c.id !== ateId);
+    for (let k = 1; k < n; k++) {
+      const alvo = k * passo;
+      let melhor: { c: { id: string; acc: number }; d: number } | null = null;
+      for (const c of interiores) {
+        if (jaSugerido.has(c.id)) continue;
+        const d = Math.abs(c.acc - alvo);
+        if (!melhor || d < melhor.d) melhor = { c, d };
+      }
+      if (melhor) {
+        jaSugerido.add(melhor.c.id);
+        const pt = porId.get(melhor.c.id)!;
+        sugestoes.push({ pontoId: melhor.c.id, numero: pt.numero, posicaoM: melhor.c.acc, lanceComprimentoM: comp });
+      }
+    }
+  });
+  return sugestoes;
 }
