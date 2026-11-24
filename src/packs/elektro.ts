@@ -9,7 +9,9 @@ import type { TipoPonto } from "../domain/model";
  * distribuidora = trocar de pacote; o motor não muda.
  *
  * Normas de origem:
+ *  - DIS-NOR-012 rev.08  (critérios gerais rede de distribuição aérea — §6.5, §6.12–§6.13, Tab.14, Tab.20, Anexo X)
  *  - DIS-NOR-013 rev.08  (rede compacta MT — estruturas, cabos, amarração, estai)
+ *  - DIS-NOR-018 rev.01  (estruturas rede nua até 36,2 kV — trações rurais a confirmar)
  *  - DIS-ETE-011 rev.06  (catálogo de postes de concreto armado)
  *  - ND-25               (cálculo mecânico: R = √(F₁²+F₂²+2·F₁·F₂·cos β))
  */
@@ -131,10 +133,31 @@ export interface PackConcessionaria {
 
   // ── Constantes normativas — rede nua/rural (DIS-NOR-018 / DIS-NOR-012) ─────
   normasNua?: {
-    /** Lance máximo sem amarração (m) — provisório, confirmar na DIS-NOR-012. */
+    /** Lance máximo sem amarração (m) — provisório, confirmar na DIS-NOR-018. */
     lanceMaxAmarracaoM: number;
-    /** Espaçamento máximo do estribo de espera (m) — provisório (DIS-NOR-012). */
+    /** Espaçamento máximo do estribo de espera (m) — provisório (DIS-NOR-018). */
     lanceEstribosM: number;
+    /**
+     * Vão básico (m) usado no cálculo de tração reduzida.
+     * Confirmado em DIS-NOR-012 Anexo X (exemplo usa VB = 40 m).
+     */
+    vanBasicoM: number;
+    /**
+     * Instalar para-raios a cada N km na rede rural.
+     * DIS-NOR-012 §6.12.18i: a cada 3 km.
+     */
+    paraRaiosCadaKm: number;
+    /**
+     * Instalar chave seccionadora no início do alimentador rural
+     * e a cada N km máximo no tronco.
+     * DIS-NOR-012 §6.12.19: a cada 6 km.
+     */
+    seccionadorasCadaKm: number;
+    /**
+     * Vão máximo para RDC (rede compacta) em área rural.
+     * Vãos > 100 m → rede nua permitida. DIS-NOR-012 §6.5.2 e §6.5.4c.
+     */
+    vaoMaxRdcRuralM: number;
     /**
      * Códigos de estrutura rede nua que constituem ponto de amarração.
      * N3 = fim de rede, N4 = ângulo/ancoragem, N3-N3 = duplo encabeçamento.
@@ -224,12 +247,16 @@ export const PACK_ELEKTRO: PackConcessionaria = {
   },
 
   // ── Constantes normativas — rede nua/rural ─────────────────────────────
-  // ⚠️ Valores provisórios — DIS-NOR-012 ainda não recebida.
+  // Fonte: DIS-NOR-012 Rev.08 (critérios gerais) + DIS-NOR-018 Rev.01 (estruturas).
   normasNua: {
-    lanceMaxAmarracaoM: 400,          // provisório — confirmar DIS-NOR-012
-    lanceEstribosM: 300,              // provisório — confirmar DIS-NOR-012
+    lanceMaxAmarracaoM: 400,          // provisório — confirmar DIS-NOR-018
+    lanceEstribosM: 300,              // provisório — confirmar DIS-NOR-018
+    vanBasicoM: 40,                   // DIS-NOR-012 Anexo X (VB = 40 m)
+    paraRaiosCadaKm: 3,               // DIS-NOR-012 §6.12.18i — rede rural
+    seccionadorasCadaKm: 6,           // DIS-NOR-012 §6.12.19 — tronco rural
+    vaoMaxRdcRuralM: 100,             // DIS-NOR-012 §6.5.2 + §6.5.4c
     codigosAmarracao: ["N3", "N4", "N3-N3", "N3-TT"],
-    capacidadePadraoDaN: 400,         // provisório — confirmar DIS-NOR-012
+    capacidadePadraoDaN: 400,         // provisório — confirmar DIS-NOR-018
     caboPadrao: "PENGUIN",
     condicaoPadrao: "rural_medio_baixo",
   },
@@ -274,77 +301,74 @@ export const PACK_ELEKTRO: PackConcessionaria = {
     },
   ],
 
-  // ── Catálogo de cabos nus ACSR — rede rural (DIS-NOR-018) ──────────────
-  // Dados físicos: ABNT NBR 7270:2009 (ACSR).
-  // ⚠️ TRAÇÕES PROVISÓRIAS — confirmar na DIS-NOR-012 §6.4+ (ainda não recebida).
-  // Padrão Elektro para rede nua: PENGUIN (tronco/ramal) e LINNET (tronco principal).
+  // ── Catálogo de cabos nus CAA — rede rural (DIS-NOR-012 + DIS-NOR-018) ────
+  //
+  // Dados físicos: DIS-NOR-012 Rev.08 Tabela 20 (designação AWG/MCM — padrão Elektro).
+  //   ⚠️ Os cabos nus da Neoenergia Elektro usam designação AWG (#4, #1/0, #4/0, 336.4MCM),
+  //   NÃO a designação métrica IEC (16, 25, 35, 95 mm²) — são cabos maiores!
+  //
+  // Trações:
+  //   • Coluna "urbana": DIS-NOR-012 Tabela 14, vão básico VB = 40 m (§6.13 + Anexo X).
+  //     Confirmadas: Anexo X usa explicitamente 347 daN/fase para 4/0 CAA no exemplo TR.
+  //   • Colunas "rural_alto" e "rural_medio_baixo": estimadas pela mesma proporção
+  //     da rede compacta (A35P urbana/rural ≈ 1,36/1,63×). ⚠️ CONFIRMAR na DIS-NOR-018.
+  //
+  // tração reduzida TR = (VR / VB)² × TB  (DIS-NOR-012 §6.13.10.2).
+  //
+  // Cabos de cobre excluídos: DIS-NOR-012 Tabela 23 nota — uso restrito a aterramento,
+  // expressamente proibidos em redes primárias.
   cabosNus: [
     {
+      // #4 CAA (AWG) — DIS-NOR-012 Tab.20: Ø 6,36 mm, ruptura 839 daN, 130 A
+      // Tração Tab.14: 75 daN/fase a VB=40 m (rede urbana nua existente — base de cálculo)
       codigo: "SWAN",
-      rotulo: "SWAN — ACSR 16+2,7 mm² nu (provisório)",
-      secaoMm2: 16,
+      rotulo: "SWAN — #4 CAA (24,7 mm² total) — 15 kV",
+      secaoMm2: 24.71,
       tensaoKv: 15,
-      diametroMm: 6.21,
-      rupturaDaN: 480,
-      tracaoDaN: { urbana: 120, rural_alto: 160, rural_medio_baixo: 190 },
-      tracaoReduzidaDaN: 50,
-      tracaoConfirmada: false,
+      diametroMm: 6.36,
+      rupturaDaN: 839,
+      tracaoDaN: { urbana: 75, rural_alto: 102, rural_medio_baixo: 122 },
+      tracaoReduzidaDaN: 37,          // ≈ 25 % de 122 (VR≈20m, VB=40m, TB=122)
+      tracaoConfirmada: false,        // rural: aguarda Tab. DIS-NOR-018; urbana: ✓ Tab.14
     },
     {
+      // #1/0 CAA (AWG) — DIS-NOR-012 Tab.20: Ø 10,11 mm, ruptura 1.935 daN, 230 A
+      // Tração Tab.14: 173 daN/fase a VB=40 m
       codigo: "RAVEN",
-      rotulo: "RAVEN — ACSR 25+4,3 mm² nu (provisório)",
-      secaoMm2: 25,
+      rotulo: "RAVEN — #1/0 CAA (62,4 mm² total) — 15 kV",
+      secaoMm2: 62.44,
       tensaoKv: 15,
-      diametroMm: 7.77,
-      rupturaDaN: 720,
-      tracaoDaN: { urbana: 180, rural_alto: 240, rural_medio_baixo: 290 },
-      tracaoReduzidaDaN: 72,
-      tracaoConfirmada: false,
+      diametroMm: 10.11,
+      rupturaDaN: 1935,
+      tracaoDaN: { urbana: 173, rural_alto: 235, rural_medio_baixo: 282 },
+      tracaoReduzidaDaN: 85,          // ≈ 25 % de 282
+      tracaoConfirmada: false,        // rural: aguarda DIS-NOR-018; urbana: ✓ Tab.14
     },
     {
+      // #4/0 CAA (AWG) — DIS-NOR-012 Tab.20: Ø 14,31 mm, ruptura 2.941 daN, 350 A
+      // Tração Tab.14: 347 daN/fase a VB=40 m — CONFIRMADO em Anexo X (3×347=1.041 daN)
       codigo: "PENGUIN",
-      rotulo: "PENGUIN — ACSR 35+6 mm² nu (provisório)",
-      secaoMm2: 35,
+      rotulo: "PENGUIN — #4/0 CAA (125,1 mm² total) — 15 kV",
+      secaoMm2: 125.1,
       tensaoKv: 15,
-      diametroMm: 9.05,
-      rupturaDaN: 1030,
-      tracaoDaN: { urbana: 260, rural_alto: 345, rural_medio_baixo: 415 },
-      tracaoReduzidaDaN: 105,
-      tracaoConfirmada: false,
+      diametroMm: 14.31,
+      rupturaDaN: 2941,
+      tracaoDaN: { urbana: 347, rural_alto: 472, rural_medio_baixo: 566 },
+      tracaoReduzidaDaN: 142,         // ≈ 25 % de 566 — Anexo X: TR=(20/40)²×1.211≈303 daN (3 fases)→101/fase
+      tracaoConfirmada: false,        // rural: aguarda DIS-NOR-018; urbana: ✓ Tab.14 + Anexo X
     },
     {
+      // 336.4 MCM CAA — DIS-NOR-012 Tab.20: Ø 18,31 mm, ruptura 6.273 daN, 510 A
+      // Tração Tab.14: 551 daN/fase a VB=40 m
       codigo: "LINNET",
-      rotulo: "LINNET — ACSR 95+16,3 mm² nu (provisório)",
-      secaoMm2: 95,
+      rotulo: "LINNET — 336,4 MCM CAA (198,4 mm² total) — 15 kV",
+      secaoMm2: 198.4,
       tensaoKv: 15,
-      diametroMm: 15.04,
-      rupturaDaN: 2800,
-      tracaoDaN: { urbana: 700, rural_alto: 930, rural_medio_baixo: 1120 },
-      tracaoReduzidaDaN: 280,
-      tracaoConfirmada: false,
-    },
-    {
-      // Cobre nu 35 mm² — também usado em ramais rurais
-      codigo: "CU35",
-      rotulo: "Cu nu 35 mm²",
-      secaoMm2: 35,
-      tensaoKv: 15,
-      diametroMm: 6.75,
-      rupturaDaN: 975,
-      tracaoDaN: { urbana: 245, rural_alto: 325, rural_medio_baixo: 390 },
-      tracaoReduzidaDaN: 98,
-      tracaoConfirmada: false,
-    },
-    {
-      codigo: "CU70",
-      rotulo: "Cu nu 70 mm²",
-      secaoMm2: 70,
-      tensaoKv: 15,
-      diametroMm: 9.5,
-      rupturaDaN: 1950,
-      tracaoDaN: { urbana: 490, rural_alto: 650, rural_medio_baixo: 780 },
-      tracaoReduzidaDaN: 196,
-      tracaoConfirmada: false,
+      diametroMm: 18.31,
+      rupturaDaN: 6273,
+      tracaoDaN: { urbana: 551, rural_alto: 749, rural_medio_baixo: 898 },
+      tracaoReduzidaDaN: 225,         // ≈ 25 % de 898
+      tracaoConfirmada: false,        // rural: aguarda DIS-NOR-018; urbana: ✓ Tab.14
     },
   ],
 
