@@ -89,7 +89,7 @@ export function PainelMateriais({ resumo, onFechar }: Props) {
           <strong>{resumo.estais}</strong>
         </div>
         <div className="mat-linha">
-          <span>Para-raios</span>
+          <span>Postes com para-raios × fases/trecho</span>
           <strong>{resumo.pararaios}</strong>
         </div>
         <div className="mat-linha">

@@ -1146,6 +1146,36 @@ body {
   border-color: var(--muted);
 }
 
+/* Toggle de fases (1Ø / 2Ø / 3Ø) no PainelTrecho */
+.toggle-grupo {
+  display: flex;
+  gap: 6px;
+}
+
+.toggle-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  padding: 5px 14px;
+  cursor: pointer;
+  flex: 1;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.toggle-btn:hover {
+  border-color: var(--muted);
+}
+
+.toggle-btn.ativo {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
 .modo-bar-mover {
   border-color: var(--accent);
 }

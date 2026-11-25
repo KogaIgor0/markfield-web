@@ -316,6 +316,13 @@ export interface Trecho {
    */
   tipoCabo?: string;
   /**
+   * Número de fases do trecho: 1 (monofásico), 2 (bifásico) ou 3 (trifásico).
+   * Ausente = 3 (trifásico — padrão de tronco). Determina a quantidade de
+   * para-raios (1 por fase), tipo de seccionadora (tripolar/unipolar) e o
+   * tipo de transformador permitido (§6.8.5.16 — monofásico só em ramais 1Ø).
+   */
+  fases?: 1 | 2 | 3;
+  /**
    * Vão de **tração reduzida** (E-05) — o "vão frouxo" que sai de uma tomada/
    * derivação. Marca este lance para o esforço usar a tração REDUZIDA do cabo
    * (`Cabo.tracaoReduzidaDaN`), transferindo o esforço da tomada para o poste da
