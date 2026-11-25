@@ -91,22 +91,6 @@ export function PainelTrecho({
         </div>
       )}
 
-      <div className="campo">
-        <span>Fases</span>
-        <div className="toggle-grupo">
-          {([1, 2, 3] as const).map((f) => (
-            <button
-              key={f}
-              className={`toggle-btn${(trecho.fases ?? 3) === f ? " ativo" : ""}`}
-              onClick={() => onEditar({ fases: f })}
-              title={f === 1 ? "Monofásico" : f === 2 ? "Bifásico" : "Trifásico"}
-            >
-              {f}Ø
-            </button>
-          ))}
-        </div>
-      </div>
-
       <label className="campo-check">
         <input
           type="checkbox"

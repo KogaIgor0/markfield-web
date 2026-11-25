@@ -156,7 +156,7 @@ export function removerTrecho(projeto: Projeto, id: string): Projeto {
 }
 
 export type PatchTrecho = Partial<
-  Pick<Trecho, "classe" | "observacao" | "tipoCabo" | "tracaoReduzida" | "fases">
+  Pick<Trecho, "classe" | "observacao" | "tipoCabo" | "tracaoReduzida">
 >;
 
 /** Edita atributos de um trecho (classe elétrica, observação). */

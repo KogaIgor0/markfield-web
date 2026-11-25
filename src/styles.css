@@ -1146,7 +1146,15 @@ body {
   border-color: var(--muted);
 }
 
-/* Toggle de fases (1Ø / 2Ø / 3Ø) no PainelTrecho */
+/* Descrição contextual no PainelRede */
+.painel-rede-desc {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+  padding: 2px 0 6px;
+}
+
+/* Toggle de fases (1Ø / 2Ø / 3Ø) no PainelRede */
 .toggle-grupo {
   display: flex;
   gap: 6px;

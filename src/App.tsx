@@ -41,6 +41,7 @@ import { validarPararaios } from "./domain/validacoes";
 import { resumoMateriais } from "./domain/materiais";
 import { PainelMateriais } from "./ui/PainelMateriais";
 import { PainelCamadas } from "./ui/PainelCamadas";
+import { PainelRede } from "./ui/PainelRede";
 import { PranchaView } from "./ui/PranchaView";
 import { NovoProjetoModal } from "./ui/NovoProjetoModal";
 import { BDGD_CAMADAS_PADRAO, type BdgdCarregamentoResultado } from "./map/bdgd";
@@ -138,6 +139,7 @@ export function App() {
   const [mostrarMateriais, setMostrarMateriais] = useState(false);
   const [mostrarPrancha, setMostrarPrancha] = useState(false);
   const [mostrarCamadas, setMostrarCamadas] = useState(false);
+  const [mostrarRede, setMostrarRede] = useState(false);
   const [novoProjetoAberto, setNovoProjetoAberto] = useState(false);
   const [projetosAberto, setProjetosAberto] = useState(false);
   /** Id da entrada no IndexedDB correspondente ao projeto aberto (null = não registrado ainda). */
@@ -939,6 +941,7 @@ export function App() {
         setMostrarMateriais(false);
         setMostrarPrancha(false);
         setMostrarCamadas(false);
+        setMostrarRede(false);
         setSelecionadoId(null);
         setSelecionadoTrechoId(null);
         setModoSelecaoPrancha(false);
@@ -968,19 +971,6 @@ export function App() {
         {projeto && (
           <div className="ct-project">
             <span className="ct-dist-badge">{bdgdFonteId.toUpperCase()}</span>
-            {/* Seletor de tipo de rede: compacta (DIS-NOR-013) ou nua/rural (DIS-NOR-018) */}
-            <select
-              className="ct-tipo-rede-sel"
-              value={projeto.meta.tipoRede ?? "compacta"}
-              title="Tipo de rede: compacta (cabos cobertos, CE1/CE2…) ou rural/nua (condutores nus, N1/N4…)"
-              onChange={(e) => {
-                const tipoRede = e.target.value as "compacta" | "nua";
-                atualizar({ ...projeto, meta: { ...projeto.meta, tipoRede } });
-              }}
-            >
-              <option value="compacta">Compacta</option>
-              <option value="nua">Rural (nua)</option>
-            </select>
             <span className="ct-proj-name">{projeto.meta.nome || "Sem nome"}</span>
             <button
               className="ct-fechar-projeto"
@@ -1170,6 +1160,17 @@ export function App() {
                 title="Mostra/esconde o número de cada poste no mapa"
               >
                 Números
+              </button>
+              <button
+                className={`btn${mostrarRede ? " btn-ativo" : ""}`}
+                onClick={() => {
+                  const abrir = !mostrarRede;
+                  setMostrarRede(abrir);
+                  if (abrir) { selecionarPonto(null); selecionarTrecho(null); }
+                }}
+                title="Propriedades da rede: tipo (compacta/nua) e fases (1Ø/2Ø/3Ø)"
+              >
+                Rede
               </button>
               <button
                 className={`btn${mostrarMateriais ? " btn-ativo" : ""}`}
@@ -1720,6 +1721,14 @@ export function App() {
               setSelecionadoTrechoId(null);
             }}
             onFechar={() => setSelecionadoTrechoId(null)}
+          />
+        )}
+
+        {mostrarRede && projeto && !selecionado && !selecionadoTrecho && (
+          <PainelRede
+            meta={projeto.meta}
+            onEditar={(patch) => atualizar({ ...projeto, meta: { ...projeto.meta, ...patch } })}
+            onFechar={() => setMostrarRede(false)}
           />
         )}
 
