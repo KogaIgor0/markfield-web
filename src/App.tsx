@@ -1308,30 +1308,31 @@ export function App() {
                 <span className="tv-label">Dividir{longos.length ? ` ${longos.length}` : ""}</span>
               </button>
               <div className="tv-sep" />
-              {/* ── Inserção de existentes (ainda dentro de Edição) ── */}
+              {/* ── Rede existente: inserção manual de elementos ── */}
+              <span className="tv-group-label">Rede exist.</span>
               <button
                 className={`tv-btn${modoInserirExistente === "poste" ? " active" : ""}`}
                 onClick={() => setModoInserirExistente((m) => m === "poste" ? null : "poste")}
-                title="Inserir poste existente no mapa (clique)"
+                title="Poste existente — clique no mapa para inserir"
               >
                 <span className="tv-icon">🔵</span>
-                <span className="tv-label">P.exist</span>
+                <span className="tv-label">Poste</span>
               </button>
               <button
                 className={`tv-btn${modoInserirExistente === "trafo" ? " active" : ""}`}
                 onClick={() => setModoInserirExistente((m) => m === "trafo" ? null : "trafo")}
-                title="Inserir transformador existente no mapa (clique)"
+                title="Trafo existente — clique no mapa para inserir"
               >
                 <span className="tv-icon">🔴</span>
-                <span className="tv-label">T.exist</span>
+                <span className="tv-label">Trafo</span>
               </button>
               <button
                 className={`tv-btn${modoInserirExistente === "segmento" ? " active" : ""}`}
                 onClick={() => setModoInserirExistente((m) => m === "segmento" ? null : "segmento")}
-                title="Inserir segmento de MT existente (2 cliques)"
+                title="Linha MT existente — clique para iniciar, continue clicando para estender; Esc para encerrar"
               >
-                <span className="tv-icon">🔶</span>
-                <span className="tv-label">Seg.MT</span>
+                <span className="tv-icon">〰</span>
+                <span className="tv-label">Linha MT</span>
               </button>
               <div className="tv-sep" />
               <span className="tv-group-label">Exibição</span>

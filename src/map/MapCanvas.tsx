@@ -457,15 +457,28 @@ export function MapCanvas(props: MapCanvasProps) {
       propsRef.current.onSelecionar?.(id);
     });
 
-    // Preview elástico no modo ligar: linha do poste de origem até o cursor.
+    // Preview elástico no modo ligar e no modo inserir segmento MT existente.
     map.on("mousemove", (e) => {
       const src = map.getSource(SRC.preview) as maplibregl.GeoJSONSource | undefined;
       if (!src) return;
+      // Modo ligar: origem já escolhida → linha até o cursor.
       const de = emModoLigar() && propsRef.current.ligarDeId ? coordDoPonto(propsRef.current.ligarDeId) : null;
+      // Modo segmento MT: primeiro clique registrado → rubber-band até o cursor.
+      const deSeg =
+        propsRef.current.modoInserirExistente === "segmento" ? segPrimeiroCliqueRef.current : null;
       if (de) {
         src.setData({
           type: "Feature",
           geometry: { type: "LineString", coordinates: [de, [e.lngLat.lng, e.lngLat.lat]] },
+          properties: {},
+        });
+      } else if (deSeg) {
+        src.setData({
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: [[deSeg.lng, deSeg.lat], [e.lngLat.lng, e.lngLat.lat]],
+          },
           properties: {},
         });
       } else {
@@ -608,11 +621,13 @@ export function MapCanvas(props: MapCanvasProps) {
         } else if (modoIns === "segmento") {
           const primeiro = segPrimeiroCliqueRef.current;
           if (!primeiro) {
-            // Primeiro clique — guarda e aguarda segundo
+            // Primeiro clique — guarda e aguarda o segundo (rubber-band fica ativo no mousemove).
             segPrimeiroCliqueRef.current = wgs84;
           } else {
-            // Segundo clique — dispara callback e limpa estado
-            segPrimeiroCliqueRef.current = null;
+            // Segundo clique — salva o segmento e continua desenhando a partir deste ponto
+            // (modo contínuo: o usuário pode continuar clicando para estender a linha).
+            // Para encerrar: Escape ou clicar no botão "Seg.MT" novamente.
+            segPrimeiroCliqueRef.current = wgs84;
             propsRef.current.onInserirSegmentoExistente?.(primeiro, wgs84);
           }
         }
