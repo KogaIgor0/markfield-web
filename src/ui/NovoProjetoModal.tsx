@@ -2,14 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { BDGD_FONTES, BDGD_FONTES_DISPONIVEIS } from "../map/bdgd";
 
 interface Props {
-  onCriar: (nome: string, distribuidoraId: string, tipoRede: "compacta" | "nua") => void;
+  onCriar: (nome: string, distribuidoraId: string) => void;
   onCancelar: () => void;
 }
 
 export function NovoProjetoModal({ onCriar, onCancelar }: Props) {
   const [nome, setNome] = useState("");
   const [distribuidoraId, setDistribuidoraId] = useState(BDGD_FONTES_DISPONIVEIS[0]?.id ?? "elektro");
-  const [tipoRede, setTipoRede] = useState<"compacta" | "nua">("compacta");
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Focus no campo nome ao abrir
@@ -31,7 +30,7 @@ export function NovoProjetoModal({ onCriar, onCancelar }: Props) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!podeCriar) return;
-    onCriar(nome.trim(), distribuidoraId, tipoRede);
+    onCriar(nome.trim(), distribuidoraId);
   };
 
   return (
@@ -79,19 +78,6 @@ export function NovoProjetoModal({ onCriar, onCancelar }: Props) {
                   </option>
                 ))}
               </optgroup>
-            </select>
-          </label>
-
-          {/* Tipo de rede */}
-          <label className="np-field">
-            <span className="np-label">Tipo de rede</span>
-            <select
-              className="np-select"
-              value={tipoRede}
-              onChange={(e) => setTipoRede(e.target.value as "compacta" | "nua")}
-            >
-              <option value="compacta">Compacta — cabos cobertos (DIS-NOR-013)</option>
-              <option value="nua">Rural / nua — condutores nus (DIS-NOR-018)</option>
             </select>
           </label>
 

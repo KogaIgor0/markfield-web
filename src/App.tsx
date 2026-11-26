@@ -2013,8 +2013,8 @@ export function App() {
 
       {novoProjetoAberto && (
         <NovoProjetoModal
-          onCriar={(nome, distribuidoraId, tipoRede) => {
-            setEstado({ projeto: projetoVazio(nome, tipoRede), imagens: new Map(), blobs: new Map(), relatorio: null });
+          onCriar={(nome, distribuidoraId) => {
+            setEstado({ projeto: projetoVazio(nome), imagens: new Map(), blobs: new Map(), relatorio: null });
             setBdgdFonteId(distribuidoraId);
             setDbId(null);
             setSalvo(false);
