@@ -1138,6 +1138,64 @@ export function MapCanvas(props: MapCanvasProps) {
     }
   }, [props.areaBdgd?.bbox]);
 
+  // Snapshot BDGD — elementos capturados da BDGD (manual=false) a partir dos
+  // dados salvos no .mkf. Renderiza em cinza abaixo do projeto, independente
+  // de CDN. Assim, ao reabrir o projeto, a rede existente carrega do arquivo.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !prontoRef.current) return;
+
+    const SRC_S  = "mkf-snap-src";
+    const LYR_SS = "mkf-snap-segs";
+    const LYR_SP = "mkf-snap-postes";
+    const LYR_ST = "mkf-snap-trafos";
+
+    const area = props.areaBdgd;
+    const features: GeoJSON.Feature[] = [];
+
+    if (area) {
+      for (const p of area.postesBdgd) {
+        if (p.manual) continue; // manuais têm camada própria (ciano)
+        features.push({ type: "Feature", geometry: { type: "Point", coordinates: [p.wgs84.lng, p.wgs84.lat] }, properties: { kind: "poste" } });
+      }
+      for (const t of area.trafos) {
+        if (t.manual) continue;
+        features.push({ type: "Feature", geometry: { type: "Point", coordinates: [t.wgs84.lng, t.wgs84.lat] }, properties: { kind: "trafo" } });
+      }
+      for (const s of area.segmentosMT) {
+        if (s.manual) continue;
+        features.push({ type: "Feature", geometry: { type: "LineString", coordinates: [[s.de.lng, s.de.lat], [s.ate.lng, s.ate.lat]] }, properties: { kind: "seg" } });
+      }
+    }
+
+    const fc: GeoJSON.FeatureCollection = { type: "FeatureCollection", features };
+
+    if (map.getSource(SRC_S)) {
+      (map.getSource(SRC_S) as maplibregl.GeoJSONSource).setData(fc);
+    } else {
+      map.addSource(SRC_S, { type: "geojson", data: fc });
+      // Inserir ABAIXO do primeiro layer do projeto (selLinha) se ele já existir.
+      // Se ainda não existir, vai ao topo; quando o projeto carrega chama
+      // desenharProjeto → limpar + re-adicionar layers do projeto ACIMA do snapshot.
+      const before = map.getLayer(LYR.selLinha) ? LYR.selLinha : undefined;
+      map.addLayer({
+        id: LYR_SS, type: "line", source: SRC_S,
+        filter: ["==", ["get", "kind"], "seg"],
+        paint: { "line-color": "#94a3b8", "line-width": 1.8, "line-opacity": 0.8 },
+      }, before);
+      map.addLayer({
+        id: LYR_SP, type: "circle", source: SRC_S,
+        filter: ["==", ["get", "kind"], "poste"],
+        paint: { "circle-radius": 4, "circle-color": "#94a3b8", "circle-stroke-color": "#64748b", "circle-stroke-width": 1, "circle-opacity": 0.75 },
+      }, before);
+      map.addLayer({
+        id: LYR_ST, type: "circle", source: SRC_S,
+        filter: ["==", ["get", "kind"], "trafo"],
+        paint: { "circle-radius": 6, "circle-color": "#a78bfa", "circle-stroke-color": "#7c3aed", "circle-stroke-width": 1, "circle-opacity": 0.75 },
+      }, before);
+    }
+  }, [props.areaBdgd]);
+
   // Overlay de elementos manuais (manual=true em areaBdgd).
   // Renderiza postes, trafos e segmentos inseridos manualmente na cor ciano,
   // para diferenciar dos dados capturados automaticamente da BDGD.
