@@ -28,6 +28,9 @@ interface Props {
   comprimentoM?: number | null;
   /** Info do vão inteiro a que o trecho pertence (para o ajuste por vão). */
   vaoInfo?: VaoInfo | null;
+  /** Tipo de rede do projeto — editável aqui para comodidade do projetista. */
+  tipoRede?: "compacta" | "nua";
+  onEditarTipoRede?: (tipoRede: "compacta" | "nua") => void;
   /** +1 adiciona um poste ao vão; -1 remove. */
   onAjustarVao?: (delta: number) => void;
   /** Redivide SÓ este vão para sub-vãos ≤ alvo (m). */
@@ -41,6 +44,8 @@ export function PainelTrecho({
   trecho,
   comprimentoM,
   vaoInfo,
+  tipoRede,
+  onEditarTipoRede,
   onAjustarVao,
   onRedividirVao,
   onEditar,
@@ -57,6 +62,28 @@ export function PainelTrecho({
           ×
         </button>
       </div>
+
+      {onEditarTipoRede && (
+        <div className="campo">
+          <span>Tipo de rede</span>
+          <div className="toggle-grupo">
+            <button
+              className={`toggle-btn${(tipoRede ?? "compacta") === "compacta" ? " ativo" : ""}`}
+              onClick={() => onEditarTipoRede("compacta")}
+              title="Rede Compacta — cabos cobertos (DIS-NOR-013)"
+            >
+              Compacta
+            </button>
+            <button
+              className={`toggle-btn${tipoRede === "nua" ? " ativo" : ""}`}
+              onClick={() => onEditarTipoRede("nua")}
+              title="Rede nua — condutores nus (DIS-NOR-018). Rural."
+            >
+              Rural / nua
+            </button>
+          </div>
+        </div>
+      )}
 
       <label className="campo">
         <span>Classe elétrica</span>

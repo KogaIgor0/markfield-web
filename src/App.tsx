@@ -1712,6 +1712,10 @@ export function App() {
             trecho={selecionadoTrecho}
             comprimentoM={compTrecho}
             vaoInfo={vaoInfo}
+            tipoRede={projeto.meta.tipoRede ?? "compacta"}
+            onEditarTipoRede={(tipoRede) =>
+              atualizar({ ...projeto, meta: { ...projeto.meta, tipoRede } })
+            }
             onAjustarVao={ajustarVaoSel}
             onRedividirVao={redividirVaoSel}
             onEditar={(patch: PatchTrecho) =>
