@@ -611,6 +611,52 @@ body {
   border-color: #d98a82;
 }
 
+/* Painel elemento existente BDGD */
+.painel-info-bloco {
+  font-size: 12.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.pi-linha {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--fg);
+}
+.pi-linha span { color: var(--muted); }
+.pi-vazio { color: var(--muted); font-style: italic; font-size: 12px; }
+
+.painel-acoes-bloco {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.btn-acao-existente {
+  font: inherit;
+  font-size: 13px;
+  background: var(--surface);
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  padding: 7px 12px;
+  cursor: pointer;
+  color: var(--fg);
+  text-align: left;
+}
+.btn-acao-existente:hover { background: var(--hover); }
+.btn-acao-existente.ativo { background: #fff7ed; border-color: #f97316; color: #c2410c; font-weight: 600; }
+.btn-acao-existente.destaque { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; font-weight: 600; }
+.btn-acao-existente.destaque:hover { background: #dbeafe; }
+
+.painel-acoes-nota {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
 /* Seção "Rede" no painel do ponto (B1) */
 .painel-rede {
   border-top: 1px solid var(--hair);

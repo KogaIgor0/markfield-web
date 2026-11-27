@@ -42,6 +42,7 @@ import { resumoMateriais } from "./domain/materiais";
 import { PainelMateriais } from "./ui/PainelMateriais";
 import { PainelCamadas } from "./ui/PainelCamadas";
 import { PainelRede } from "./ui/PainelRede";
+import { PainelElementoExistente } from "./ui/PainelElementoExistente";
 import { PranchaView } from "./ui/PranchaView";
 import { NovoProjetoModal } from "./ui/NovoProjetoModal";
 import { BDGD_CAMADAS_PADRAO, type BdgdCarregamentoResultado } from "./map/bdgd";
@@ -168,6 +169,10 @@ export function App() {
   const [voarPara, setVoarPara] = useState<MapAlvo | null>(null);
   const [trafosData, setTrafosData] = useState<FeatureCollection | null>(null);
   const [capturarContextoBdgdTrigger, setCapturarContextoBdgdTrigger] = useState(0);
+  /** Elemento da snapshot (areaBdgd) clicado pelo usuário — poste ou trafo existente capturado. */
+  const [selecionadoExistente, setSelecionadoExistente] = useState<{ tipo: "poste" | "trafo"; idx: number } | null>(null);
+  /** True enquanto o usuário está a escolher a nova posição de um elemento existente no mapa. */
+  const [modoMoverExistente, setModoMoverExistente] = useState(false);
   /** Elemento BDGD clicado pelo usuário para correção de coordenada. */
   const [bdgdSelecionado, setBdgdSelecionado] = useState<{ tipo: "poste" | "trafo"; wgs84: LatLng } | null>(null);
   /** True enquanto aguarda o usuário clicar no mapa para escolher a nova posição. */
@@ -477,6 +482,76 @@ export function App() {
     const novo: SegmentoMT = { de, ate, manual: true };
     atualizar({ ...projeto, areaBdgd: { ...area, segmentosMT: [...area.segmentosMT, novo] } });
   }, [projeto, atualizar]);
+
+  // ── Elemento existente da snapshot (areaBdgd) ───────────────────────────
+
+  const onSelecionarPosteExistente = useCallback((idx: number, _wgs84: LatLng) => {
+    setSelecionadoExistente({ tipo: "poste", idx });
+    setModoMoverExistente(false);
+    // Fecha painéis de projeto para não sobrepor
+    setSelecionadoId(null);
+    setSelecionadoTrechoId(null);
+  }, []);
+
+  const onSelecionarTrafoExistente = useCallback((idx: number, _wgs84: LatLng) => {
+    setSelecionadoExistente({ tipo: "trafo", idx });
+    setModoMoverExistente(false);
+    setSelecionadoId(null);
+    setSelecionadoTrechoId(null);
+  }, []);
+
+  /** Move o elemento selecionado (poste ou trafo) para a posição clicada no mapa. */
+  const onMoverElementoExistente = useCallback((wgs84: LatLng) => {
+    if (!projeto?.areaBdgd || !selecionadoExistente) return;
+    const area = projeto.areaBdgd;
+    if (selecionadoExistente.tipo === "poste") {
+      const postes = area.postesBdgd.map((p, i) =>
+        i === selecionadoExistente.idx ? { ...p, wgs84 } : p
+      );
+      atualizar({ ...projeto, areaBdgd: { ...area, postesBdgd: postes } });
+    } else {
+      const trafos = area.trafos.map((t, i) =>
+        i === selecionadoExistente.idx ? { ...t, wgs84 } : t
+      );
+      atualizar({ ...projeto, areaBdgd: { ...area, trafos } });
+    }
+    setModoMoverExistente(false);
+  }, [projeto, selecionadoExistente, atualizar]);
+
+  /** Exclui o elemento existente selecionado da areaBdgd. */
+  const onExcluirExistente = useCallback(() => {
+    if (!projeto?.areaBdgd || !selecionadoExistente) return;
+    const area = projeto.areaBdgd;
+    if (selecionadoExistente.tipo === "poste") {
+      const postes = area.postesBdgd.filter((_, i) => i !== selecionadoExistente.idx);
+      atualizar({ ...projeto, areaBdgd: { ...area, postesBdgd: postes } });
+    } else {
+      const trafos = area.trafos.filter((_, i) => i !== selecionadoExistente.idx);
+      atualizar({ ...projeto, areaBdgd: { ...area, trafos } });
+    }
+    setSelecionadoExistente(null);
+    setModoMoverExistente(false);
+  }, [projeto, selecionadoExistente, atualizar]);
+
+  /** Cria um ponto de projeto (postePropostoo) na posição do elemento existente. */
+  const onAdicionarPontoAquiExistente = useCallback(() => {
+    if (!projeto?.areaBdgd || !selecionadoExistente) return;
+    const area = projeto.areaBdgd;
+    let wgs84: LatLng | undefined;
+    if (selecionadoExistente.tipo === "poste") {
+      wgs84 = area.postesBdgd[selecionadoExistente.idx]?.wgs84;
+    } else {
+      wgs84 = area.trafos[selecionadoExistente.idx]?.wgs84;
+    }
+    if (!wgs84) return;
+    const { projeto: novo, id } = adicionarPonto(projeto, "postePropostoo", wgs84);
+    atualizar(novo);
+    setSelecionadoExistente(null);
+    selecionarPonto(id);
+    setMensagem("Ponto de projeto criado na posição do elemento existente — agora você pode ligar rede a partir daqui.");
+  }, [projeto, selecionadoExistente, atualizar, selecionarPonto]);
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   /** Usuário clicou em um poste ou trafo BDGD no mapa → entra no fluxo de correção. */
   const onBdgdElementoClicado = useCallback((tipo: "poste" | "trafo", wgs84: LatLng) => {
@@ -1008,6 +1083,8 @@ export function App() {
         setModoDesenharAreaBdgd(false);
         setBboxPendente(null);
         setModoInserirExistente(null);
+        setSelecionadoExistente(null);
+        setModoMoverExistente(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1548,6 +1625,11 @@ export function App() {
           onInserirPosteExistente={onInserirPosteExistente}
           onInserirTrafoExistente={onInserirTrafoExistente}
           onInserirSegmentoExistente={onInserirSegmentoExistente}
+          onSelecionarPosteExistente={onSelecionarPosteExistente}
+          onSelecionarTrafoExistente={onSelecionarTrafoExistente}
+          elementoExistenteSelecionado={selecionadoExistente}
+          modoMoverElementoExistente={modoMoverExistente}
+          onMoverElementoExistente={onMoverElementoExistente}
         />
 
         {/* BarraFerramentas movida para a topbar */}
@@ -1786,6 +1868,23 @@ export function App() {
               setSelecionadoTrechoId(null);
             }}
             onFechar={() => setSelecionadoTrechoId(null)}
+          />
+        )}
+
+        {selecionadoExistente && projeto?.areaBdgd && (
+          <PainelElementoExistente
+            tipo={selecionadoExistente.tipo}
+            poste={selecionadoExistente.tipo === "poste"
+              ? projeto.areaBdgd.postesBdgd[selecionadoExistente.idx]
+              : undefined}
+            trafo={selecionadoExistente.tipo === "trafo"
+              ? projeto.areaBdgd.trafos[selecionadoExistente.idx]
+              : undefined}
+            modoMover={modoMoverExistente}
+            onMover={() => setModoMoverExistente((v) => !v)}
+            onExcluir={onExcluirExistente}
+            onAdicionarPonto={onAdicionarPontoAquiExistente}
+            onFechar={() => { setSelecionadoExistente(null); setModoMoverExistente(false); }}
           />
         )}
 
