@@ -780,6 +780,66 @@ export function App() {
     }
   }, [projeto, estado.blobs, dbId, bdgdFonteId]);
 
+  /**
+   * Cria um projeto novo, pede ao usuário onde salvar o .mkf (File System
+   * Access API) e só então define o state. Assim o arquivo está ancorado ao
+   * disco desde o primeiro momento.  Se o navegador não suportar a API
+   * (Firefox) faz download imediato e segue normalmente.
+   */
+  const criarESalvar = useCallback(async (nome: string, distribuidoraId: string) => {
+    const proj = projetoVazio(nome);
+    const blobs: Map<string, Uint8Array> = new Map();
+
+    try {
+      const blob = await exportarMkf(proj, blobs);
+      const nomeArq = nomeArquivoMkf(proj);
+      let handle: FileSystemFileHandle | null = null;
+
+      if ("showSaveFilePicker" in window) {
+        try {
+          handle = await (window as unknown as {
+            showSaveFilePicker: (opts: unknown) => Promise<FileSystemFileHandle>;
+          }).showSaveFilePicker({
+            suggestedName: nomeArq,
+            types: [{ description: "MarkField", accept: { "application/zip": [".mkf"] } }],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+        } catch (fsErr) {
+          if ((fsErr as DOMException).name === "AbortError") return; // usuário cancelou — não cria
+          handle = null;
+          baixar(blob, nomeArq); // fallback download
+        }
+      } else {
+        baixar(blob, nomeArq);
+      }
+
+      // Registra no histórico (IndexedDB)
+      const newDbId = gerarDbId();
+      salvarProjetoDb({
+        dbId: newDbId,
+        nome: proj.meta.nome,
+        distribuidoraId,
+        atualizadoEm: new Date().toISOString(),
+        pontos: 0,
+        trechos: 0,
+        mkfBlob: blob,
+      }).catch(() => {});
+
+      // Aplica state — agora que o arquivo já está salvo
+      fileHandleRef.current = handle;
+      setEstado({ projeto: proj, imagens: new Map(), blobs, relatorio: null });
+      setBdgdFonteId(distribuidoraId);
+      setDbId(newDbId);
+      setSalvo(true);
+      setNovoProjetoAberto(false);
+      setModoDesenharAreaBdgd(true);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao criar o projeto.");
+    }
+  }, []);
+
   const exportarDxf = useCallback(() => {
     if (!projeto) return;
     try {
@@ -2017,15 +2077,7 @@ export function App() {
 
       {novoProjetoAberto && (
         <NovoProjetoModal
-          onCriar={(nome, distribuidoraId) => {
-            setEstado({ projeto: projetoVazio(nome), imagens: new Map(), blobs: new Map(), relatorio: null });
-            setBdgdFonteId(distribuidoraId);
-            setDbId(null);
-            setSalvo(false);
-            setNovoProjetoAberto(false);
-            // Guia o projetista direto para o passo seguinte: definir a área no mapa.
-            setModoDesenharAreaBdgd(true);
-          }}
+          onCriar={(nome, distribuidoraId) => void criarESalvar(nome, distribuidoraId)}
           onCancelar={() => setNovoProjetoAberto(false)}
         />
       )}
