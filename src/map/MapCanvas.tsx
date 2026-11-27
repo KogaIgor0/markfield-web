@@ -277,6 +277,16 @@ interface MapCanvasProps {
   onInserirTrafoExistente?: (wgs84: LatLng) => void;
   /** Chamado quando o usuário define os dois pontos de um segmento MT existente. */
   onInserirSegmentoExistente?: (de: LatLng, ate: LatLng) => void;
+  /** Chamado quando o usuário clica num poste existente (snap layer) para selecioná-lo. */
+  onSelecionarPosteExistente?: (idx: number, wgs84: LatLng) => void;
+  /** Chamado quando o usuário clica num trafo existente (snap layer) para selecioná-lo. */
+  onSelecionarTrafoExistente?: (idx: number, wgs84: LatLng) => void;
+  /** Elemento existente atualmente selecionado — para destaque visual. */
+  elementoExistenteSelecionado?: { tipo: "poste" | "trafo"; idx: number } | null;
+  /** Quando true, o próximo clique no mapa move o elemento existente selecionado. */
+  modoMoverElementoExistente?: boolean;
+  /** Chamado com a nova posição escolhida no modo mover elemento existente. */
+  onMoverElementoExistente?: (wgs84: LatLng) => void;
 }
 
 const COR_TIPO: maplibregl.ExpressionSpecification = [
@@ -360,6 +370,8 @@ export function MapCanvas(props: MapCanvasProps) {
 
   // Ref para o primeiro ponto do segmento MT em modo de inserção manual.
   const segPrimeiroCliqueRef = useRef<LatLng | null>(null);
+  /** Sinaliza que um clique numa layer snap foi tratado — impede o handler geral de disparar. */
+  const snapClickHandledRef = useRef(false);
 
   // Cursor crosshair enquanto o modo de correção BDGD está ativo.
   useEffect(() => {
@@ -606,9 +618,16 @@ export function MapCanvas(props: MapCanvasProps) {
 
     // Clique geral: adicionar (modo adicionar) ou desmarcar (clique no vazio).
     map.on("click", (e) => {
-      // Se um layer BDGD já tratou este clique, ignora aqui para não criar ponto inadvertidamente.
+      // Se um layer BDGD ou snap já tratou este clique, ignora.
       if (bdgdClickHandled) { bdgdClickHandled = false; return; }
+      if (snapClickHandledRef.current) { snapClickHandledRef.current = false; return; }
       if (propsRef.current.modoSelecaoPrancha || propsRef.current.modoDesenharAreaBdgd) return;
+
+      // ── Mover elemento existente (poste/trafo do areaBdgd) ───────────────
+      if (propsRef.current.modoMoverElementoExistente) {
+        propsRef.current.onMoverElementoExistente?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+        return;
+      }
 
       // ── Inserção manual de elementos existentes ──────────────────────────
       const modoIns = propsRef.current.modoInserirExistente;
@@ -1143,7 +1162,11 @@ export function MapCanvas(props: MapCanvasProps) {
   // de CDN. Assim, ao reabrir o projeto, a rede existente carrega do arquivo.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !prontoRef.current) return;
+    console.log("[snap] useEffect areaBdgd. pronto=", prontoRef.current, "areaBdgd=", !!props.areaBdgd);
+    if (!map || !prontoRef.current) {
+      console.log("[snap] abortando — mapa não pronto");
+      return;
+    }
 
     const SRC_S  = "mkf-snap-src";
     const LYR_SS = "mkf-snap-segs";
@@ -1154,22 +1177,23 @@ export function MapCanvas(props: MapCanvasProps) {
     const features: GeoJSON.Feature[] = [];
 
     if (area) {
-      for (const p of area.postesBdgd) {
-        if (p.manual) continue; // manuais têm camada própria (ciano)
-        features.push({ type: "Feature", geometry: { type: "Point", coordinates: [p.wgs84.lng, p.wgs84.lat] }, properties: { kind: "poste" } });
-      }
-      for (const t of area.trafos) {
-        if (t.manual) continue;
-        features.push({ type: "Feature", geometry: { type: "Point", coordinates: [t.wgs84.lng, t.wgs84.lat] }, properties: { kind: "trafo" } });
-      }
-      for (const s of area.segmentosMT) {
-        if (s.manual) continue;
-        features.push({ type: "Feature", geometry: { type: "LineString", coordinates: [[s.de.lng, s.de.lat], [s.ate.lng, s.ate.lat]] }, properties: { kind: "seg" } });
-      }
+      area.postesBdgd.forEach((p, idx) => {
+        if (p.manual) return; // manuais têm camada própria (ciano)
+        features.push({ type: "Feature", geometry: { type: "Point", coordinates: [p.wgs84.lng, p.wgs84.lat] }, properties: { kind: "poste", idx } });
+      });
+      area.trafos.forEach((t, idx) => {
+        if (t.manual) return;
+        features.push({ type: "Feature", geometry: { type: "Point", coordinates: [t.wgs84.lng, t.wgs84.lat] }, properties: { kind: "trafo", idx } });
+      });
+      area.segmentosMT.forEach((s, idx) => {
+        if (s.manual) return;
+        features.push({ type: "Feature", geometry: { type: "LineString", coordinates: [[s.de.lng, s.de.lat], [s.ate.lng, s.ate.lat]] }, properties: { kind: "seg", idx } });
+      });
     }
 
     const fc: GeoJSON.FeatureCollection = { type: "FeatureCollection", features };
 
+    console.log("[snap] fonte existe?", !!map.getSource(SRC_S), "features:", features.length);
     if (map.getSource(SRC_S)) {
       (map.getSource(SRC_S) as maplibregl.GeoJSONSource).setData(fc);
     } else {
@@ -1186,15 +1210,80 @@ export function MapCanvas(props: MapCanvasProps) {
       map.addLayer({
         id: LYR_SP, type: "circle", source: SRC_S,
         filter: ["==", ["get", "kind"], "poste"],
-        paint: { "circle-radius": 4, "circle-color": "#94a3b8", "circle-stroke-color": "#64748b", "circle-stroke-width": 1, "circle-opacity": 0.75 },
+        paint: { "circle-radius": 7, "circle-color": "#94a3b8", "circle-stroke-color": "#64748b", "circle-stroke-width": 1.5, "circle-opacity": 0.85 },
       }, before);
       map.addLayer({
         id: LYR_ST, type: "circle", source: SRC_S,
         filter: ["==", ["get", "kind"], "trafo"],
-        paint: { "circle-radius": 6, "circle-color": "#a78bfa", "circle-stroke-color": "#7c3aed", "circle-stroke-width": 1, "circle-opacity": 0.75 },
+        paint: { "circle-radius": 9, "circle-color": "#a78bfa", "circle-stroke-color": "#7c3aed", "circle-stroke-width": 1.5, "circle-opacity": 0.85 },
       }, before);
+
+      // ── Destaque do elemento selecionado (anel laranja) ──────────────────
+      const SRC_SEL = "mkf-snap-sel-src";
+      const LYR_SEL = "mkf-snap-sel";
+      map.addSource(SRC_SEL, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      map.addLayer({
+        id: LYR_SEL, type: "circle", source: SRC_SEL,
+        paint: {
+          "circle-radius": ["case", ["==", ["get", "kind"], "trafo"], 10, 7],
+          "circle-color": "transparent",
+          "circle-stroke-color": "#f97316",
+          "circle-stroke-width": 2.5,
+        },
+      });
+
+      // ── Click handlers (apenas após layers criadas) ──────────────────────
+      console.log("[snap] registrando click handlers em", LYR_SP, LYR_ST);
+      map.on("click", LYR_SP, (e) => {
+        console.log("[snap] clique em LYR_SP", { features: e.features?.length, modoIns: propsRef.current.modoInserirExistente, modoArea: propsRef.current.modoDesenharAreaBdgd });
+        if (propsRef.current.modoInserirExistente || propsRef.current.modoDesenharAreaBdgd) return;
+        const f = e.features?.[0];
+        if (!f || f.geometry.type !== "Point") { console.log("[snap] sem feature ou geometria inválida", f?.geometry?.type); return; }
+        const idx = f.properties?.idx as number | undefined;
+        if (idx === undefined) { console.log("[snap] idx undefined em props:", f.properties); return; }
+        const [lng, lat] = f.geometry.coordinates as [number, number];
+        console.log("[snap] chamando onSelecionarPosteExistente", { idx, lat, lng });
+        snapClickHandledRef.current = true;
+        propsRef.current.onSelecionarPosteExistente?.(idx, { lat, lng });
+      });
+      map.on("click", LYR_ST, (e) => {
+        console.log("[snap] clique em LYR_ST", { features: e.features?.length, modoIns: propsRef.current.modoInserirExistente });
+        if (propsRef.current.modoInserirExistente || propsRef.current.modoDesenharAreaBdgd) return;
+        const f = e.features?.[0];
+        if (!f || f.geometry.type !== "Point") return;
+        const idx = f.properties?.idx as number | undefined;
+        if (idx === undefined) return;
+        const [lng, lat] = f.geometry.coordinates as [number, number];
+        console.log("[snap] chamando onSelecionarTrafoExistente", { idx, lat, lng });
+        snapClickHandledRef.current = true;
+        propsRef.current.onSelecionarTrafoExistente?.(idx, { lat, lng });
+      });
+      map.on("mouseenter", LYR_SP, () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", LYR_SP, () => { map.getCanvas().style.cursor = ""; });
+      map.on("mouseenter", LYR_ST, () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", LYR_ST, () => { map.getCanvas().style.cursor = ""; });
     }
   }, [props.areaBdgd]);
+
+  // Destaque laranja do elemento existente selecionado (anel ao redor do ponto).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !prontoRef.current) return;
+    const src = map.getSource("mkf-snap-sel-src") as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    const sel = props.elementoExistenteSelecionado;
+    const area = props.areaBdgd;
+    if (!sel || !area) { src.setData({ type: "FeatureCollection", features: [] }); return; }
+    let wgs84: LatLng | null = null;
+    let kind = sel.tipo;
+    if (sel.tipo === "poste") wgs84 = area.postesBdgd[sel.idx]?.wgs84 ?? null;
+    else wgs84 = area.trafos[sel.idx]?.wgs84 ?? null;
+    if (!wgs84) { src.setData({ type: "FeatureCollection", features: [] }); return; }
+    src.setData({
+      type: "FeatureCollection",
+      features: [{ type: "Feature", geometry: { type: "Point", coordinates: [wgs84.lng, wgs84.lat] }, properties: { kind } }],
+    });
+  }, [props.elementoExistenteSelecionado, props.areaBdgd]);
 
   // Overlay de elementos manuais (manual=true em areaBdgd).
   // Renderiza postes, trafos e segmentos inseridos manualmente na cor ciano,

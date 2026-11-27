@@ -486,6 +486,7 @@ export function App() {
   // ── Elemento existente da snapshot (areaBdgd) ───────────────────────────
 
   const onSelecionarPosteExistente = useCallback((idx: number, _wgs84: LatLng) => {
+    console.log("[app] onSelecionarPosteExistente chamado", { idx });
     setSelecionadoExistente({ tipo: "poste", idx });
     setModoMoverExistente(false);
     // Fecha painéis de projeto para não sobrepor
