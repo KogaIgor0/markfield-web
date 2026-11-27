@@ -1335,9 +1335,9 @@ export function MapCanvas(props: MapCanvasProps) {
           }
         }
 
-        // Com bbox: inclui até 20 segmentos mais próximos do derivacao (ou todos se não há derivacao).
-        // Sem bbox: pega os 5 mais próximos do ponto de derivação.
-        const limite = bboxMT ? 20 : 5;
+        // Com bbox: inclui TODOS os segmentos dentro da área (sem limite artificial).
+        // Sem bbox: pega os 10 mais próximos do ponto de derivação.
+        const limite = bboxMT ? candidatos.length : 10;
         candidatos.sort((a, b) => a.distSq - b.distSq);
         for (const c of candidatos.slice(0, limite)) {
           // Extrai atributos do cabo do SSDMT (gracioso se ausentes no PMTiles)
@@ -1357,38 +1357,37 @@ export function MapCanvas(props: MapCanvasProps) {
         }
       }
 
-      // Busca transformador(es) via querySourceFeatures no source GeoJSON
-      let trafoProximo: TrafoExistente | undefined;
-      const bboxTraf = capturaBboxRef.current;
-      if (derivacao || bboxTraf) {
-        try {
-          const trafFeatures = map.getSource(BDGD_SRC.transformadores)
-            ? map.querySourceFeatures(BDGD_SRC.transformadores)
-            : [];
-          let minD = Infinity;
-          for (const f of trafFeatures) {
-            if (f.geometry.type !== "Point") continue;
-            const [lng, lat] = f.geometry.coordinates;
-            // Com bbox: só considera trafos dentro da área selecionada
-            if (bboxTraf) {
-              if (lng < bboxTraf[0] || lng > bboxTraf[2] || lat < bboxTraf[1] || lat > bboxTraf[3]) continue;
-            }
-            const dlat = lat - (derivacao?.lat ?? lat);
-            const dlng = lng - (derivacao?.lng ?? lng);
-            const d = dlat * dlat + dlng * dlng;
-            if (d < minD) {
-              minD = d;
-              const props = f.properties ?? {};
-              const label =
-                (props["COD_ID"] as string | undefined) ??
-                (props["CTMT"] as string | undefined) ??
-                (props["PRI_SUB"] as string | undefined);
-              trafoProximo = { wgs84: { lat, lng }, label };
-            }
+      // Busca TODOS os transformadores dentro do bbox efetivo via querySourceFeatures.
+      // Usa efetivoBbox (areaBdgd.bbox ou capturaBboxRef) — NÃO capturaBboxRef sozinho,
+      // pois no fluxo normal (poligonal) capturaBboxRef é null.
+      const trafosCapturados: TrafoExistente[] = [];
+      const bboxTraf = efetivoBbox;
+      try {
+        const trafFeatures = map.getSource(BDGD_SRC.transformadores)
+          ? map.querySourceFeatures(BDGD_SRC.transformadores)
+          : [];
+        for (const f of trafFeatures) {
+          if (f.geometry.type !== "Point") continue;
+          const [lng, lat] = f.geometry.coordinates;
+          // Filtra pelo bbox da área quando disponível
+          if (bboxTraf) {
+            if (lng < bboxTraf[0] || lng > bboxTraf[2] || lat < bboxTraf[1] || lat > bboxTraf[3]) continue;
+          } else if (derivacao) {
+            // Sem bbox: raio ~300 m em torno do ponto de derivação
+            const RAIO = 0.003;
+            if (Math.abs(lat - derivacao.lat) > RAIO || Math.abs(lng - derivacao.lng) > RAIO) continue;
+          } else {
+            continue; // sem bbox e sem derivacao: não captura trafos
           }
-        } catch {
-          // Silencioso — source pode não existir
+          const props = f.properties ?? {};
+          const label =
+            (props["COD_ID"] as string | undefined) ??
+            (props["CTMT"] as string | undefined) ??
+            (props["PRI_SUB"] as string | undefined);
+          trafosCapturados.push({ wgs84: { lat, lng }, label });
         }
+      } catch {
+        // Silencioso — source pode não existir
       }
 
       // Log de diagnóstico — SSDMT (primeiros 2 segmentos)
@@ -1461,7 +1460,7 @@ export function MapCanvas(props: MapCanvasProps) {
         },
         postesBdgd,
         segmentosMT,
-        trafos: trafoProximo ? [trafoProximo] : [],
+        trafos: trafosCapturados,
       };
       callback(area);
     };
@@ -1473,7 +1472,10 @@ export function MapCanvas(props: MapCanvasProps) {
     const areaBboxParaFly = propsRef.current.areaBdgd?.bbox;
     if (areaBboxParaFly) {
       const { oeste, sul, leste, norte } = areaBboxParaFly;
-      map.fitBounds([oeste, sul, leste, norte] as [number, number, number, number], { padding: 60 });
+      // minZoom 15: tiles de detalhe (postes, segmentos, trafos) só existem nesse zoom+.
+      // Sem isso, o fitBounds pode resultar em zoom < 15 e querySourceFeatures retorna
+      // apenas o que está no cache de tiles de overview (sem features individuais).
+      map.fitBounds([oeste, sul, leste, norte] as [number, number, number, number], { padding: 60, maxZoom: 17, minZoom: 15 });
       // Não faz captura imediata — aguarda idle após o fly (tiles da área carregam durante a animação)
     } else {
       // Sem área definida: captura imediata (tiles do viewport atual já estão no cache)
